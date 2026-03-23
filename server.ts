@@ -41,6 +41,12 @@ if (!admin.apps.length) {
     try {
       const cleanedJson = serviceAccountVar.trim();
       const serviceAccount = JSON.parse(cleanedJson);
+      
+      // Fix for private key newline characters often mangled in env vars
+      if (serviceAccount.private_key) {
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+      }
+      
       credential = admin.credential.cert(serviceAccount);
       admin.initializeApp({
         credential,
