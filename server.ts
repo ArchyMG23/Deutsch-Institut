@@ -49,8 +49,7 @@ if (!admin.apps.length) {
       
       credential = admin.credential.cert(serviceAccount);
       admin.initializeApp({
-        credential,
-        projectId: firebaseConfig.projectId || process.env.FIREBASE_PROJECT_ID || 'dia-app-52477',
+        credential
       });
       isFirebaseAdminInitialized = true;
       authAdmin = admin.auth();
@@ -245,30 +244,35 @@ async function startServer() {
   // Auth Routes
   app.post('/api/auth/login', async (req, res) => {
     const { matricule, password } = req.body;
+    console.log(`[LOGIN] Attempting lookup for matricule: ${matricule}`);
     
+    if (!isFirebaseAdminInitialized) {
+      console.error("[LOGIN] Firebase Admin not initialized, cannot perform lookup.");
+      return res.status(503).json({ message: 'Service temporairement indisponible (Firebase non initialisé)' });
+    }
+
     try {
       // Look up user by matricule in Firestore
       const userQuery = await dbAdmin.collection('users').where('matricule', '==', matricule.toUpperCase()).get();
       let userDoc = userQuery.docs[0];
       
       if (!userDoc) {
+        console.log(`[LOGIN] Matricule ${matricule} not found, trying email lookup...`);
         // Try by email
         const emailQuery = await dbAdmin.collection('users').where('email', '==', matricule.toLowerCase()).get();
         userDoc = emailQuery.docs[0];
       }
 
       if (!userDoc) {
+        console.warn(`[LOGIN] No user found for identifier: ${matricule}`);
         return res.status(401).json({ message: 'Identifiants incorrects' });
       }
 
       const userData = userDoc.data();
-      // Note: We don't store passwords in Firestore for Firebase Auth users.
-      // This route is mostly legacy now that frontend uses Firebase Auth directly.
-      // But for compatibility, we return the user if they exist.
-      // REAL authentication should happen on the frontend.
-      
+      console.log(`[LOGIN] User found: ${userData.email} (Role: ${userData.role})`);
       res.json({ user: userData });
     } catch (err: any) {
+      console.error(`[LOGIN] Error during lookup for ${matricule}:`, err);
       res.status(500).json({ message: err.message });
     }
   });

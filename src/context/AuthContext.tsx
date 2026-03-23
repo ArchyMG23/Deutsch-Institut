@@ -89,11 +89,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setProfile(userData);
           } else {
             console.warn("AuthProvider: User exists in Auth but no Firestore profile found for UID:", firebaseUser.uid);
+            console.log("AuthProvider: This might mean the server bootstrap hasn't finished or failed.");
             setUser(firebaseUser);
             setProfile(null);
           }
-        } catch (err) {
-          console.error("AuthProvider: Error fetching user profile:", err);
+        } catch (err: any) {
+          console.error("AuthProvider: Error fetching user profile:", err.code, err.message);
           setUser(firebaseUser);
           setProfile(null);
         }
@@ -104,7 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log("AuthProvider: Loading complete.");
       setLoading(false);
     }, (error) => {
-      console.error("AuthProvider: onAuthStateChanged error:", error);
+      console.error("AuthProvider: onAuthStateChanged error:", error.code, error.message);
       clearTimeout(safetyTimeout);
       setLoading(false);
     });
@@ -118,17 +119,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (identifier: string, password: string) => {
     let email = identifier.trim();
     
-    // If identifier is not an email, assume it's a matricule and look up the email
+    // If identifier is not an email, assume it's a matricule and look up the email via backend
     if (!email.includes('@')) {
-      console.log("Looking up email for matricule:", email);
-      const q = query(collection(db, 'users'), where('matricule', '==', email.toUpperCase()));
-      const querySnapshot = await getDocs(q);
-      
-      if (querySnapshot.empty) {
-        throw new Error('Matricule non trouvé. Veuillez vérifier votre code.');
+      console.log("Looking up email for matricule via backend:", email);
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ matricule: email, password: 'dummy' }) // password not checked here
+        });
+        
+        if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error('Matricule non trouvé. Veuillez vérifier votre code.');
+          }
+          throw new Error('Erreur lors de la recherche du matricule.');
+        }
+        
+        const data = await response.json();
+        email = data.user.email;
+      } catch (err: any) {
+        console.error("Matricule lookup error:", err);
+        throw err;
       }
-      
-      email = querySnapshot.docs[0].data().email;
     }
 
     try {

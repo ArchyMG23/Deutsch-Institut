@@ -21,8 +21,16 @@ export default function LoginPage() {
     try {
       await login(matricule.trim(), password);
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Une erreur est survenue lors de la connexion.');
+      console.error("Login error details:", err);
+      let msg = err.message || 'Une erreur est survenue lors de la connexion.';
+      
+      if (err.code === 'auth/operation-not-allowed') {
+        msg = "L'authentification par email/mot de passe n'est pas activée dans votre console Firebase. Veuillez l'activer dans la section Authentication > Sign-in method.";
+      } else if (err.name === 'TypeError' && err.message.includes('fetch')) {
+        msg = 'Impossible de contacter le serveur. Veuillez vérifier votre connexion internet ou si le serveur est en ligne.';
+      }
+      
+      setError(msg);
       setLoading(false);
     }
   };
