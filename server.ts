@@ -134,8 +134,48 @@ async function startServer() {
       }
       console.log("Levels bootstrapped.");
     }
+
+    // Bootstrap Admins
+    const admins = [
+      { email: 'yombivictor@gmail.com', firstName: 'Victor', lastName: 'Yombi', matricule: 'SUPERADMIN' },
+      { email: 'gabrielyombi311@gmail.com', firstName: 'Gabriel', lastName: 'Yombi', matricule: 'ADMIN_GABRIEL' }
+    ];
+
+    for (const adminData of admins) {
+      try {
+        let userRecord;
+        try {
+          userRecord = await authAdmin.getUserByEmail(adminData.email);
+          console.log(`Admin ${adminData.email} already exists in Auth.`);
+        } catch (e) {
+          userRecord = await authAdmin.createUser({
+            email: adminData.email,
+            password: 'Admin.1234',
+            displayName: `${adminData.firstName} ${adminData.lastName}`
+          });
+          console.log(`Admin ${adminData.email} created in Auth.`);
+        }
+
+        const userDoc = await dbAdmin.collection('users').doc(userRecord.uid).get();
+        if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
+          await dbAdmin.collection('users').doc(userRecord.uid).set({
+            uid: userRecord.uid,
+            matricule: adminData.matricule,
+            email: adminData.email,
+            role: 'admin',
+            firstName: adminData.firstName,
+            lastName: adminData.lastName,
+            status: 'offline',
+            createdAt: new Date().toISOString()
+          }, { merge: true });
+          console.log(`Admin profile for ${adminData.email} updated in Firestore.`);
+        }
+      } catch (err) {
+        console.error(`Error bootstrapping admin ${adminData.email}:`, err);
+      }
+    }
   } catch (err) {
-    console.error("Error bootstrapping levels:", err);
+    console.error("Error during server bootstrap:", err);
   }
 
   app.use(cors());

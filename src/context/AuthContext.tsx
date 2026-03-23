@@ -62,43 +62,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    const bootstrapAdmin = async () => {
-      const adminEmail = 'yombivictor@gmail.com';
-      const adminPass = 'Admin.1234';
-      const secondaryAdminEmail = 'gabrielyombi311@gmail.com';
-      
-      const createAdmin = async (email: string, pass: string, firstName: string, lastName: string, matricule: string) => {
-        try {
-          console.log(`Attempting to bootstrap admin: ${email}...`);
-          const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
-          const uid = userCredential.user.uid;
-          
-          const adminProfile: UserProfile = {
-            uid,
-            matricule,
-            email,
-            role: 'admin',
-            firstName,
-            lastName,
-            status: 'online',
-            createdAt: new Date().toISOString()
-          };
-          
-          await setDoc(doc(db, 'users', uid), adminProfile);
-          console.log(`Admin ${email} bootstrapped successfully.`);
-        } catch (err: any) {
-          if (err.code === 'auth/email-already-in-use') {
-            console.log(`Admin ${email} already exists in Auth.`);
-          } else {
-            console.error(`Failed to bootstrap admin ${email}:`, err);
-          }
-        }
-      };
-
-      await createAdmin(adminEmail, adminPass, 'Victor', 'Yombi', 'SUPERADMIN');
-      await createAdmin(secondaryAdminEmail, adminPass, 'Gabriel', 'Yombi', 'ADMIN_GABRIEL');
-    };
-
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       console.log("Auth state changed:", firebaseUser?.email);
       if (firebaseUser) {
@@ -127,9 +90,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
 
-    // Run bootstrap in background
-    bootstrapAdmin().catch(err => console.error("Bootstrap error:", err));
-    
     return () => unsubscribe();
   }, []);
 
