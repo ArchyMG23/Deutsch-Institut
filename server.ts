@@ -54,8 +54,12 @@ if (!admin.apps.length) {
       });
       isFirebaseAdminInitialized = true;
       authAdmin = admin.auth();
-      dbAdmin = admin.firestore();
-      console.log("✅ Firebase Admin: Initialisé avec succès.");
+      
+      // Use the specific database ID if provided, otherwise default
+      const dbId = firebaseConfig.firestoreDatabaseId || process.env.FIREBASE_DATABASE_ID;
+      dbAdmin = dbId ? admin.firestore(dbId) : admin.firestore();
+      
+      console.log(`✅ Firebase Admin: Initialisé avec succès (Database: ${dbId || '(default)'}).`);
     } catch (err) {
       console.error("❌ Firebase Admin: Erreur lors du parsing de FIREBASE_SERVICE_ACCOUNT:", err);
     }
@@ -65,12 +69,8 @@ if (!admin.apps.length) {
 } else {
   isFirebaseAdminInitialized = true;
   authAdmin = admin.auth();
-  dbAdmin = admin.firestore();
-}
-if (firebaseConfig.firestoreDatabaseId) {
-  // If a specific database ID is provided in config
-  // Note: firebase-admin might not support databaseId in initializeApp directly for all versions
-  // but we can access it via firestore() if needed.
+  const dbId = firebaseConfig.firestoreDatabaseId || process.env.FIREBASE_DATABASE_ID;
+  dbAdmin = dbId ? admin.firestore(dbId) : admin.firestore();
 }
 
 // Email Transporter Config
@@ -130,64 +130,68 @@ async function startServer() {
   const app = express();
 
   // Bootstrap Levels if empty
-  try {
-    const levelsSnapshot = await dbAdmin.collection('levels').get();
-    if (levelsSnapshot.empty) {
-      console.log("Bootstrapping levels...");
-      const initialLevels = [
-        { id: 'a1', name: 'A1', tuition: 150000, hours: 120 },
-        { id: 'a2', name: 'A2', tuition: 175000, hours: 120 },
-        { id: 'b1', name: 'B1', tuition: 200000, hours: 160 },
-        { id: 'b2', name: 'B2', tuition: 250000, hours: 180 },
-        { id: 'c1', name: 'C1', tuition: 350000, hours: 200 }
+  if (isFirebaseAdminInitialized) {
+    try {
+      const levelsSnapshot = await dbAdmin.collection('levels').get();
+      if (levelsSnapshot.empty) {
+        console.log("Bootstrapping levels...");
+        const initialLevels = [
+          { id: 'a1', name: 'A1', tuition: 150000, hours: 120 },
+          { id: 'a2', name: 'A2', tuition: 175000, hours: 120 },
+          { id: 'b1', name: 'B1', tuition: 200000, hours: 160 },
+          { id: 'b2', name: 'B2', tuition: 250000, hours: 180 },
+          { id: 'c1', name: 'C1', tuition: 350000, hours: 200 }
+        ];
+        for (const level of initialLevels) {
+          await dbAdmin.collection('levels').doc(level.id).set(level);
+        }
+        console.log("Levels bootstrapped.");
+      }
+
+      // Bootstrap Admins
+      const admins = [
+        { email: 'yombivictor@gmail.com', firstName: 'Victor', lastName: 'Yombi', matricule: 'SUPERADMIN' },
+        { email: 'gabrielyombi311@gmail.com', firstName: 'Gabriel', lastName: 'Yombi', matricule: 'ADMIN_GABRIEL' }
       ];
-      for (const level of initialLevels) {
-        await dbAdmin.collection('levels').doc(level.id).set(level);
-      }
-      console.log("Levels bootstrapped.");
-    }
 
-    // Bootstrap Admins
-    const admins = [
-      { email: 'yombivictor@gmail.com', firstName: 'Victor', lastName: 'Yombi', matricule: 'SUPERADMIN' },
-      { email: 'gabrielyombi311@gmail.com', firstName: 'Gabriel', lastName: 'Yombi', matricule: 'ADMIN_GABRIEL' }
-    ];
-
-    for (const adminData of admins) {
-      try {
-        let userRecord;
+      for (const adminData of admins) {
         try {
-          userRecord = await authAdmin.getUserByEmail(adminData.email);
-          console.log(`Admin ${adminData.email} already exists in Auth.`);
-        } catch (e) {
-          userRecord = await authAdmin.createUser({
-            email: adminData.email,
-            password: 'Admin.1234',
-            displayName: `${adminData.firstName} ${adminData.lastName}`
-          });
-          console.log(`Admin ${adminData.email} created in Auth.`);
-        }
+          let userRecord;
+          try {
+            userRecord = await authAdmin.getUserByEmail(adminData.email);
+            console.log(`Admin ${adminData.email} already exists in Auth.`);
+          } catch (e) {
+            userRecord = await authAdmin.createUser({
+              email: adminData.email,
+              password: 'Admin.1234',
+              displayName: `${adminData.firstName} ${adminData.lastName}`
+            });
+            console.log(`Admin ${adminData.email} created in Auth.`);
+          }
 
-        const userDoc = await dbAdmin.collection('users').doc(userRecord.uid).get();
-        if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
-          await dbAdmin.collection('users').doc(userRecord.uid).set({
-            uid: userRecord.uid,
-            matricule: adminData.matricule,
-            email: adminData.email,
-            role: 'admin',
-            firstName: adminData.firstName,
-            lastName: adminData.lastName,
-            status: 'offline',
-            createdAt: new Date().toISOString()
-          }, { merge: true });
-          console.log(`Admin profile for ${adminData.email} updated in Firestore.`);
+          const userDoc = await dbAdmin.collection('users').doc(userRecord.uid).get();
+          if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
+            await dbAdmin.collection('users').doc(userRecord.uid).set({
+              uid: userRecord.uid,
+              matricule: adminData.matricule,
+              email: adminData.email,
+              role: 'admin',
+              firstName: adminData.firstName,
+              lastName: adminData.lastName,
+              status: 'offline',
+              createdAt: new Date().toISOString()
+            }, { merge: true });
+            console.log(`Admin profile for ${adminData.email} updated in Firestore.`);
+          }
+        } catch (err) {
+          console.error(`Error bootstrapping admin ${adminData.email}:`, err);
         }
-      } catch (err) {
-        console.error(`Error bootstrapping admin ${adminData.email}:`, err);
       }
+    } catch (err) {
+      console.error("Error during server bootstrap:", err);
     }
-  } catch (err) {
-    console.error("Error during server bootstrap:", err);
+  } else {
+    console.warn("Skipping bootstrap: Firebase Admin not initialized.");
   }
 
   app.use(cors());
