@@ -29,36 +29,38 @@ try {
   console.warn("Could not read firebase-applet-config.json");
 }
 
+let isFirebaseAdminInitialized = false;
+let authAdmin: admin.auth.Auth;
+let dbAdmin: admin.firestore.Firestore;
+
 if (!admin.apps.length) {
   const serviceAccountVar = process.env.FIREBASE_SERVICE_ACCOUNT;
   let credential;
 
   if (serviceAccountVar) {
     try {
-      // Nettoyage de la variable au cas où il y aurait des espaces ou des retours à la ligne parasites
       const cleanedJson = serviceAccountVar.trim();
       const serviceAccount = JSON.parse(cleanedJson);
       credential = admin.credential.cert(serviceAccount);
-      console.log("✅ Firebase Admin: Initialisé avec succès via FIREBASE_SERVICE_ACCOUNT.");
+      admin.initializeApp({
+        credential,
+        projectId: firebaseConfig.projectId || process.env.FIREBASE_PROJECT_ID || 'dia-app-52477',
+      });
+      isFirebaseAdminInitialized = true;
+      authAdmin = admin.auth();
+      dbAdmin = admin.firestore();
+      console.log("✅ Firebase Admin: Initialisé avec succès.");
     } catch (err) {
       console.error("❌ Firebase Admin: Erreur lors du parsing de FIREBASE_SERVICE_ACCOUNT:", err);
-      console.log("Contenu reçu (tronqué):", serviceAccountVar.substring(0, 20) + "...");
-      throw new Error("La variable FIREBASE_SERVICE_ACCOUNT est malformée ou invalide.");
     }
   } else {
-    console.error("❌ Firebase Admin: La variable d'environnement FIREBASE_SERVICE_ACCOUNT est manquante !");
-    // On ne tente pas applicationDefault() sur Render car on sait que ça va échouer
-    throw new Error("FIREBASE_SERVICE_ACCOUNT est requis pour démarrer le serveur sur Render.");
+    console.warn("⚠️ Firebase Admin: FIREBASE_SERVICE_ACCOUNT manquant. Les fonctions d'administration seront désactivées.");
   }
-
-  admin.initializeApp({
-    credential,
-    projectId: firebaseConfig.projectId || process.env.FIREBASE_PROJECT_ID || 'dia-app-52477',
-  });
+} else {
+  isFirebaseAdminInitialized = true;
+  authAdmin = admin.auth();
+  dbAdmin = admin.firestore();
 }
-
-const authAdmin = admin.auth();
-const dbAdmin = admin.firestore();
 if (firebaseConfig.firestoreDatabaseId) {
   // If a specific database ID is provided in config
   // Note: firebase-admin might not support databaseId in initializeApp directly for all versions
