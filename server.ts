@@ -35,21 +35,25 @@ if (!admin.apps.length) {
 
   if (serviceAccountVar) {
     try {
-      const serviceAccount = JSON.parse(serviceAccountVar);
+      // Nettoyage de la variable au cas où il y aurait des espaces ou des retours à la ligne parasites
+      const cleanedJson = serviceAccountVar.trim();
+      const serviceAccount = JSON.parse(cleanedJson);
       credential = admin.credential.cert(serviceAccount);
-      console.log("Firebase Admin initialized with Service Account from ENV.");
+      console.log("✅ Firebase Admin: Initialisé avec succès via FIREBASE_SERVICE_ACCOUNT.");
     } catch (err) {
-      console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT env var:", err);
-      credential = admin.credential.applicationDefault();
+      console.error("❌ Firebase Admin: Erreur lors du parsing de FIREBASE_SERVICE_ACCOUNT:", err);
+      console.log("Contenu reçu (tronqué):", serviceAccountVar.substring(0, 20) + "...");
+      throw new Error("La variable FIREBASE_SERVICE_ACCOUNT est malformée ou invalide.");
     }
   } else {
-    console.log("Firebase Admin: No service account found, using applicationDefault.");
-    credential = admin.credential.applicationDefault();
+    console.error("❌ Firebase Admin: La variable d'environnement FIREBASE_SERVICE_ACCOUNT est manquante !");
+    // On ne tente pas applicationDefault() sur Render car on sait que ça va échouer
+    throw new Error("FIREBASE_SERVICE_ACCOUNT est requis pour démarrer le serveur sur Render.");
   }
 
   admin.initializeApp({
     credential,
-    projectId: firebaseConfig.projectId || process.env.FIREBASE_PROJECT_ID,
+    projectId: firebaseConfig.projectId || process.env.FIREBASE_PROJECT_ID || 'dia-app-52477',
   });
 }
 
