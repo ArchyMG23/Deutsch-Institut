@@ -1,0 +1,108 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profile",
+      "description": "Core user information and roles",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "matricule": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "teacher", "student"] },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "mustChangePassword": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["online", "offline"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "matricule", "email", "role", "firstName", "lastName"]
+    },
+    "students": {
+      "title": "Student Details",
+      "description": "Extended information for students",
+      "type": "object",
+      "properties": {
+        "birthDate": { "type": "string" },
+        "birthPlace": { "type": "string" },
+        "gender": { "type": "string", "enum": ["M", "F"] },
+        "cni": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "parentName": { "type": "string" },
+        "parentPhone": { "type": "string" },
+        "classId": { "type": "string" }
+      }
+    },
+    "teachers": {
+      "title": "Teacher Details",
+      "description": "Extended information for teachers",
+      "type": "object",
+      "properties": {
+        "hourlyRate": { "type": "number" },
+        "assignedClasses": { "type": "array", "items": { "type": "string" } },
+        "whatsapp": { "type": "string" }
+      }
+    },
+    "finances": {
+      "title": "Finance Record",
+      "description": "Income and expense tracking",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date" },
+        "description": { "type": "string" },
+        "bankBalanceAfter": { "type": "number" },
+        "cashBalanceAfter": { "type": "number" }
+      }
+    },
+    "classes": {
+      "title": "Classroom",
+      "description": "Class management and scheduling",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "capacity": { "type": "number" },
+        "teacherId": { "type": "string" },
+        "studentIds": { "type": "array", "items": { "type": "string" } },
+        "schedule": { "type": "array" }
+      }
+    },
+    "library": {
+      "title": "Library Item",
+      "description": "Educational documents and resources",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "downloadUrl": { "type": "string" },
+        "category": { "type": "string" },
+        "addedAt": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "users",
+      "description": "User profiles"
+    },
+    "/students/{studentId}": {
+      "schema": "students",
+      "description": "Student specific data"
+    },
+    "/teachers/{teacherId}": {
+      "schema": "teachers",
+      "description": "Teacher specific data"
+    },
+    "/finances/{recordId}": {
+      "schema": "finances",
+      "description": "Financial records"
+    },
+    "/classes/{classId}": {
+      "schema": "classes",
+      "description": "Class information"
+    },
+    "/library/{itemId}": {
+      "schema": "library",
+      "description": "Library resources"
+    }
+  }
+}

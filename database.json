@@ -1,0 +1,166 @@
+{
+  "users": [
+    {
+      "id": "admin-1",
+      "matricule": "ADMIN",
+      "email": "admin@dia.com",
+      "password": "$2b$10$/o9Ogf/y5QsjEEcsODz1geDZa8XNwKBIVJkZxXkpcO8UFgRhs5S2u",
+      "role": "admin",
+      "firstName": "Super",
+      "lastName": "Admin",
+      "status": "online",
+      "createdAt": "2026-03-18T11:03:38.599Z"
+    },
+    {
+      "id": "1773832400289",
+      "matricule": "S262082",
+      "email": "gabrielyombi311@gmail.com",
+      "password": "$2b$10$1snEwE5y2YiEJNMrpD0hRu5wBSLvBQ7ch5d8JPngxuS2Kh577vEKu",
+      "role": "student",
+      "firstName": "Gabriel",
+      "lastName": "Yombi",
+      "status": "offline",
+      "createdAt": "2026-03-18T11:13:20.394Z"
+    },
+    {
+      "id": "test-student-id",
+      "matricule": "TESTSTUDENT",
+      "email": "student@test.com",
+      "password": "$2b$10$/o9Ogf/y5QsjEEcsODz1geDZa8XNwKBIVJkZxXkpcO8UFgRhs5S2u",
+      "role": "student",
+      "firstName": "Etudiant",
+      "lastName": "Test",
+      "status": "offline",
+      "createdAt": "2026-03-18T11:30:00.000Z"
+    },
+    {
+      "id": "test-teacher-id",
+      "matricule": "TESTTEACHER",
+      "email": "teacher@test.com",
+      "password": "$2b$10$/o9Ogf/y5QsjEEcsODz1geDZa8XNwKBIVJkZxXkpcO8UFgRhs5S2u",
+      "role": "teacher",
+      "firstName": "Enseignant",
+      "lastName": "Test",
+      "status": "offline",
+      "createdAt": "2026-03-18T11:30:00.000Z"
+    }
+  ],
+  "students": [
+    {
+      "matricule": "S262082",
+      "firstName": "Gabriel",
+      "lastName": "Yombi",
+      "email": "gabrielyombi311@gmail.com",
+      "phone": null,
+      "whatsapp": "654491319",
+      "birthDate": null,
+      "birthPlace": null,
+      "gender": null,
+      "parentName": null,
+      "parentPhone": null,
+      "levelId": "a1",
+      "classId": "",
+      "role": "student",
+      "status": "offline",
+      "createdAt": "2026-03-18T11:13:20.022Z",
+      "payments": [
+        {
+          "tranche": 1,
+          "amount": 70000,
+          "date": "2026-03-18T11:13:20.022Z"
+        },
+        {
+          "tranche": 2,
+          "amount": 0,
+          "date": null
+        },
+        {
+          "tranche": 3,
+          "amount": 0,
+          "date": null
+        }
+      ],
+      "id": "1773832400289"
+    },
+    {
+      "id": "test-student-id",
+      "matricule": "TESTSTUDENT",
+      "firstName": "Etudiant",
+      "lastName": "Test",
+      "email": "student@test.com",
+      "phone": "000000000",
+      "whatsapp": "000000000",
+      "levelId": "a1",
+      "classId": "",
+      "role": "student",
+      "status": "offline",
+      "createdAt": "2026-03-18T11:30:00.000Z",
+      "payments": [
+        { "tranche": 1, "amount": 0, "date": null },
+        { "tranche": 2, "amount": 0, "date": null },
+        { "tranche": 3, "amount": 0, "date": null }
+      ]
+    }
+  ],
+  "teachers": [
+    {
+      "id": "test-teacher-id",
+      "matricule": "TESTTEACHER",
+      "firstName": "Enseignant",
+      "lastName": "Test",
+      "email": "teacher@test.com",
+      "phone": "000000000",
+      "whatsapp": "000000000",
+      "cni": "TEST-CNI",
+      "hourlyRate": 5000,
+      "role": "teacher",
+      "status": "offline",
+      "totalHoursWorked": 0,
+      "createdAt": "2026-03-18T11:30:00.000Z"
+    }
+  ],
+  "finances": [
+    {
+      "type": "income",
+      "amount": 70000,
+      "description": "Scolarité Tranche 1 (Initial) - Gabriel Yombi",
+      "category": "Tuition",
+      "id": "1773832400554",
+      "date": "2026-03-18T11:13:20.554Z"
+    }
+  ],
+  "classes": [],
+  "library": [],
+  "levels": [
+    {
+      "id": "a1",
+      "name": "A1",
+      "tuition": 150000,
+      "hours": 120
+    },
+    {
+      "id": "a2",
+      "name": "A2",
+      "tuition": 175000,
+      "hours": 120
+    },
+    {
+      "id": "b1",
+      "name": "B1",
+      "tuition": 200000,
+      "hours": 160
+    },
+    {
+      "id": "b2",
+      "name": "B2",
+      "tuition": 250000,
+      "hours": 180
+    },
+    {
+      "id": "c1",
+      "name": "C1",
+      "tuition": 350000,
+      "hours": 200
+    }
+  ]
+}
