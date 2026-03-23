@@ -14,7 +14,7 @@ import nodemailer from 'nodemailer';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'dia-secret-key-2026';
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
 
@@ -183,15 +183,30 @@ async function startServer() {
   app.use(cookieParser());
   app.use('/uploads', express.static(UPLOADS_DIR));
 
+  // Health Check
+  app.get('/health', (req, res) => {
+    res.json({ 
+      status: 'ok', 
+      env: process.env.NODE_ENV,
+      firebase: admin.apps.length > 0 ? 'initialized' : 'not initialized',
+      timestamp: new Date().toISOString()
+    });
+  });
+
   // Auth Middleware
   const authenticate = (req: any, res: any, next: any) => {
+    console.log(`[AUTH] Authenticating request for: ${req.path}`);
     const token = req.cookies.token || req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ message: 'Non authentifié' });
+    if (!token) {
+      console.warn(`[AUTH] No token found for: ${req.path}`);
+      return res.status(401).json({ message: 'Non authentifié' });
+    }
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as any;
       req.user = decoded;
       next();
     } catch (err) {
+      console.error(`[AUTH] Invalid token for: ${req.path}`, err);
       res.status(401).json({ message: 'Token invalide' });
     }
   };
@@ -721,8 +736,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT} (env: ${process.env.NODE_ENV || 'development'})`);
   });
 }
 

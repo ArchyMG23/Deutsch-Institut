@@ -62,24 +62,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
+    console.log("AuthProvider: Initializing Auth listener...");
+    
+    // Safety timeout: force loading to false after 8 seconds if Firebase doesn't respond
+    const safetyTimeout = setTimeout(() => {
+      if (loading) {
+        console.warn("AuthProvider: Firebase auth listener timed out. Forcing loading to false.");
+        setLoading(false);
+      }
+    }, 8000);
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log("Auth state changed:", firebaseUser?.email);
+      console.log("AuthProvider: Auth state changed:", firebaseUser?.email || "No user");
+      clearTimeout(safetyTimeout);
+      
       if (firebaseUser) {
         try {
+          console.log("AuthProvider: Fetching profile for UID:", firebaseUser.uid);
           const docRef = doc(db, 'users', firebaseUser.uid);
           const docSnap = await getDoc(docRef);
           
           if (docSnap.exists()) {
             const userData = docSnap.data() as UserProfile;
+            console.log("AuthProvider: Profile found:", userData.role);
             setUser(firebaseUser);
             setProfile(userData);
           } else {
-            console.warn("User exists in Auth but no Firestore profile found for UID:", firebaseUser.uid);
+            console.warn("AuthProvider: User exists in Auth but no Firestore profile found for UID:", firebaseUser.uid);
             setUser(firebaseUser);
             setProfile(null);
           }
         } catch (err) {
-          console.error("Error fetching user profile:", err);
+          console.error("AuthProvider: Error fetching user profile:", err);
           setUser(firebaseUser);
           setProfile(null);
         }
@@ -87,10 +101,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         setProfile(null);
       }
+      console.log("AuthProvider: Loading complete.");
+      setLoading(false);
+    }, (error) => {
+      console.error("AuthProvider: onAuthStateChanged error:", error);
+      clearTimeout(safetyTimeout);
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      clearTimeout(safetyTimeout);
+    };
   }, []);
 
   const login = async (identifier: string, password: string) => {
