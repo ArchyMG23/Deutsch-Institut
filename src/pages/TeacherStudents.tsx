@@ -3,7 +3,6 @@ import {
   Users, 
   Search, 
   Mail, 
-  MessageSquare, 
   ChevronRight,
   GraduationCap,
   Filter
@@ -142,15 +141,9 @@ export default function TeacherStudents() {
                 </div>
 
                 <div className="mt-6 pt-6 border-t border-neutral-50 flex items-center gap-2">
-                  <button 
-                    onClick={() => NotificationService.sendWhatsApp(student.whatsapp || student.phone || '', `Bonjour ${student.firstName}, c'est votre enseignant de Deutsch Institut.`)}
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-neutral-50 hover:bg-neutral-100 rounded-xl text-xs font-bold transition-all"
-                  >
-                    <MessageSquare size={14} />
-                    <span>Message</span>
-                  </button>
-                  <button className="p-2.5 bg-dia-red/5 text-dia-red hover:bg-dia-red hover:text-white rounded-xl transition-all">
+                  <button className="flex-1 p-2.5 bg-dia-red/5 text-dia-red hover:bg-dia-red hover:text-white rounded-xl transition-all flex items-center justify-center gap-2">
                     <ChevronRight size={18} />
+                    <span className="text-xs font-bold">Voir le profil</span>
                   </button>
                 </div>
               </div>

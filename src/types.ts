@@ -20,7 +20,7 @@ export interface Student extends UserProfile {
   birthPlace: string;
   gender: 'M' | 'F';
   cni?: string;
-  whatsapp: string;
+  phone: string;
   parentName: string;
   parentPhone: string;
   classId?: string;
@@ -64,7 +64,7 @@ export interface ExamItem {
 export interface Teacher extends UserProfile {
   role: 'teacher';
   hourlyRate: number;
-  whatsapp: string;
+  phone: string;
   cni: string;
   totalHoursWorked: number;
 }

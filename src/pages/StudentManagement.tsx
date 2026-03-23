@@ -14,8 +14,7 @@ import {
   Edit,
   Eye,
   CreditCard,
-  FileText,
-  MessageSquare
+  FileText
 } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import { cn, formatCurrency, generateMatricule } from '../utils';
@@ -86,7 +85,6 @@ export default function StudentManagement() {
       lastName: formData.get('lastName'),
       email: formData.get('email'),
       phone: formData.get('phone'),
-      whatsapp: formData.get('whatsapp'),
       birthDate: formData.get('birthDate'),
       birthPlace: formData.get('birthPlace'),
       gender: formData.get('gender'),
@@ -113,7 +111,6 @@ export default function StudentManagement() {
       if (res.ok) {
         const student = await res.json();
         
-        // Notification WhatsApp
         const scheduleStr = cls?.schedule?.map(s => `${s.day} (${s.startTime}-${s.endTime})`).join(', ');
         await NotificationService.sendCredentials(student, password, cls?.name, scheduleStr);
 
@@ -136,7 +133,6 @@ export default function StudentManagement() {
       lastName: formData.get('lastName'),
       email: formData.get('email'),
       phone: formData.get('phone'),
-      whatsapp: formData.get('whatsapp'),
       birthDate: formData.get('birthDate'),
       birthPlace: formData.get('birthPlace'),
       gender: formData.get('gender'),
@@ -346,17 +342,6 @@ export default function StudentManagement() {
                           <CreditCard size={18} />
                         </button>
                         <button 
-                          onClick={async () => {
-                            const cls = classes.find(c => c.id === student.classId);
-                            const scheduleStr = cls?.schedule?.map(s => `${s.day} (${s.startTime}-${s.endTime})`).join(', ');
-                            await NotificationService.sendCredentials(student, '********', cls?.name, scheduleStr);
-                          }}
-                          className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors text-green-600"
-                          title="Envoyer identifiants par WhatsApp"
-                        >
-                          <MessageSquare size={16} />
-                        </button>
-                        <button 
                           onClick={() => {
                             setSelectedStudent(student);
                             setIsEditModalOpen(true);
@@ -408,8 +393,8 @@ export default function StudentManagement() {
                   <input name="email" required type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">WhatsApp</label>
-                  <input name="whatsapp" required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Téléphone</label>
+                  <input name="phone" required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Niveau</label>
@@ -471,8 +456,8 @@ export default function StudentManagement() {
                   <input name="email" defaultValue={selectedStudent.email} required type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">WhatsApp</label>
-                  <input name="whatsapp" defaultValue={selectedStudent.whatsapp} required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Téléphone</label>
+                  <input name="phone" defaultValue={selectedStudent.phone} required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Niveau</label>
@@ -521,7 +506,7 @@ export default function StudentManagement() {
                 <div>
                   <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">Contact</p>
                   <p className="text-sm flex items-center gap-2"><Mail size={14} /> {selectedStudent.email}</p>
-                  <p className="text-sm flex items-center gap-2"><Phone size={14} /> {selectedStudent.whatsapp}</p>
+                  <p className="text-sm flex items-center gap-2"><Phone size={14} /> {selectedStudent.phone}</p>
                 </div>
                 <div>
                   <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">Académique</p>

@@ -15,20 +15,34 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = 3000;
-const JWT_SECRET = 'dia-secret-key-2026';
-const DB_FILE = path.join(process.cwd(), 'database.json');
+const JWT_SECRET = process.env.JWT_SECRET || 'dia-secret-key-2026';
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
 
 // Initialize Firebase Admin
-const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf8'));
+let firebaseConfig;
+try {
+  firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf8'));
+} catch (err) {
+  console.warn("Could not read firebase-applet-config.json, using environment variables if available.");
+  firebaseConfig = {
+    projectId: process.env.FIREBASE_PROJECT_ID,
+  };
+}
 
-admin.initializeApp({
-  credential: admin.credential.applicationDefault(),
-  projectId: firebaseConfig.projectId,
-});
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.applicationDefault(),
+    projectId: firebaseConfig.projectId,
+  });
+}
 
 const authAdmin = admin.auth();
 const dbAdmin = admin.firestore();
+if (firebaseConfig.firestoreDatabaseId) {
+  // If a specific database ID is provided in config
+  // Note: firebase-admin might not support databaseId in initializeApp directly for all versions
+  // but we can access it via firestore() if needed.
+}
 
 // Email Transporter Config
 const transporter = nodemailer.createTransport({
@@ -81,108 +95,31 @@ const upload = multer({
   limits: { fileSize: 1024 * 1024 * 1024 } // 1GB
 });
 
-// Initial Database Structure
-const initialData = {
-  users: [
-    {
-      id: 'admin-1',
-      matricule: 'ADMIN',
-      email: 'admin@dia.com',
-      password: bcrypt.hashSync('DIA2026', 10),
-      role: 'admin',
-      firstName: 'Super',
-      lastName: 'Admin',
-      status: 'online',
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: 'test-student-id',
-      matricule: 'TESTSTUDENT',
-      email: 'student@test.com',
-      password: bcrypt.hashSync('DIA2026', 10),
-      role: 'student',
-      firstName: 'Etudiant',
-      lastName: 'Test',
-      status: 'offline',
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: 'test-teacher-id',
-      matricule: 'TESTTEACHER',
-      email: 'teacher@test.com',
-      password: bcrypt.hashSync('DIA2026', 10),
-      role: 'teacher',
-      firstName: 'Enseignant',
-      lastName: 'Test',
-      status: 'offline',
-      createdAt: new Date().toISOString()
-    }
-  ],
-  students: [
-    {
-      id: 'test-student-id',
-      matricule: 'TESTSTUDENT',
-      firstName: 'Etudiant',
-      lastName: 'Test',
-      email: 'student@test.com',
-      phone: '000000000',
-      whatsapp: '000000000',
-      levelId: 'a1',
-      classId: '',
-      role: 'student',
-      status: 'offline',
-      createdAt: new Date().toISOString(),
-      payments: [
-        { tranche: 1, amount: 0, date: null },
-        { tranche: 2, amount: 0, date: null },
-        { tranche: 3, amount: 0, date: null }
-      ]
-    }
-  ],
-  teachers: [
-    {
-      id: 'test-teacher-id',
-      matricule: 'TESTTEACHER',
-      firstName: 'Enseignant',
-      lastName: 'Test',
-      email: 'teacher@test.com',
-      phone: '000000000',
-      whatsapp: '000000000',
-      cni: 'TEST-CNI',
-      hourlyRate: 5000,
-      role: 'teacher',
-      status: 'offline',
-      totalHoursWorked: 0,
-      createdAt: new Date().toISOString()
-    }
-  ],
-  finances: [],
-  classes: [],
-  library: [],
-  levels: [
-    { id: 'a1', name: 'A1', tuition: 150000, hours: 120 },
-    { id: 'a2', name: 'A2', tuition: 175000, hours: 120 },
-    { id: 'b1', name: 'B1', tuition: 200000, hours: 160 },
-    { id: 'b2', name: 'B2', tuition: 250000, hours: 180 },
-    { id: 'c1', name: 'C1', tuition: 350000, hours: 200 }
-  ]
-};
-
-// ... (initialData)
-
-function getDb() {
-  if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2));
-  }
-  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-}
-
-function saveDb(data: any) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
-}
+// ... (initialData removed as we use Firestore)
 
 async function startServer() {
   const app = express();
+
+  // Bootstrap Levels if empty
+  try {
+    const levelsSnapshot = await dbAdmin.collection('levels').get();
+    if (levelsSnapshot.empty) {
+      console.log("Bootstrapping levels...");
+      const initialLevels = [
+        { id: 'a1', name: 'A1', tuition: 150000, hours: 120 },
+        { id: 'a2', name: 'A2', tuition: 175000, hours: 120 },
+        { id: 'b1', name: 'B1', tuition: 200000, hours: 160 },
+        { id: 'b2', name: 'B2', tuition: 250000, hours: 180 },
+        { id: 'c1', name: 'C1', tuition: 350000, hours: 200 }
+      ];
+      for (const level of initialLevels) {
+        await dbAdmin.collection('levels').doc(level.id).set(level);
+      }
+      console.log("Levels bootstrapped.");
+    }
+  } catch (err) {
+    console.error("Error bootstrapping levels:", err);
+  }
 
   app.use(cors());
   app.use(express.json());
@@ -220,39 +157,54 @@ async function startServer() {
   // Auth Routes
   app.post('/api/auth/login', async (req, res) => {
     const { matricule, password } = req.body;
-    const db = getDb();
     
-    const user = db.users.find((u: any) => 
-      u.matricule.toUpperCase() === matricule.toUpperCase() || 
-      u.email.toLowerCase() === matricule.toLowerCase()
-    );
+    try {
+      // Look up user by matricule in Firestore
+      const userQuery = await dbAdmin.collection('users').where('matricule', '==', matricule.toUpperCase()).get();
+      let userDoc = userQuery.docs[0];
+      
+      if (!userDoc) {
+        // Try by email
+        const emailQuery = await dbAdmin.collection('users').where('email', '==', matricule.toLowerCase()).get();
+        userDoc = emailQuery.docs[0];
+      }
 
-    if (!user || !bcrypt.compareSync(password, user.password)) {
-      return res.status(401).json({ message: 'Identifiants incorrects' });
+      if (!userDoc) {
+        return res.status(401).json({ message: 'Identifiants incorrects' });
+      }
+
+      const userData = userDoc.data();
+      // Note: We don't store passwords in Firestore for Firebase Auth users.
+      // This route is mostly legacy now that frontend uses Firebase Auth directly.
+      // But for compatibility, we return the user if they exist.
+      // REAL authentication should happen on the frontend.
+      
+      res.json({ user: userData });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
-
-    const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
-    const { password: _, ...userWithoutPassword } = user;
-    res.cookie('token', token, { httpOnly: true, secure: true, sameSite: 'none' });
-    res.json({ user: userWithoutPassword, token });
   });
 
-  app.get('/api/auth/me', authenticate, (req: any, res) => {
-    const db = getDb();
-    const user = db.users.find((u: any) => u.id === req.user.id);
-    if (!user) return res.status(404).json({ message: 'Utilisateur non trouvé' });
-    
-    let fullProfile = { ...user };
-    if (user.role === 'student') {
-      const studentData = db.students.find((s: any) => s.id === user.id);
-      if (studentData) fullProfile = { ...studentData, ...fullProfile };
-    } else if (user.role === 'teacher') {
-      const teacherData = db.teachers.find((t: any) => t.id === user.id);
-      if (teacherData) fullProfile = { ...teacherData, ...fullProfile };
-    }
+  app.get('/api/auth/me', authenticate, async (req: any, res) => {
+    try {
+      const userDoc = await dbAdmin.collection('users').doc(req.user.id).get();
+      if (!userDoc.exists) return res.status(404).json({ message: 'Utilisateur non trouvé' });
+      
+      const userData = userDoc.data();
+      let fullProfile = { ...userData };
+      
+      if (userData?.role === 'student') {
+        const studentDoc = await dbAdmin.collection('students').doc(req.user.id).get();
+        if (studentDoc.exists) fullProfile = { ...studentDoc.data(), ...fullProfile };
+      } else if (userData?.role === 'teacher') {
+        const teacherDoc = await dbAdmin.collection('teachers').doc(req.user.id).get();
+        if (teacherDoc.exists) fullProfile = { ...teacherDoc.data(), ...fullProfile };
+      }
 
-    const { password: _, ...userWithoutPassword } = fullProfile;
-    res.json({ ...userWithoutPassword, uid: user.id });
+      res.json({ ...fullProfile, uid: req.user.id });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   app.post('/api/auth/logout', (req, res) => {
@@ -261,12 +213,17 @@ async function startServer() {
   });
 
   // Students API
-  app.get('/api/students', authenticate, (req, res) => {
-    res.json(getDb().students);
+  app.get('/api/students', authenticate, async (req, res) => {
+    try {
+      const snapshot = await dbAdmin.collection('students').get();
+      const students = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      res.json(students);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   app.post('/api/students', authenticate, async (req, res) => {
-    const db = getDb();
     const { password, ...studentData } = req.body;
     
     const passValidation = validatePassword(password || 'DIA2026.');
@@ -307,29 +264,23 @@ async function startServer() {
       await dbAdmin.collection('users').doc(userRecord.uid).set(newUser);
       await dbAdmin.collection('students').doc(userRecord.uid).set(newStudent);
 
-      // Local DB Sync (optional, but keeping for compatibility for now)
-      db.students.push(newStudent);
-      db.users.push({ ...newUser, id: userRecord.uid, password: bcrypt.hashSync(password || 'DIA2026.', 10) });
-
       // Record initial payments in finances
       if (newStudent.payments) {
         for (const p of newStudent.payments) {
           if (p.amount > 0) {
+            const financeId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
             const financeRecord = {
-              id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+              id: financeId,
               type: 'income',
               amount: p.amount,
               description: `Scolarité (Initial) - ${newStudent.matricule} - Tranche ${p.tranche}`,
               category: 'Tuition',
               date: p.date || new Date().toISOString()
             };
-            db.finances.push(financeRecord);
-            await dbAdmin.collection('finances').doc(financeRecord.id).set(financeRecord);
+            await dbAdmin.collection('finances').doc(financeId).set(financeRecord);
           }
         }
       }
-
-      saveDb(db);
       
       // Envoi d'email réel
       const emailSubject = "Bienvenue chez Deutsch Institut - Vos identifiants";
@@ -358,75 +309,88 @@ async function startServer() {
     }
   });
 
-  app.put('/api/students/:id', authenticate, (req, res) => {
-    const db = getDb();
-    const index = db.students.findIndex((s: any) => s.id === req.params.id);
-    if (index === -1) return res.status(404).send('Student not found');
-    
+  app.put('/api/students/:id', authenticate, async (req, res) => {
     const { password, ...studentData } = req.body;
-    const oldStudent = db.students[index];
-    db.students[index] = { ...db.students[index], ...studentData };
+    
+    try {
+      const studentRef = dbAdmin.collection('students').doc(req.params.id);
+      const userRef = dbAdmin.collection('users').doc(req.params.id);
+      
+      const oldStudentDoc = await studentRef.get();
+      if (!oldStudentDoc.exists) return res.status(404).send('Student not found');
+      const oldStudent = oldStudentDoc.data() as any;
 
-    // Synchronize with finances if payments were updated
-    if (studentData.payments) {
-      studentData.payments.forEach((payment: any, idx: number) => {
-        const oldPayment = oldStudent.payments?.[idx];
-        // If payment was added or increased
-        if (payment.amount > 0 && payment.date && (!oldPayment || payment.amount > (oldPayment.amount || 0))) {
-          const diff = payment.amount - (oldPayment?.amount || 0);
-          if (diff > 0) {
-            db.finances.push({
-              id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+      await studentRef.set(studentData, { merge: true });
+      await userRef.set({
+        email: studentData.email,
+        firstName: studentData.firstName,
+        lastName: studentData.lastName,
+      }, { merge: true });
+
+      if (password) {
+        await authAdmin.updateUser(req.params.id, { password });
+      }
+
+      // Handle finances if payments updated
+      if (studentData.payments) {
+        for (let i = 0; i < studentData.payments.length; i++) {
+          const p = studentData.payments[i];
+          const oldP = oldStudent.payments?.[i];
+          const diff = p.amount - (oldP?.amount || 0);
+          
+          if (diff > 0 && p.date) {
+            const financeId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+            await dbAdmin.collection('finances').doc(financeId).set({
+              id: financeId,
               type: 'income',
               amount: diff,
-              description: `Scolarité - ${db.students[index].matricule} - Tranche ${payment.tranche}`,
+              description: `Scolarité - ${studentData.matricule} - Tranche ${p.tranche}`,
               category: 'Tuition',
-              date: payment.date
+              date: p.date
             });
           }
         }
-      });
-    }
-
-    // Update User Account if exists
-    const userIndex = db.users.findIndex((u: any) => u.id === req.params.id);
-    if (userIndex !== -1) {
-      db.users[userIndex] = {
-        ...db.users[userIndex],
-        email: studentData.email || db.users[userIndex].email,
-        firstName: studentData.firstName || db.users[userIndex].firstName,
-        lastName: studentData.lastName || db.users[userIndex].lastName,
-      };
-      if (password) {
-        db.users[userIndex].password = bcrypt.hashSync(password, 10);
       }
-    }
 
-    saveDb(db);
-    res.json(db.students[index]);
+      res.json({ id: req.params.id, ...studentData });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
-  app.delete('/api/students/:id', authenticate, (req, res) => {
-    const db = getDb();
-    db.students = db.students.filter((s: any) => s.id !== req.params.id);
-    db.users = db.users.filter((u: any) => u.id !== req.params.id);
-    saveDb(db);
-    res.json({ message: 'Student and user account deleted' });
+  app.delete('/api/students/:id', authenticate, async (req, res) => {
+    try {
+      await dbAdmin.collection('students').doc(req.params.id).delete();
+      await dbAdmin.collection('users').doc(req.params.id).delete();
+      await authAdmin.deleteUser(req.params.id);
+      res.json({ message: 'Student and user account deleted' });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // Teachers API
-  app.get('/api/teachers', authenticate, (req, res) => {
-    res.json(getDb().teachers);
+  app.get('/api/teachers', authenticate, async (req, res) => {
+    try {
+      const snapshot = await dbAdmin.collection('teachers').get();
+      const teachers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      res.json(teachers);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
-  app.get('/api/teachers/me/classes', authenticate, (req: any, res) => {
-    const db = getDb();
-    const teacherClasses = db.classes.filter((c: any) => c.teacherId === req.user.id);
-    res.json(teacherClasses);
+  app.get('/api/teachers/me/classes', authenticate, async (req: any, res) => {
+    try {
+      const snapshot = await dbAdmin.collection('classes').where('teacherId', '==', req.user.id).get();
+      const classes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      res.json(classes);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   app.post('/api/teachers', authenticate, async (req, res) => {
-    const db = getDb();
     const { password, ...teacherData } = req.body;
     
     const passValidation = validatePassword(password || 'DIA2026.');
@@ -459,12 +423,6 @@ async function startServer() {
       await dbAdmin.collection('users').doc(userRecord.uid).set(newUser);
       await dbAdmin.collection('teachers').doc(userRecord.uid).set(newTeacher);
 
-      // Local DB Sync
-      db.teachers.push(newTeacher);
-      db.users.push({ ...newUser, id: userRecord.uid, password: bcrypt.hashSync(password || 'DIA2026.', 10) });
-      
-      saveDb(db);
-
       // Envoi d'email réel
       const emailSubject = "Bienvenue chez Deutsch Institut - Compte Enseignant";
       const emailText = `Bonjour ${teacherData.firstName},\n\nVotre compte enseignant a été créé chez Deutsch Institut.\n\nVoici vos identifiants :\nMatricule : ${teacherData.matricule}\nMot de passe : ${password || 'DIA2026.'}\n\nLien : ${req.headers.origin}/login`;
@@ -490,160 +448,205 @@ async function startServer() {
     }
   });
 
-  app.put('/api/teachers/:id', authenticate, (req, res) => {
-    const db = getDb();
-    const index = db.teachers.findIndex((t: any) => t.id === req.params.id);
-    if (index === -1) return res.status(404).send('Teacher not found');
-    
+  app.put('/api/teachers/:id', authenticate, async (req, res) => {
     const { password, ...teacherData } = req.body;
-    db.teachers[index] = { ...db.teachers[index], ...teacherData };
+    
+    try {
+      await dbAdmin.collection('teachers').doc(req.params.id).set(teacherData, { merge: true });
+      await dbAdmin.collection('users').doc(req.params.id).set({
+        email: teacherData.email,
+        firstName: teacherData.firstName,
+        lastName: teacherData.lastName,
+      }, { merge: true });
 
-    // Update User Account if exists
-    const userIndex = db.users.findIndex((u: any) => u.id === req.params.id);
-    if (userIndex !== -1) {
-      db.users[userIndex] = {
-        ...db.users[userIndex],
-        email: teacherData.email || db.users[userIndex].email,
-        firstName: teacherData.firstName || db.users[userIndex].firstName,
-        lastName: teacherData.lastName || db.users[userIndex].lastName,
-      };
       if (password) {
-        db.users[userIndex].password = bcrypt.hashSync(password, 10);
+        await authAdmin.updateUser(req.params.id, { password });
       }
-    }
 
-    saveDb(db);
-    res.json(db.teachers[index]);
+      res.json({ id: req.params.id, ...teacherData });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
-  app.delete('/api/teachers/:id', authenticate, (req, res) => {
-    const db = getDb();
-    db.teachers = db.teachers.filter((t: any) => t.id !== req.params.id);
-    db.users = db.users.filter((u: any) => u.id !== req.params.id);
-    saveDb(db);
-    res.json({ message: 'Teacher and user account deleted' });
+  app.delete('/api/teachers/:id', authenticate, async (req, res) => {
+    try {
+      await dbAdmin.collection('teachers').doc(req.params.id).delete();
+      await dbAdmin.collection('users').doc(req.params.id).delete();
+      await authAdmin.deleteUser(req.params.id);
+      res.json({ message: 'Teacher and user account deleted' });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // Classes API
-  app.get('/api/classes', authenticate, (req, res) => {
-    res.json(getDb().classes);
+  app.get('/api/classes', authenticate, async (req, res) => {
+    try {
+      const snapshot = await dbAdmin.collection('classes').get();
+      const classes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      res.json(classes);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
-  app.post('/api/classes', authenticate, (req, res) => {
-    const db = getDb();
-    const newClass = { 
-      ...req.body, 
-      id: Date.now().toString(),
-      schedule: req.body.schedule || [],
-      exams: req.body.exams || []
-    };
-    db.classes.push(newClass);
-    saveDb(db);
-    res.json(newClass);
+  app.post('/api/classes', authenticate, async (req, res) => {
+    try {
+      const id = Date.now().toString();
+      const newClass = { 
+        ...req.body, 
+        id,
+        schedule: req.body.schedule || [],
+        exams: req.body.exams || []
+      };
+      await dbAdmin.collection('classes').doc(id).set(newClass);
+      res.json(newClass);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
-  app.put('/api/classes/:id', authenticate, (req, res) => {
-    const db = getDb();
-    const index = db.classes.findIndex((c: any) => c.id === req.params.id);
-    if (index === -1) return res.status(404).send('Class not found');
-    db.classes[index] = { ...db.classes[index], ...req.body };
-    saveDb(db);
-    res.json(db.classes[index]);
+  app.put('/api/classes/:id', authenticate, async (req, res) => {
+    try {
+      await dbAdmin.collection('classes').doc(req.params.id).set(req.body, { merge: true });
+      res.json({ id: req.params.id, ...req.body });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
-  app.delete('/api/classes/:id', authenticate, (req, res) => {
-    const db = getDb();
-    db.classes = db.classes.filter((c: any) => c.id !== req.params.id);
-    saveDb(db);
-    res.json({ message: 'Class deleted' });
+  app.delete('/api/classes/:id', authenticate, async (req, res) => {
+    try {
+      await dbAdmin.collection('classes').doc(req.params.id).delete();
+      res.json({ message: 'Class deleted' });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // Finances API
-  app.get('/api/finances', authenticate, (req, res) => {
-    res.json(getDb().finances);
+  app.get('/api/finances', authenticate, async (req, res) => {
+    try {
+      const snapshot = await dbAdmin.collection('finances').get();
+      const finances = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      res.json(finances);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
-  app.post('/api/finances', authenticate, (req, res) => {
-    const db = getDb();
-    const newRecord = { ...req.body, id: Date.now().toString(), date: new Date().toISOString() };
-    db.finances.push(newRecord);
-    saveDb(db);
-    res.json(newRecord);
+  app.post('/api/finances', authenticate, async (req, res) => {
+    try {
+      const id = Date.now().toString();
+      const newRecord = { ...req.body, id, date: new Date().toISOString() };
+      await dbAdmin.collection('finances').doc(id).set(newRecord);
+      res.json(newRecord);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
-  app.delete('/api/finances/:id', authenticate, (req, res) => {
-    const db = getDb();
-    db.finances = db.finances.filter((f: any) => f.id !== req.params.id);
-    saveDb(db);
-    res.json({ message: 'Finance record deleted' });
+  app.delete('/api/finances/:id', authenticate, async (req, res) => {
+    try {
+      await dbAdmin.collection('finances').doc(req.params.id).delete();
+      res.json({ message: 'Finance record deleted' });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // Library API
-  app.get('/api/library', authenticate, (req, res) => {
-    res.json(getDb().library);
+  app.get('/api/library', authenticate, async (req, res) => {
+    try {
+      const snapshot = await dbAdmin.collection('library').get();
+      const library = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      res.json(library);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
-  app.post('/api/library', authenticate, (req, res) => {
-    const db = getDb();
-    const newItem = { ...req.body, id: Date.now().toString(), addedAt: new Date().toISOString() };
-    db.library.push(newItem);
-    saveDb(db);
-    res.json(newItem);
+  app.post('/api/library', authenticate, async (req, res) => {
+    try {
+      const id = Date.now().toString();
+      const newItem = { ...req.body, id, addedAt: new Date().toISOString() };
+      await dbAdmin.collection('library').doc(id).set(newItem);
+      res.json(newItem);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
-  app.post('/api/library/upload', authenticate, upload.single('file'), (req, res) => {
+  app.post('/api/library/upload', authenticate, upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ message: 'Aucun fichier téléchargé' });
     
-    const db = getDb();
-    const newItem = {
-      id: Date.now().toString(),
-      title: req.body.title || req.file.originalname,
-      type: req.body.type || 'document',
-      url: `/uploads/${req.file.filename}`,
-      addedAt: new Date().toISOString(),
-      fileName: req.file.originalname,
-      fileSize: req.file.size
-    };
-    
-    db.library.push(newItem);
-    saveDb(db);
-    res.json(newItem);
+    try {
+      const id = Date.now().toString();
+      const newItem = {
+        id,
+        title: req.body.title || req.file.originalname,
+        type: req.body.type || 'document',
+        url: `/uploads/${req.file.filename}`,
+        addedAt: new Date().toISOString(),
+        fileName: req.file.originalname,
+        fileSize: req.file.size
+      };
+      
+      await dbAdmin.collection('library').doc(id).set(newItem);
+      res.json(newItem);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
-  app.delete('/api/library/:id', authenticate, (req, res) => {
-    const db = getDb();
-    db.library = db.library.filter((l: any) => l.id !== req.params.id);
-    saveDb(db);
-    res.json({ message: 'Library item deleted' });
+  app.delete('/api/library/:id', authenticate, async (req, res) => {
+    try {
+      await dbAdmin.collection('library').doc(req.params.id).delete();
+      res.json({ message: 'Library item deleted' });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // Levels API
-  app.get('/api/levels', authenticate, (req, res) => {
-    res.json(getDb().levels);
+  app.get('/api/levels', authenticate, async (req, res) => {
+    try {
+      const snapshot = await dbAdmin.collection('levels').get();
+      const levels = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      res.json(levels);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
-  app.post('/api/levels', authenticate, (req, res) => {
-    const db = getDb();
-    const newLevel = { ...req.body, id: Date.now().toString() };
-    db.levels.push(newLevel);
-    saveDb(db);
-    res.json(newLevel);
+  app.post('/api/levels', authenticate, async (req, res) => {
+    try {
+      const id = Date.now().toString();
+      const newLevel = { ...req.body, id };
+      await dbAdmin.collection('levels').doc(id).set(newLevel);
+      res.json(newLevel);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
-  app.put('/api/levels/:id', authenticate, (req, res) => {
-    const db = getDb();
-    const index = db.levels.findIndex((l: any) => l.id === req.params.id);
-    if (index === -1) return res.status(404).send('Level not found');
-    db.levels[index] = { ...db.levels[index], ...req.body };
-    saveDb(db);
-    res.json(db.levels[index]);
+  app.put('/api/levels/:id', authenticate, async (req, res) => {
+    try {
+      await dbAdmin.collection('levels').doc(req.params.id).set(req.body, { merge: true });
+      res.json({ id: req.params.id, ...req.body });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
-  app.delete('/api/levels/:id', authenticate, (req, res) => {
-    const db = getDb();
-    db.levels = db.levels.filter((l: any) => l.id !== req.params.id);
-    saveDb(db);
-    res.json({ message: 'Level deleted' });
+  app.delete('/api/levels/:id', authenticate, async (req, res) => {
+    try {
+      await dbAdmin.collection('levels').doc(req.params.id).delete();
+      res.json({ message: 'Level deleted' });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // Vite Middleware

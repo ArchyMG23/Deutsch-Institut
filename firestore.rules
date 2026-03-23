@@ -19,7 +19,7 @@
 //   - birthDate: string
 //   - birthPlace: string
 //   - gender: string (['M', 'F'])
-//   - whatsapp: string
+//   - phone: string
 //   - parentName: string
 //   - parentPhone: string
 //   - classId: string
@@ -28,7 +28,7 @@
 // Fields:
 //   - hourlyRate: number
 //   - assignedClasses: list
-//   - whatsapp: string
+//   - phone: string
 //
 // Collection: finances
 // Fields:
@@ -80,12 +80,12 @@ service cloud.firestore {
 
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'matricule', 'email', 'role', 'firstName', 'lastName', 'status', 'createdAt']) &&
-             data.uid is string && data.uid.size() > 0 && data.uid.size() < 128 &&
-             data.matricule is string && data.matricule.size() > 0 && data.matricule.size() < 20 &&
+             data.uid is string && data.uid.size() > 0 &&
+             data.matricule is string && data.matricule.size() > 0 &&
              isValidEmail(data.email) &&
              data.role in ['admin', 'teacher', 'student'] &&
-             data.firstName is string && data.firstName.size() > 0 && data.firstName.size() < 100 &&
-             data.lastName is string && data.lastName.size() > 0 && data.lastName.size() < 100 &&
+             data.firstName is string &&
+             data.lastName is string &&
              data.status in ['online', 'offline'] &&
              isValidDateString(data.createdAt);
     }
@@ -106,7 +106,7 @@ service cloud.firestore {
       allow read: if isOwner(userId) || isAdmin() || (isAuthenticated() && resource != null && resource.data.matricule in ['T26001', 'S26001']);
       allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
                     (isOwner(userId) || isAdmin()) && 
-                    (request.resource.data.role != 'admin' || isAdmin() || request.auth.token.email == "yombivictor@gmail.com");
+                    (request.resource.data.role != 'admin' || isAdmin() || request.auth.token.email == "yombivictor@gmail.com" || request.auth.token.email == "gabrielyombi311@gmail.com");
       allow update: if isAuthenticated() && isValidUser(request.resource.data) && 
                     ((isOwner(userId) && request.resource.data.role == resource.data.role) || isAdmin()) &&
                     request.resource.data.uid == resource.data.uid;

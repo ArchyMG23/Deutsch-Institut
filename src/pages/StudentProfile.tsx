@@ -32,7 +32,6 @@ export default function StudentProfile() {
     lastName: student?.lastName || '',
     email: student?.email || '',
     phone: student?.phone || '',
-    whatsapp: student?.whatsapp || '',
     parentName: student?.parentName || '',
     parentPhone: student?.parentPhone || '',
   });
@@ -53,7 +52,6 @@ export default function StudentProfile() {
           lastName: currentProfile.lastName,
           email: currentProfile.email,
           phone: currentProfile.phone || '',
-          whatsapp: currentProfile.whatsapp || '',
           parentName: currentProfile.parentName || '',
           parentPhone: currentProfile.parentPhone || '',
         });
@@ -245,16 +243,6 @@ export default function StudentProfile() {
                   value={formData.phone}
                   disabled={!isEditing}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-900 border-none focus:ring-2 focus:ring-dia-red transition-all disabled:opacity-70"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 px-1">WhatsApp</label>
-                <input 
-                  type="tel" 
-                  value={formData.whatsapp}
-                  disabled={!isEditing}
-                  onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
                   className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-900 border-none focus:ring-2 focus:ring-dia-red transition-all disabled:opacity-70"
                 />
               </div>

@@ -26,7 +26,7 @@
         "birthPlace": { "type": "string" },
         "gender": { "type": "string", "enum": ["M", "F"] },
         "cni": { "type": "string" },
-        "whatsapp": { "type": "string" },
+        "phone": { "type": "string" },
         "parentName": { "type": "string" },
         "parentPhone": { "type": "string" },
         "classId": { "type": "string" }
@@ -39,7 +39,7 @@
       "properties": {
         "hourlyRate": { "type": "number" },
         "assignedClasses": { "type": "array", "items": { "type": "string" } },
-        "whatsapp": { "type": "string" }
+        "phone": { "type": "string" }
       }
     },
     "finances": {

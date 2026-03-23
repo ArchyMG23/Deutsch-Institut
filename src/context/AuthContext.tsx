@@ -63,43 +63,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const bootstrapAdmin = async () => {
-      const adminEmail = 'yombivictor@gmail.com';
+      const adminEmail = 'gabrielyombi311@gmail.com';
       const adminPass = 'Admin.1234';
+      const secondaryAdminEmail = 'yombivictor@gmail.com';
       
-      try {
-        // Instead of querying Firestore (which requires auth), 
-        // we try to create the Auth user directly.
-        // If they exist, Auth will throw 'auth/email-already-in-use'.
-        console.log("Attempting to bootstrap super admin...");
-        const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPass);
-        const uid = userCredential.user.uid;
-        
-        const adminProfile: UserProfile = {
-          uid,
-          matricule: 'SUPERADMIN',
-          email: adminEmail,
-          role: 'admin',
-          firstName: 'Victor',
-          lastName: 'Yombi',
-          status: 'online',
-          createdAt: new Date().toISOString()
-        };
-        
-        await setDoc(doc(db, 'users', uid), adminProfile);
-        console.log("Super admin bootstrapped successfully.");
-      } catch (err: any) {
-        if (err.code === 'auth/email-already-in-use') {
-          // Admin already exists in Auth, check if Firestore profile exists
-          // This part will run after the user is potentially logged in or if we just ignore it
-          // since if they exist in Auth, they likely have a profile or will get one on login.
-          console.log("Admin already exists in Auth.");
-        } else {
-          console.error("Failed to bootstrap admin:", err);
+      const createAdmin = async (email: string, pass: string, firstName: string, lastName: string, matricule: string) => {
+        try {
+          console.log(`Attempting to bootstrap admin: ${email}...`);
+          const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
+          const uid = userCredential.user.uid;
+          
+          const adminProfile: UserProfile = {
+            uid,
+            matricule,
+            email,
+            role: 'admin',
+            firstName,
+            lastName,
+            status: 'online',
+            createdAt: new Date().toISOString()
+          };
+          
+          await setDoc(doc(db, 'users', uid), adminProfile);
+          console.log(`Admin ${email} bootstrapped successfully.`);
+        } catch (err: any) {
+          if (err.code === 'auth/email-already-in-use') {
+            console.log(`Admin ${email} already exists in Auth.`);
+          } else {
+            console.error(`Failed to bootstrap admin ${email}:`, err);
+          }
         }
-      }
+      };
+
+      await createAdmin(adminEmail, adminPass, 'Gabriel', 'Yombi', 'SUPERADMIN');
+      await createAdmin(secondaryAdminEmail, adminPass, 'Victor', 'Yombi', 'ADMIN_VICTOR');
     };
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      console.log("Auth state changed:", firebaseUser?.email);
       if (firebaseUser) {
         try {
           const docRef = doc(db, 'users', firebaseUser.uid);
@@ -107,10 +108,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           
           if (docSnap.exists()) {
             const userData = docSnap.data() as UserProfile;
-            setUser(userData);
+            setUser(firebaseUser);
             setProfile(userData);
           } else {
-            // User exists in Auth but not in Firestore
+            console.warn("User exists in Auth but no Firestore profile found for UID:", firebaseUser.uid);
             setUser(firebaseUser);
             setProfile(null);
           }
@@ -126,32 +127,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
 
-    bootstrapAdmin();
+    // Run bootstrap in background
+    bootstrapAdmin().catch(err => console.error("Bootstrap error:", err));
+    
     return () => unsubscribe();
   }, []);
 
   const login = async (identifier: string, password: string) => {
-    let email = identifier;
+    let email = identifier.trim();
     
     // If identifier is not an email, assume it's a matricule and look up the email
-    if (!identifier.includes('@')) {
-      const q = query(collection(db, 'users'), where('matricule', '==', identifier));
+    if (!email.includes('@')) {
+      console.log("Looking up email for matricule:", email);
+      const q = query(collection(db, 'users'), where('matricule', '==', email.toUpperCase()));
       const querySnapshot = await getDocs(q);
       
       if (querySnapshot.empty) {
-        throw new Error('Matricule non trouvé.');
+        throw new Error('Matricule non trouvé. Veuillez vérifier votre code.');
       }
       
       email = querySnapshot.docs[0].data().email;
     }
 
     try {
+      console.log("Attempting Firebase login for:", email);
       await signInWithEmailAndPassword(auth, email, password);
     } catch (err: any) {
+      console.error("Firebase login error:", err.code, err.message);
       if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        throw new Error('Identifiants incorrects.');
+        throw new Error('Identifiants incorrects. Veuillez vérifier votre email/matricule et mot de passe.');
       }
-      throw new Error(err.message || 'Erreur de connexion');
+      throw new Error(err.message || 'Erreur de connexion au serveur d\'authentification.');
     }
   };
 

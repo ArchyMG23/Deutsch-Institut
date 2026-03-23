@@ -10,8 +10,7 @@ import {
   UserPlus,
   GraduationCap,
   DollarSign,
-  Clock,
-  MessageSquare
+  Clock
 } from 'lucide-react';
 import { cn, formatCurrency, generateMatricule } from '../utils';
 import { Teacher, ClassRoom } from '../types';
@@ -64,7 +63,6 @@ export default function TeacherManagement() {
       lastName: formData.get('lastName'),
       email: formData.get('email'),
       phone: formData.get('phone'),
-      whatsapp: formData.get('whatsapp'),
       cni: formData.get('cni'),
       hourlyRate: parseInt(formData.get('hourlyRate') as string),
       role: 'teacher',
@@ -101,7 +99,6 @@ export default function TeacherManagement() {
       lastName: formData.get('lastName'),
       email: formData.get('email'),
       phone: formData.get('phone'),
-      whatsapp: formData.get('whatsapp'),
       cni: formData.get('cni'),
       hourlyRate: parseInt(formData.get('hourlyRate') as string),
     };
@@ -177,16 +174,6 @@ export default function TeacherManagement() {
               </div>
               <div className="flex gap-1">
                 <button 
-                  onClick={async () => {
-                    const cls = classes.find(c => c.teacherId === teacher.id);
-                    await NotificationService.sendCredentials(teacher, '********', cls?.name);
-                  }}
-                  className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors text-green-600"
-                  title="Envoyer identifiants par WhatsApp"
-                >
-                  <MessageSquare size={16} />
-                </button>
-                <button 
                   onClick={() => {
                     setSelectedTeacher(teacher);
                     setIsEditModalOpen(true);
@@ -238,7 +225,7 @@ export default function TeacherManagement() {
                 <Mail size={14} /> {teacher.email}
               </p>
               <p className="text-sm flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
-                <Phone size={14} /> {teacher.whatsapp}
+                <Phone size={14} /> {teacher.phone}
               </p>
             </div>
           </div>
@@ -270,8 +257,8 @@ export default function TeacherManagement() {
                   <input name="email" required type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">WhatsApp</label>
-                  <input name="whatsapp" required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Téléphone</label>
+                  <input name="phone" required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">CNI</label>
@@ -316,8 +303,8 @@ export default function TeacherManagement() {
                   <input name="email" defaultValue={selectedTeacher.email} required type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">WhatsApp</label>
-                  <input name="whatsapp" defaultValue={selectedTeacher.whatsapp} required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Téléphone</label>
+                  <input name="phone" defaultValue={selectedTeacher.phone} required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">CNI</label>

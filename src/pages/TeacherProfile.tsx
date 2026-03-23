@@ -7,7 +7,6 @@ import {
   Camera, 
   Save, 
   Lock,
-  MessageSquare,
   DollarSign,
   Clock,
   GraduationCap,
@@ -245,12 +244,12 @@ export default function TeacherProfile() {
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">WhatsApp / Téléphone</label>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Téléphone</label>
                 <div className="relative">
-                  <MessageSquare className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={18} />
+                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={18} />
                   <input 
-                    name="whatsapp"
-                    value={formData.whatsapp || ''}
+                    name="phone"
+                    value={formData.phone || ''}
                     onChange={handleChange}
                     className="w-full pl-12 pr-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" 
                   />
