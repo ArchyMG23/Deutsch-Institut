@@ -63,9 +63,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const bootstrapAdmin = async () => {
-      const adminEmail = 'gabrielyombi311@gmail.com';
+      const adminEmail = 'yombivictor@gmail.com';
       const adminPass = 'Admin.1234';
-      const secondaryAdminEmail = 'yombivictor@gmail.com';
+      const secondaryAdminEmail = 'gabrielyombi311@gmail.com';
       
       const createAdmin = async (email: string, pass: string, firstName: string, lastName: string, matricule: string) => {
         try {
@@ -95,8 +95,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       };
 
-      await createAdmin(adminEmail, adminPass, 'Gabriel', 'Yombi', 'SUPERADMIN');
-      await createAdmin(secondaryAdminEmail, adminPass, 'Victor', 'Yombi', 'ADMIN_VICTOR');
+      await createAdmin(adminEmail, adminPass, 'Victor', 'Yombi', 'SUPERADMIN');
+      await createAdmin(secondaryAdminEmail, adminPass, 'Gabriel', 'Yombi', 'ADMIN_GABRIEL');
     };
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {

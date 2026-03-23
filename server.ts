@@ -19,20 +19,37 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dia-secret-key-2026';
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
 
 // Initialize Firebase Admin
-let firebaseConfig;
+let firebaseConfig: any = {};
 try {
-  firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf8'));
+  const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  if (fs.existsSync(configPath)) {
+    firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  }
 } catch (err) {
-  console.warn("Could not read firebase-applet-config.json, using environment variables if available.");
-  firebaseConfig = {
-    projectId: process.env.FIREBASE_PROJECT_ID,
-  };
+  console.warn("Could not read firebase-applet-config.json");
 }
 
 if (!admin.apps.length) {
+  const serviceAccountVar = process.env.FIREBASE_SERVICE_ACCOUNT;
+  let credential;
+
+  if (serviceAccountVar) {
+    try {
+      const serviceAccount = JSON.parse(serviceAccountVar);
+      credential = admin.credential.cert(serviceAccount);
+      console.log("Firebase Admin initialized with Service Account from ENV.");
+    } catch (err) {
+      console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT env var:", err);
+      credential = admin.credential.applicationDefault();
+    }
+  } else {
+    console.log("Firebase Admin: No service account found, using applicationDefault.");
+    credential = admin.credential.applicationDefault();
+  }
+
   admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
-    projectId: firebaseConfig.projectId,
+    credential,
+    projectId: firebaseConfig.projectId || process.env.FIREBASE_PROJECT_ID,
   });
 }
 
