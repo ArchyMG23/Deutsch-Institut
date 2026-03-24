@@ -17,35 +17,14 @@ import {
   Area
 } from 'recharts';
 import { cn, formatCurrency } from '../utils';
-import { Student, Teacher, FinanceRecord } from '../types';
-import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 
 export default function AdminDashboard() {
-  const { fetchWithAuth } = useAuth();
-  const [students, setStudents] = useState<Student[]>([]);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [finances, setFinances] = useState<FinanceRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { students, teachers, finances, loading, refreshAll } = useData();
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [sRes, tRes, fRes] = await Promise.all([
-          fetchWithAuth('/api/students'),
-          fetchWithAuth('/api/teachers'),
-          fetchWithAuth('/api/finances')
-        ]);
-        if (sRes.ok) setStudents(await sRes.json());
-        if (tRes.ok) setTeachers(await tRes.json());
-        if (fRes.ok) setFinances(await fRes.json());
-      } catch (err) {
-        console.error("Error fetching dashboard data:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
+    refreshAll();
+  }, [refreshAll]);
 
   const totalIncome = finances
     .filter(f => f.type === 'income')

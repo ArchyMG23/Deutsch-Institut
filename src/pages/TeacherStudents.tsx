@@ -8,49 +8,26 @@ import {
   Filter
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import { ClassRoom, Student } from '../types';
 import { cn } from '../utils';
 import { NotificationService } from '../services/NotificationService';
 
 export default function TeacherStudents() {
-  const { profile, fetchWithAuth } = useAuth();
-  const [classes, setClasses] = useState<ClassRoom[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { profile } = useAuth();
+  const { classes, students, loading, refreshAll } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClassId, setSelectedClassId] = useState<string>('all');
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    refreshAll();
+  }, [refreshAll]);
 
-  const fetchData = async () => {
-    try {
-      const [classesRes, studentsRes] = await Promise.all([
-        fetchWithAuth('/api/teachers/me/classes'),
-        fetchWithAuth('/api/students')
-      ]);
+  const teacherClasses = classes.filter(c => c.teacherId === profile?.id);
+  const teacherStudentIds = new Set(teacherClasses.flatMap((c: ClassRoom) => c.studentIds));
+  const teacherStudents = students.filter((s: Student) => teacherStudentIds.has(s.uid));
 
-      if (classesRes.ok && studentsRes.ok) {
-        const classesData = await classesRes.ok ? await classesRes.json() : [];
-        const studentsData = await studentsRes.ok ? await studentsRes.json() : [];
-        
-        setClasses(classesData);
-        
-        // Filter students that are in the teacher's classes
-        const teacherStudentIds = new Set(classesData.flatMap((c: ClassRoom) => c.studentIds));
-        const filteredStudents = studentsData.filter((s: Student) => teacherStudentIds.has(s.uid));
-        
-        setStudents(filteredStudents);
-      }
-    } catch (err) {
-      console.error("Error fetching teacher students:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filteredStudents = students.filter(student => {
+  const filteredStudents = teacherStudents.filter(student => {
     const matchesSearch = 
       student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -95,7 +72,7 @@ export default function TeacherStudents() {
               className="pl-12 pr-5 py-2.5 bg-white border border-neutral-200 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all appearance-none cursor-pointer"
             >
               <option value="all">Toutes les classes</option>
-              {classes.map(c => (
+              {teacherClasses.map(c => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
@@ -106,7 +83,7 @@ export default function TeacherStudents() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {filteredStudents.length > 0 ? (
           filteredStudents.map((student) => {
-            const studentClass = classes.find(c => c.id === student.classId);
+            const studentClass = teacherClasses.find(c => c.id === student.classId);
             return (
               <div key={student.uid} className="card p-6 group hover:border-dia-red/30 transition-all">
                 <div className="flex items-start justify-between mb-6">

@@ -10,37 +10,21 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import { cn } from '../utils';
 import { Student, ClassRoom, ScheduleItem, ExamItem } from '../types';
 
 export default function StudentCalendar() {
-  const { profile, fetchWithAuth } = useAuth();
+  const { profile } = useAuth();
+  const { classes, loading, refreshClasses } = useData();
   const student = profile as Student;
-  const [studentClass, setStudentClass] = useState<ClassRoom | null>(null);
-  const [loading, setLoading] = useState(true);
   const [currentDate, setCurrentDate] = useState(new Date());
 
   useEffect(() => {
-    const fetchClass = async () => {
-      try {
-        const res = await fetchWithAuth('/api/classes');
-        if (res.ok) {
-          const classes: ClassRoom[] = await res.json();
-          setStudentClass(classes.find(c => c.id === student.classId) || null);
-        }
-      } catch (err) {
-        console.error("Error fetching class for calendar:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
+    refreshClasses();
+  }, [refreshClasses]);
 
-    if (student?.classId) {
-      fetchClass();
-    } else {
-      setLoading(false);
-    }
-  }, [student]);
+  const studentClass = student?.classId ? classes.find(c => c.id === student.classId) || null : null;
 
   if (loading) {
     return (

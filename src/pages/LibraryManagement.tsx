@@ -16,38 +16,29 @@ import {
 import { cn } from '../utils';
 import { LibraryItem } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import { toast } from 'sonner';
 
 export default function LibraryManagement() {
   const { profile, fetchWithAuth } = useAuth();
-  const [items, setItems] = useState<LibraryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { library: items, loading, refreshLibrary } = useData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
   const [addMethod, setAddMethod] = useState<'link' | 'file'>('file');
+  const [submitting, setSubmitting] = useState(false);
 
   const isAdmin = profile?.role === 'admin';
   const canManage = isAdmin; // We can expand this later if needed
 
   useEffect(() => {
-    fetchLibrary();
-  }, []);
-
-  const fetchLibrary = async () => {
-    try {
-      const res = await fetchWithAuth('/api/library');
-      if (res.ok) setItems(await res.json());
-    } catch (err) {
-      console.error("Error fetching library:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    refreshLibrary();
+  }, [refreshLibrary]);
 
   const handleAddItem = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!canManage) return;
+    if (!canManage || submitting) return;
+    setSubmitting(true);
     const formData = new FormData(e.currentTarget);
     
     try {
@@ -55,6 +46,7 @@ export default function LibraryManagement() {
         const file = formData.get('file') as File;
         if (!file || file.size === 0) {
           toast.error('Veuillez sélectionner un fichier');
+          setSubmitting(false);
           return;
         }
         
@@ -71,7 +63,7 @@ export default function LibraryManagement() {
         
         if (res.ok) {
           setIsAddModalOpen(false);
-          fetchLibrary();
+          refreshLibrary();
           toast.success('Document ajouté avec succès');
         } else {
           const err = await res.json();
@@ -94,13 +86,15 @@ export default function LibraryManagement() {
         
         if (res.ok) {
           setIsAddModalOpen(false);
-          fetchLibrary();
+          refreshLibrary();
           toast.success('Lien ajouté avec succès');
         }
       }
     } catch (err) {
       console.error("Error adding library item:", err);
       toast.error('Une erreur est survenue lors de l\'ajout');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -109,7 +103,10 @@ export default function LibraryManagement() {
     if (!window.confirm('Supprimer ce document ?')) return;
     try {
       const res = await fetchWithAuth(`/api/library/${id}`, { method: 'DELETE' });
-      if (res.ok) fetchLibrary();
+      if (res.ok) {
+        refreshLibrary();
+        toast.success('Document supprimé');
+      }
     } catch (err) {
       console.error("Error deleting item:", err);
     }
@@ -283,7 +280,20 @@ export default function LibraryManagement() {
               </div>
               <div className="pt-4 flex gap-4">
                 <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
-                <button type="submit" className="flex-1 btn-primary py-4">Ajouter</button>
+                <button 
+                  type="submit" 
+                  disabled={submitting}
+                  className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
+                >
+                  {submitting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Ajout...</span>
+                    </>
+                  ) : (
+                    <span>Ajouter</span>
+                  )}
+                </button>
               </div>
             </form>
           </div>

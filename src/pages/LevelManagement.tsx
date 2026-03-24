@@ -11,30 +11,19 @@ import {
 import { Level } from '../types';
 import { formatCurrency } from '../utils';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import { toast } from 'sonner';
 
 export default function LevelManagement() {
   const { fetchWithAuth } = useAuth();
-  const [levels, setLevels] = useState<Level[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { levels, loading, refreshLevels } = useData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingLevel, setEditingLevel] = useState<Level | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetchLevels();
-  }, []);
-
-  const fetchLevels = async () => {
-    try {
-      const res = await fetchWithAuth('/api/levels');
-      if (res.ok) setLevels(await res.json());
-    } catch (err) {
-      console.error("Error fetching levels:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    refreshLevels();
+  }, [refreshLevels]);
 
   const handleAddLevel = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -57,7 +46,7 @@ export default function LevelManagement() {
       });
       if (res.ok) {
         setIsAddModalOpen(false);
-        fetchLevels();
+        refreshLevels();
         toast.success('Niveau créé avec succès');
       } else {
         const errorData = await res.json();
@@ -91,7 +80,7 @@ export default function LevelManagement() {
       });
       if (res.ok) {
         setEditingLevel(null);
-        fetchLevels();
+        refreshLevels();
         toast.success('Niveau modifié avec succès');
       } else {
         const errorData = await res.json();
@@ -109,7 +98,7 @@ export default function LevelManagement() {
     if (!window.confirm('Supprimer ce niveau ?')) return;
     try {
       const res = await fetchWithAuth(`/api/levels/${id}`, { method: 'DELETE' });
-      if (res.ok) fetchLevels();
+      if (res.ok) refreshLevels();
     } catch (err) {
       console.error("Error deleting level:", err);
     }

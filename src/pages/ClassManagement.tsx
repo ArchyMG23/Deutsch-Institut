@@ -16,43 +16,20 @@ import { cn, formatCurrency } from '../utils';
 import { ClassRoom, Level, Teacher, Student } from '../types';
 import { NotificationService } from '../services/NotificationService';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import { toast } from 'sonner';
 
 export default function ClassManagement() {
   const { fetchWithAuth } = useAuth();
-  const [classes, setClasses] = useState<ClassRoom[]>([]);
-  const [levels, setLevels] = useState<Level[]>([]);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { classes, levels, teachers, students, loading, refreshAll, refreshClasses } = useData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedClass, setSelectedClass] = useState<ClassRoom | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    try {
-      const [classesRes, levelsRes, teachersRes, studentsRes] = await Promise.all([
-        fetchWithAuth('/api/classes'),
-        fetchWithAuth('/api/levels'),
-        fetchWithAuth('/api/teachers'),
-        fetchWithAuth('/api/students')
-      ]);
-      
-      if (classesRes.ok) setClasses(await classesRes.json());
-      if (levelsRes.ok) setLevels(await levelsRes.json());
-      if (teachersRes.ok) setTeachers(await teachersRes.json());
-      if (studentsRes.ok) setStudents(await studentsRes.json());
-    } catch (err) {
-      console.error("Error fetching class data:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    refreshAll();
+  }, [refreshAll]);
 
   const handleAddClass = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -79,7 +56,7 @@ export default function ClassManagement() {
       });
       if (res.ok) {
         setIsAddModalOpen(false);
-        fetchData();
+        refreshClasses();
         toast.success('Classe créée avec succès');
       } else {
         const errorData = await res.json();
@@ -131,7 +108,7 @@ export default function ClassManagement() {
           })
         });
 
-        fetchData();
+        refreshClasses();
       }
     } catch (err) {
       console.error("Error updating sub-level:", err);
@@ -156,7 +133,7 @@ export default function ClassManagement() {
         {classes.map((cls) => {
           const level = levels.find(l => l.id === cls.levelId);
           const teacher = teachers.find(t => t.id === cls.teacherId);
-          const classStudents = students.filter(s => cls.studentIds.includes(s.id));
+          const classStudents = students.filter(s => s.classId === cls.id && !s.isFormer);
 
           return (
             <div key={cls.id} className="card p-6 hover:shadow-lg transition-shadow">
@@ -198,7 +175,7 @@ export default function ClassManagement() {
                 <div className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2 text-neutral-500">
                     <Users size={16} />
-                    <span>{cls.studentIds.length} Étudiants</span>
+                    <span>{classStudents.length} Étudiants</span>
                   </div>
                   <button 
                     onClick={() => {
@@ -327,7 +304,7 @@ export default function ClassManagement() {
                       }
 
                       setSelectedClass(updated);
-                      fetchData();
+                      refreshClasses();
                       (e.target as HTMLFormElement).reset();
                     }
                   }}
@@ -369,7 +346,7 @@ export default function ClassManagement() {
                             if (res.ok) {
                               const updated = await res.json();
                               setSelectedClass(updated);
-                              fetchData();
+                              refreshClasses();
                             }
                           }}
                           className="text-red-600 p-1 hover:bg-red-50 rounded"
@@ -404,12 +381,12 @@ export default function ClassManagement() {
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ exams: updatedExams })
                     });
-                    if (res.ok) {
-                      const updated = await res.json();
-                      setSelectedClass(updated);
-                      fetchData();
-                      (e.target as HTMLFormElement).reset();
-                    }
+                      if (res.ok) {
+                        const updated = await res.json();
+                        setSelectedClass(updated);
+                        refreshClasses();
+                        (e.target as HTMLFormElement).reset();
+                      }
                   }}
                   className="grid grid-cols-2 gap-2 p-4 bg-neutral-100 dark:bg-neutral-800 rounded-xl"
                 >
@@ -442,7 +419,7 @@ export default function ClassManagement() {
                             if (res.ok) {
                               const updated = await res.json();
                               setSelectedClass(updated);
-                              fetchData();
+                              refreshClasses();
                             }
                           }}
                           className="text-red-600 p-1 hover:bg-red-50 rounded"
@@ -482,7 +459,7 @@ export default function ClassManagement() {
                           }
 
                           setSelectedClass(updated);
-                          fetchData();
+                          refreshClasses();
                         }
                       }}
                     >
@@ -516,7 +493,7 @@ export default function ClassManagement() {
                           if (res.ok) {
                             const updated = await res.json();
                             setSelectedClass(updated);
-                            fetchData();
+                            refreshClasses();
                           }
                         }}
                         className="p-1 hover:bg-red-100 text-red-600 rounded-lg transition-colors"

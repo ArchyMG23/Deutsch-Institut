@@ -26,6 +26,7 @@ export interface Student extends UserProfile {
   classId?: string;
   levelId?: string;
   payments: TuitionPayment[];
+  isFormer?: boolean;
 }
 
 export interface TuitionPayment {

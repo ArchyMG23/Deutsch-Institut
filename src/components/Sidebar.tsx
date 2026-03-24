@@ -98,6 +98,7 @@ export function Sidebar() {
                 <NavLink
                   key={link.to}
                   to={link.to}
+                  onClick={() => setIsOpen(false)}
                   className={({ isActive }) => cn(
                     "flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium",
                     isActive 

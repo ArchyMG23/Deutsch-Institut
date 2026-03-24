@@ -16,58 +16,39 @@ import {
   X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import { cn, formatCurrency } from '../utils';
 import { Student, ClassRoom, Level, LibraryItem } from '../types';
 import { useNavigate } from 'react-router-dom';
 
 export default function StudentDashboard() {
   const { profile, updateProfile, fetchWithAuth } = useAuth();
+  const { classes, levels, library, loading, refreshAll } = useData();
   const student = profile as Student;
   const navigate = useNavigate();
   
-  const [studentClass, setStudentClass] = useState<ClassRoom | null>(null);
-  const [studentLevel, setStudentLevel] = useState<Level | null>(null);
-  const [recentLibrary, setRecentLibrary] = useState<LibraryItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [isPaymentHistoryOpen, setIsPaymentHistoryOpen] = useState(false);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const syncProfile = async () => {
       try {
-        const [classesRes, levelsRes, libraryRes, meRes] = await Promise.all([
-          fetchWithAuth('/api/classes'),
-          fetchWithAuth('/api/levels'),
-          fetchWithAuth('/api/library'),
-          fetchWithAuth('/api/auth/me')
-        ]);
-
-        if (classesRes.ok && levelsRes.ok && libraryRes.ok && meRes.ok) {
-          const classes: ClassRoom[] = await classesRes.json();
-          const levels: Level[] = await levelsRes.json();
-          const library: LibraryItem[] = await libraryRes.json();
-          const currentProfile = await meRes.json();
-          
+        const res = await fetchWithAuth('/api/auth/me');
+        if (res.ok) {
+          const currentProfile = await res.json();
           updateProfile(currentProfile);
-
-          if (currentProfile.classId) {
-            setStudentClass(classes.find(c => c.id === currentProfile.classId) || null);
-          }
-          if (currentProfile.levelId) {
-            setStudentLevel(levels.find(l => l.id === currentProfile.levelId) || null);
-          }
-          setRecentLibrary(library.slice(0, 4));
         }
       } catch (err) {
-        console.error("Error fetching student dashboard data:", err);
-      } finally {
-        setLoading(false);
+        console.error("Error syncing profile:", err);
       }
     };
 
-    if (student) {
-      fetchData();
-    }
-  }, [student]);
+    refreshAll();
+    syncProfile();
+  }, [refreshAll, fetchWithAuth, updateProfile]);
+
+  const studentClass = student.classId ? classes.find(c => c.id === student.classId) || null : null;
+  const studentLevel = student.levelId ? levels.find(l => l.id === student.levelId) || null : null;
+  const recentLibrary = library.slice(0, 4);
 
   if (loading) {
     return (

@@ -16,13 +16,12 @@ import { cn, formatCurrency, generateMatricule } from '../utils';
 import { Teacher, ClassRoom } from '../types';
 import { NotificationService } from '../services/NotificationService';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import { toast } from 'sonner';
 
 export default function TeacherManagement() {
   const { fetchWithAuth } = useAuth();
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [classes, setClasses] = useState<ClassRoom[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { teachers, classes, loading, refreshAll, refreshTeachers, refreshClasses } = useData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
@@ -30,29 +29,8 @@ export default function TeacherManagement() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetchTeachers();
-    fetchClasses();
-  }, []);
-
-  const fetchTeachers = async () => {
-    try {
-      const res = await fetchWithAuth('/api/teachers');
-      if (res.ok) setTeachers(await res.json());
-    } catch (err) {
-      console.error("Error fetching teachers:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchClasses = async () => {
-    try {
-      const res = await fetchWithAuth('/api/classes');
-      if (res.ok) setClasses(await res.json());
-    } catch (err) {
-      console.error("Error fetching classes:", err);
-    }
-  };
+    refreshAll();
+  }, [refreshAll]);
 
   const handleAddTeacher = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -78,6 +56,8 @@ export default function TeacherManagement() {
       createdAt: new Date().toISOString(),
     };
 
+    const classId = formData.get('classId') as string;
+
     try {
       const res = await fetchWithAuth('/api/teachers', {
         method: 'POST',
@@ -86,9 +66,19 @@ export default function TeacherManagement() {
       });
       if (res.ok) {
         const teacher = await res.json();
+        
+        if (classId) {
+          await fetchWithAuth(`/api/classes/${classId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ teacherId: teacher.id })
+          });
+        }
+
         await NotificationService.sendCredentials(teacher, password);
         setIsAddModalOpen(false);
-        fetchTeachers();
+        refreshTeachers();
+        refreshClasses();
         toast.success('Enseignant ajouté avec succès');
       } else {
         const errorData = await res.json();
@@ -117,6 +107,8 @@ export default function TeacherManagement() {
       hourlyRate: parseInt(formData.get('hourlyRate') as string),
     };
 
+    const classId = formData.get('classId') as string;
+
     setSubmitting(true);
     try {
       const res = await fetchWithAuth(`/api/teachers/${selectedTeacher.id}`, {
@@ -125,8 +117,16 @@ export default function TeacherManagement() {
         body: JSON.stringify(updatedTeacher)
       });
       if (res.ok) {
+        if (classId) {
+          await fetchWithAuth(`/api/classes/${classId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ teacherId: selectedTeacher.id })
+          });
+        }
         setIsEditModalOpen(false);
-        fetchTeachers();
+        refreshTeachers();
+        refreshClasses();
         toast.success('Enseignant mis à jour avec succès');
       } else {
         const errorData = await res.json();
@@ -148,7 +148,7 @@ export default function TeacherManagement() {
         method: 'DELETE'
       });
       if (res.ok) {
-        fetchTeachers();
+        refreshTeachers();
       }
     } catch (err) {
       console.error("Error deleting teacher:", err);
@@ -290,6 +290,15 @@ export default function TeacherManagement() {
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Taux Horaire (FCFA)</label>
                   <input name="hourlyRate" required type="number" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Assigner à une Classe</label>
+                  <select name="classId" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
+                    <option value="">Aucune classe</option>
+                    {classes.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="pt-4 flex gap-4">
                 <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
@@ -348,6 +357,15 @@ export default function TeacherManagement() {
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Taux Horaire (FCFA)</label>
                   <input name="hourlyRate" defaultValue={selectedTeacher.hourlyRate} required type="number" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Assigner à une Classe</label>
+                  <select name="classId" defaultValue={classes.find(c => c.teacherId === selectedTeacher.id)?.id || ""} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
+                    <option value="">Aucune classe</option>
+                    {classes.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div className="pt-4 flex gap-4">

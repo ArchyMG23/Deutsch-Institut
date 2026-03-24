@@ -10,32 +10,20 @@ import {
   Plus
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import { ClassRoom, ScheduleItem } from '../types';
 import { cn } from '../utils';
 
 export default function TeacherPlanning() {
-  const { profile, fetchWithAuth } = useAuth();
-  const [classes, setClasses] = useState<ClassRoom[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { profile } = useAuth();
+  const { classes, loading, refreshAll } = useData();
   const [currentDate, setCurrentDate] = useState(new Date());
 
   useEffect(() => {
-    fetchTeacherClasses();
-  }, []);
+    refreshAll();
+  }, [refreshAll]);
 
-  const fetchTeacherClasses = async () => {
-    try {
-      const res = await fetchWithAuth('/api/teachers/me/classes');
-      if (res.ok) {
-        const data = await res.json();
-        setClasses(data);
-      }
-    } catch (err) {
-      console.error("Error fetching teacher classes:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const teacherClasses = classes.filter(c => c.teacherId === profile?.id);
 
   const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
   const hours = Array.from({ length: 14 }, (_, i) => i + 7); // 7:00 to 20:00
@@ -96,7 +84,7 @@ export default function TeacherPlanning() {
                   </div>
                   {days.map((day) => {
                     // Find classes for this day and hour
-                    const scheduledClasses = classes.filter(cls => 
+                    const scheduledClasses = teacherClasses.filter(cls => 
                       cls.schedule?.some(s => 
                         s.day === day && 
                         parseInt(s.startTime.split(':')[0]) <= hour && 
@@ -161,7 +149,7 @@ export default function TeacherPlanning() {
             </div>
             <div className="flex justify-between items-center text-sm">
               <span className="text-neutral-500">Nombre de Classes</span>
-              <span className="font-bold">{classes.length}</span>
+              <span className="font-bold">{teacherClasses.length}</span>
             </div>
             <div className="flex justify-between items-center text-sm">
               <span className="text-neutral-500">Moyenne Étudiants/Classe</span>

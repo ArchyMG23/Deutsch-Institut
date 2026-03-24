@@ -21,14 +21,12 @@ import { cn, formatCurrency, generateMatricule } from '../utils';
 import { Student, ClassRoom, Level, TuitionPayment } from '../types';
 import { NotificationService } from '../services/NotificationService';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import { toast } from 'sonner';
 
 export default function StudentManagement() {
   const { fetchWithAuth } = useAuth();
-  const [students, setStudents] = useState<Student[]>([]);
-  const [classes, setClasses] = useState<ClassRoom[]>([]);
-  const [levels, setLevels] = useState<Level[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { students, classes, levels, loading, refreshAll, refreshStudents } = useData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -36,6 +34,7 @@ export default function StudentManagement() {
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [activeTab, setActiveTab] = useState<'active' | 'former'>('active');
   
   const printRef = useRef<HTMLDivElement>(null);
   const receiptRef = useRef<HTMLDivElement>(null);
@@ -49,26 +48,8 @@ export default function StudentManagement() {
   });
 
   useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    try {
-      const [studentsRes, classesRes, levelsRes] = await Promise.all([
-        fetchWithAuth('/api/students'),
-        fetchWithAuth('/api/classes'),
-        fetchWithAuth('/api/levels')
-      ]);
-      
-      if (studentsRes.ok) setStudents(await studentsRes.json());
-      if (classesRes.ok) setClasses(await classesRes.json());
-      if (levelsRes.ok) setLevels(await levelsRes.json());
-    } catch (err) {
-      console.error("Error fetching data:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    refreshAll();
+  }, [refreshAll]);
 
   const handleAddStudent = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -122,7 +103,7 @@ export default function StudentManagement() {
         await NotificationService.sendCredentials(student, password, cls?.name, scheduleStr);
 
         setIsAddModalOpen(false);
-        fetchData();
+        refreshStudents();
         toast.success('Étudiant ajouté avec succès');
       } else {
         const errorData = await res.json();
@@ -164,7 +145,7 @@ export default function StudentManagement() {
       });
       if (res.ok) {
         setIsEditModalOpen(false);
-        fetchData();
+        refreshStudents();
       }
     } catch (err) {
       console.error("Error updating student:", err);
@@ -172,17 +153,38 @@ export default function StudentManagement() {
   };
 
   const handleDeleteStudent = async (id: string) => {
-    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cet étudiant ?')) return;
+    if (!window.confirm('Voulez-vous vraiment déplacer cet étudiant vers les archives (Anciens Élèves) ?')) return;
     
     try {
       const res = await fetchWithAuth(`/api/students/${id}`, {
-        method: 'DELETE'
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isFormer: true, classId: null })
       });
       if (res.ok) {
-        fetchData();
+        toast.success('Étudiant archivé avec succès');
+        refreshStudents();
       }
     } catch (err) {
-      console.error("Error deleting student:", err);
+      console.error("Error archiving student:", err);
+      toast.error('Erreur lors de l\'archivage');
+    }
+  };
+
+  const handleRestoreStudent = async (id: string) => {
+    try {
+      const res = await fetchWithAuth(`/api/students/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isFormer: false })
+      });
+      if (res.ok) {
+        toast.success('Étudiant restauré avec succès');
+        refreshStudents();
+      }
+    } catch (err) {
+      console.error("Error restoring student:", err);
+      toast.error('Erreur lors de la restauration');
     }
   };
 
@@ -202,7 +204,7 @@ export default function StudentManagement() {
       if (res.ok) {
         const updated = await res.json();
         setSelectedStudent(updated);
-        setStudents(students.map(s => s.id === updated.id ? updated : s));
+        refreshStudents();
       }
     } catch (err) {
       console.error("Error updating payment:", err);
@@ -234,9 +236,11 @@ export default function StudentManagement() {
     document.body.removeChild(link);
   };
 
-  const filteredStudents = students.filter(s => 
-    `${s.firstName} ${s.lastName} ${s.matricule}`.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredStudents = students.filter(s => {
+    const matchesSearch = `${s.firstName} ${s.lastName} ${s.matricule}`.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesTab = activeTab === 'active' ? !s.isFormer : s.isFormer;
+    return matchesSearch && matchesTab;
+  });
 
   return (
     <div className="space-y-6">
@@ -260,7 +264,27 @@ export default function StudentManagement() {
       </div>
 
       {/* Filters & Search */}
-      <div className="card p-4">
+      <div className="card p-4 space-y-4">
+        <div className="flex border-b border-neutral-100 dark:border-neutral-800">
+          <button 
+            onClick={() => setActiveTab('active')}
+            className={cn(
+              "px-6 py-3 text-sm font-bold transition-all border-b-2",
+              activeTab === 'active' ? "border-dia-red text-dia-red" : "border-transparent text-neutral-400 hover:text-neutral-600"
+            )}
+          >
+            Étudiants Actifs
+          </button>
+          <button 
+            onClick={() => setActiveTab('former')}
+            className={cn(
+              "px-6 py-3 text-sm font-bold transition-all border-b-2",
+              activeTab === 'former' ? "border-dia-red text-dia-red" : "border-transparent text-neutral-400 hover:text-neutral-600"
+            )}
+          >
+            Anciens Élèves
+          </button>
+        </div>
         <div className="flex flex-col md:flex-row gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={18} />
@@ -345,33 +369,45 @@ export default function StudentManagement() {
                     </td>
                     <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-2">
-                        <button 
-                          onClick={() => {
-                            setSelectedStudent(student);
-                            setIsReceiptModalOpen(true);
-                          }}
-                          className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-dia-red"
-                          title="Gérer les paiements"
-                        >
-                          <CreditCard size={18} />
-                        </button>
-                        <button 
-                          onClick={() => {
-                            setSelectedStudent(student);
-                            setIsEditModalOpen(true);
-                          }}
-                          className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-blue-600"
-                          title="Modifier"
-                        >
-                          <Edit size={18} />
-                        </button>
-                        <button 
-                          onClick={() => handleDeleteStudent(student.id)}
-                          className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-red-600"
-                          title="Supprimer"
-                        >
-                          <X size={18} />
-                        </button>
+                        {activeTab === 'active' ? (
+                          <>
+                            <button 
+                              onClick={() => {
+                                setSelectedStudent(student);
+                                setIsReceiptModalOpen(true);
+                              }}
+                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-dia-red"
+                              title="Gérer les paiements"
+                            >
+                              <CreditCard size={18} />
+                            </button>
+                            <button 
+                              onClick={() => {
+                                setSelectedStudent(student);
+                                setIsEditModalOpen(true);
+                              }}
+                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-blue-600"
+                              title="Modifier"
+                            >
+                              <Edit size={18} />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteStudent(student.id)}
+                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-red-600"
+                              title="Archiver"
+                            >
+                              <X size={18} />
+                            </button>
+                          </>
+                        ) : (
+                          <button 
+                            onClick={() => handleRestoreStudent(student.id)}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-green-100 text-green-600 rounded-lg text-xs font-bold hover:bg-green-200 transition-colors"
+                          >
+                            <Plus size={14} />
+                            Restaurer
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

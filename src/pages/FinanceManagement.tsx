@@ -14,47 +14,24 @@ import {
 import { cn, formatCurrency } from '../utils';
 import { FinanceRecord, Teacher, Student, Level, ClassRoom } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import { toast } from 'sonner';
 
 export default function FinanceManagement() {
-  const { fetchWithAuth } = useAuth();
-  const [records, setRecords] = useState<FinanceRecord[]>([]);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [levels, setLevels] = useState<Level[]>([]);
-  const [classes, setClasses] = useState<ClassRoom[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { finances: records, teachers, students, levels, classes, loading, refreshFinances, refreshAll } = useData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
+  const [submitting, setSubmitting] = useState(false);
+  const { fetchWithAuth } = useAuth();
 
   useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    try {
-      const [recordsRes, teachersRes, studentsRes, levelsRes, classesRes] = await Promise.all([
-        fetchWithAuth('/api/finances'),
-        fetchWithAuth('/api/teachers'),
-        fetchWithAuth('/api/students'),
-        fetchWithAuth('/api/levels'),
-        fetchWithAuth('/api/classes')
-      ]);
-      
-      if (recordsRes.ok) setRecords(await recordsRes.json());
-      if (teachersRes.ok) setTeachers(await teachersRes.json());
-      if (studentsRes.ok) setStudents(await studentsRes.json());
-      if (levelsRes.ok) setLevels(await levelsRes.json());
-      if (classesRes.ok) setClasses(await classesRes.json());
-    } catch (err) {
-      console.error("Error fetching finance data:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    refreshAll();
+  }, [refreshAll]);
 
   const handleAddRecord = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
     const formData = new FormData(e.currentTarget);
     
     const newRecord = {
@@ -72,12 +49,14 @@ export default function FinanceManagement() {
       });
       if (res.ok) {
         setIsAddModalOpen(false);
-        fetchData();
+        refreshFinances();
         toast.success('Transaction enregistrée avec succès');
       }
     } catch (err) {
       console.error("Error adding finance record:", err);
       toast.error('Erreur lors de l\'enregistrement de la transaction');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -259,7 +238,20 @@ export default function FinanceManagement() {
               </div>
               <div className="pt-4 flex gap-4">
                 <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
-                <button type="submit" className="flex-1 btn-primary py-4">Enregistrer</button>
+                <button 
+                  type="submit" 
+                  disabled={submitting}
+                  className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
+                >
+                  {submitting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Enregistrement...</span>
+                    </>
+                  ) : (
+                    <span>Enregistrer</span>
+                  )}
+                </button>
               </div>
             </form>
           </div>

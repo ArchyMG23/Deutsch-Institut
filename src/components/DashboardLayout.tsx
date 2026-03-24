@@ -8,18 +8,18 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950">
       <Sidebar />
-      <main className="lg:ml-64 min-h-screen p-4 lg:p-8">
-        <header className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-bold text-neutral-900 dark:text-white">
+      <main className="lg:ml-64 min-h-screen p-4 lg:p-8 pt-20 lg:pt-8">
+        <header className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex flex-col">
+            <h2 className="text-xl lg:text-2xl font-bold text-neutral-900 dark:text-white truncate">
               Bienvenue, {profile?.firstName}
             </h2>
-            <p className="text-neutral-500 dark:text-neutral-400">
+            <p className="text-xs lg:text-sm text-neutral-500 dark:text-neutral-400">
               {new Date().toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </p>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center justify-between sm:justify-end gap-4">
             <div className="px-3 py-1 rounded-full bg-dia-yellow/10 text-dia-yellow text-xs font-bold uppercase tracking-wider border border-dia-yellow/20">
               {profile?.role}
             </div>

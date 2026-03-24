@@ -10,34 +10,21 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import { ClassRoom, Teacher } from '../types';
 import { formatCurrency } from '../utils';
 
 export default function TeacherDashboard() {
-  const { profile, fetchWithAuth } = useAuth();
-  const [classes, setClasses] = useState<ClassRoom[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { profile } = useAuth();
+  const { classes, loading, refreshAll } = useData();
 
   useEffect(() => {
-    fetchTeacherData();
-  }, []);
-
-  const fetchTeacherData = async () => {
-    try {
-      const res = await fetchWithAuth('/api/teachers/me/classes');
-      if (res.ok) {
-        const data = await res.json();
-        setClasses(data);
-      }
-    } catch (err) {
-      console.error("Error fetching teacher data:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    refreshAll();
+  }, [refreshAll]);
 
   const teacher = profile as Teacher;
-  const totalStudents = classes.reduce((acc, curr) => acc + curr.studentIds.length, 0);
+  const teacherClasses = classes.filter(c => c.teacherId === profile?.id);
+  const totalStudents = teacherClasses.reduce((acc, curr) => acc + curr.studentIds.length, 0);
 
   if (loading) {
     return (
@@ -55,7 +42,7 @@ export default function TeacherDashboard() {
           <div className="space-y-2">
             <h2 className="text-3xl font-bold tracking-tight">Bonjour, {profile?.firstName}! 👋</h2>
             <p className="text-white/80 max-w-md">
-              Prêt pour vos cours d'aujourd'hui ? Vous avez {classes.length} classes actives avec un total de {totalStudents} étudiants.
+              Prêt pour vos cours d'aujourd'hui ? Vous avez {teacherClasses.length} classes actives avec un total de {totalStudents} étudiants.
             </p>
           </div>
           <div className="flex gap-4">
@@ -91,7 +78,7 @@ export default function TeacherDashboard() {
           </div>
           <div>
             <p className="text-sm font-medium text-neutral-500">Mes Classes</p>
-            <p className="text-2xl font-bold">{classes.length}</p>
+            <p className="text-2xl font-bold">{teacherClasses.length}</p>
           </div>
         </div>
         <div className="card p-6 flex items-center gap-4">
@@ -113,8 +100,8 @@ export default function TeacherDashboard() {
             <button className="text-sm font-bold text-dia-red hover:underline">Voir tout</button>
           </div>
           <div className="space-y-4">
-            {classes.length > 0 ? (
-              classes.map((cls) => (
+            {teacherClasses.length > 0 ? (
+              teacherClasses.map((cls) => (
                 <div key={cls.id} className="card p-5 group cursor-pointer hover:border-dia-red/30 transition-all">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
