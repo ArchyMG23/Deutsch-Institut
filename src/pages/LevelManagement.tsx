@@ -82,6 +82,7 @@ export default function LevelManagement() {
       hours: Number(formData.get('hours')),
     };
 
+    setSubmitting(true);
     try {
       const res = await fetchWithAuth(`/api/levels/${editingLevel.id}`, {
         method: 'PUT',
@@ -92,10 +93,15 @@ export default function LevelManagement() {
         setEditingLevel(null);
         fetchLevels();
         toast.success('Niveau modifié avec succès');
+      } else {
+        const errorData = await res.json();
+        toast.error(errorData.message || 'Erreur lors de la modification');
       }
     } catch (err) {
       console.error("Error editing level:", err);
       toast.error('Erreur lors de la modification du niveau');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -188,7 +194,20 @@ export default function LevelManagement() {
               </div>
               <div className="pt-4 flex gap-4">
                 <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
-                <button type="submit" className="flex-1 btn-primary py-4">Créer</button>
+                <button 
+                  type="submit" 
+                  disabled={submitting}
+                  className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
+                >
+                  {submitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
+                      Création...
+                    </>
+                  ) : (
+                    "Créer"
+                  )}
+                </button>
               </div>
             </form>
           </div>
@@ -222,7 +241,20 @@ export default function LevelManagement() {
               </div>
               <div className="pt-4 flex gap-4">
                 <button type="button" onClick={() => setEditingLevel(null)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
-                <button type="submit" className="flex-1 btn-primary py-4">Enregistrer</button>
+                <button 
+                  type="submit" 
+                  disabled={submitting}
+                  className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
+                >
+                  {submitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
+                      Mise à jour...
+                    </>
+                  ) : (
+                    "Enregistrer"
+                  )}
+                </button>
               </div>
             </form>
           </div>

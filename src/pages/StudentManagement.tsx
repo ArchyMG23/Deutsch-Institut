@@ -438,7 +438,20 @@ export default function StudentManagement() {
               </div>
               <div className="pt-4 flex gap-4">
                 <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
-                <button type="submit" className="flex-1 btn-primary py-4">Enregistrer l'Étudiant</button>
+                <button 
+                  type="submit" 
+                  disabled={submitting}
+                  className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
+                >
+                  {submitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
+                      Enregistrement...
+                    </>
+                  ) : (
+                    "Enregistrer l'Étudiant"
+                  )}
+                </button>
               </div>
             </form>
           </div>
@@ -489,7 +502,20 @@ export default function StudentManagement() {
               </div>
               <div className="pt-4 flex gap-4">
                 <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
-                <button type="submit" className="flex-1 btn-primary py-4">Enregistrer les modifications</button>
+                <button 
+                  type="submit" 
+                  disabled={submitting}
+                  className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
+                >
+                  {submitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
+                      Mise à jour...
+                    </>
+                  ) : (
+                    "Enregistrer les modifications"
+                  )}
+                </button>
               </div>
             </form>
           </div>

@@ -257,7 +257,20 @@ export default function ClassManagement() {
               </div>
               <div className="pt-4 flex gap-4">
                 <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
-                <button type="submit" className="flex-1 btn-primary py-4">Créer la Classe</button>
+                <button 
+                  type="submit" 
+                  disabled={submitting}
+                  className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
+                >
+                  {submitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
+                      Création...
+                    </>
+                  ) : (
+                    "Créer la Classe"
+                  )}
+                </button>
               </div>
             </form>
           </div>
