@@ -16,6 +16,7 @@ import { cn, formatCurrency, generateMatricule } from '../utils';
 import { Teacher, ClassRoom } from '../types';
 import { NotificationService } from '../services/NotificationService';
 import { useAuth } from '../context/AuthContext';
+import { toast } from 'sonner';
 
 export default function TeacherManagement() {
   const { fetchWithAuth } = useAuth();
@@ -84,9 +85,11 @@ export default function TeacherManagement() {
         await NotificationService.sendCredentials(teacher, password);
         setIsAddModalOpen(false);
         fetchTeachers();
+        toast.success('Enseignant ajouté avec succès');
       }
     } catch (err) {
       console.error("Error adding teacher:", err);
+      toast.error('Erreur lors de l\'ajout de l\'enseignant');
     }
   };
 

@@ -4,6 +4,7 @@ import { AuthProvider } from './context/AuthContext';
 import { RoleGuard } from './components/RoleGuard';
 import { DashboardLayout } from './components/DashboardLayout';
 import LoginPage from './pages/LoginPage';
+import { Toaster } from 'sonner';
 
 // Lazy load pages for better performance
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
@@ -34,6 +35,7 @@ const Placeholder = ({ title }: { title: string }) => (
 export default function App() {
   return (
     <AuthProvider>
+      <Toaster position="top-right" richColors />
       <Router>
         <Suspense fallback={
           <div className="flex items-center justify-center min-h-screen">

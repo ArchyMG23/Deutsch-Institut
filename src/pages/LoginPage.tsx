@@ -64,7 +64,21 @@ export default function LoginPage() {
     <div className="min-h-screen bg-[#F8F9FA] flex items-center justify-center p-4 font-sans">
       <div className="w-full max-w-[440px]">
         <div className="text-center mb-10">
-          <img src="/logo.png" alt="DIA Logo" className="w-20 h-20 mx-auto mb-4 shadow-xl shadow-dia-red/10 object-contain" referrerPolicy="no-referrer" />
+          <div className="relative w-20 h-20 mx-auto mb-4">
+            <img 
+              src="/logo.png" 
+              alt="DIA Logo" 
+              className="w-20 h-20 rounded-2xl shadow-xl shadow-dia-red/10 object-contain bg-white" 
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+                (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+              }}
+            />
+            <div className="hidden w-20 h-20 rounded-2xl bg-dia-red flex items-center justify-center text-white font-bold text-4xl shadow-xl">
+              D
+            </div>
+          </div>
           <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">DIA_SAAS</h1>
           <p className="text-neutral-500 text-sm mt-1">Système de Gestion Académique</p>
         </div>

@@ -16,6 +16,7 @@ import { cn, formatCurrency } from '../utils';
 import { ClassRoom, Level, Teacher, Student } from '../types';
 import { NotificationService } from '../services/NotificationService';
 import { useAuth } from '../context/AuthContext';
+import { toast } from 'sonner';
 
 export default function ClassManagement() {
   const { fetchWithAuth } = useAuth();
@@ -75,11 +76,11 @@ export default function ClassManagement() {
       if (res.ok) {
         setIsAddModalOpen(false);
         fetchData();
-        alert('Classe créée avec succès');
+        toast.success('Classe créée avec succès');
       }
     } catch (err) {
       console.error("Error adding class:", err);
-      alert('Erreur lors de la création de la classe');
+      toast.error('Erreur lors de la création de la classe');
     }
   };
 

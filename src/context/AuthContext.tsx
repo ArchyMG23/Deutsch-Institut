@@ -18,6 +18,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { UserProfile } from '../types';
+import { toast } from 'sonner';
 
 interface AuthContextType {
   user: any | null;
@@ -187,6 +188,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
     if (!auth.currentUser) {
+      toast.error('Session expirée. Veuillez vous reconnecter.');
       throw new Error('Non authentifié');
     }
     const token = await auth.currentUser.getIdToken();
@@ -194,7 +196,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ...options.headers,
       'Authorization': `Bearer ${token}`
     };
-    return fetch(url, { ...options, headers });
+    
+    try {
+      const response = await fetch(url, { ...options, headers });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const message = errorData.message || `Erreur ${response.status}: ${response.statusText}`;
+        toast.error(message);
+      }
+      return response;
+    } catch (err: any) {
+      toast.error("Erreur réseau ou serveur. Veuillez réessayer.");
+      throw err;
+    }
   };
 
   return (

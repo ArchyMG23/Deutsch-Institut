@@ -16,6 +16,7 @@ import {
 import { cn } from '../utils';
 import { LibraryItem } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { toast } from 'sonner';
 
 export default function LibraryManagement() {
   const { profile, fetchWithAuth } = useAuth();
@@ -53,7 +54,7 @@ export default function LibraryManagement() {
       if (addMethod === 'file') {
         const file = formData.get('file') as File;
         if (!file || file.size === 0) {
-          alert('Veuillez sélectionner un fichier');
+          toast.error('Veuillez sélectionner un fichier');
           return;
         }
         
@@ -71,9 +72,10 @@ export default function LibraryManagement() {
         if (res.ok) {
           setIsAddModalOpen(false);
           fetchLibrary();
+          toast.success('Document ajouté avec succès');
         } else {
           const err = await res.json();
-          alert(err.message || 'Erreur lors du téléchargement');
+          toast.error(err.message || 'Erreur lors du téléchargement');
         }
       } else {
         const newItem = {
@@ -93,11 +95,12 @@ export default function LibraryManagement() {
         if (res.ok) {
           setIsAddModalOpen(false);
           fetchLibrary();
+          toast.success('Lien ajouté avec succès');
         }
       }
     } catch (err) {
       console.error("Error adding library item:", err);
-      alert('Une erreur est survenue');
+      toast.error('Une erreur est survenue lors de l\'ajout');
     }
   };
 

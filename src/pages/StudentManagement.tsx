@@ -21,6 +21,7 @@ import { cn, formatCurrency, generateMatricule } from '../utils';
 import { Student, ClassRoom, Level, TuitionPayment } from '../types';
 import { NotificationService } from '../services/NotificationService';
 import { useAuth } from '../context/AuthContext';
+import { toast } from 'sonner';
 
 export default function StudentManagement() {
   const { fetchWithAuth } = useAuth();
@@ -118,9 +119,11 @@ export default function StudentManagement() {
 
         setIsAddModalOpen(false);
         fetchData();
+        toast.success('Étudiant ajouté avec succès');
       }
     } catch (err) {
       console.error("Error adding student:", err);
+      toast.error('Erreur lors de l\'ajout de l\'étudiant');
     }
   };
 
@@ -603,8 +606,22 @@ export default function StudentManagement() {
               <div className="bg-neutral-50 dark:bg-neutral-800/30 rounded-3xl p-6 border border-dashed border-neutral-200 dark:border-neutral-700">
                 <div ref={receiptRef} className="bg-white p-8 shadow-sm rounded-xl text-neutral-900 font-sans">
                   <div className="flex justify-between items-start mb-8 border-b pb-6">
-                    <div>
-                      <img src="/logo.png" alt="DIA Logo" className="h-10 object-contain mb-1" referrerPolicy="no-referrer" />
+                    <div className="flex items-center gap-2">
+                      <div className="relative h-10 w-10">
+                        <img 
+                          src="/logo.png" 
+                          alt="DIA Logo" 
+                          className="h-10 w-10 object-contain mb-1 bg-white" 
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                            (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                          }}
+                        />
+                        <div className="hidden h-10 w-10 rounded bg-dia-red flex items-center justify-center text-white font-bold text-lg">
+                          D
+                        </div>
+                      </div>
                       <p className="text-[10px] uppercase font-bold tracking-widest text-neutral-400">DIA_SAAS</p>
                     </div>
                     <div className="text-right">

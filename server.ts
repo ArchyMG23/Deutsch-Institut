@@ -224,7 +224,7 @@ async function startServer() {
         req.user = {
           id: decodedToken.uid,
           email: decodedToken.email,
-          role: decodedToken.role || 'user' // We might need to fetch the role from Firestore if not in claims
+          role: decodedToken.role || 'user'
         };
         
         // Fetch role from Firestore if not in token
@@ -237,14 +237,18 @@ async function startServer() {
         
         return next();
       } else {
+        console.warn("[AUTH] Firebase Admin not initialized. Falling back to JWT verification.");
         // Fallback to JWT if Firebase Admin is not available (for local dev without service account)
         const decoded = jwt.verify(token, JWT_SECRET) as any;
         req.user = decoded;
         return next();
       }
-    } catch (err) {
-      console.error(`[AUTH] Invalid token:`, err);
-      res.status(401).json({ message: 'Token invalide' });
+    } catch (err: any) {
+      console.error(`[AUTH] Invalid token or error:`, err.message);
+      if (err.code === 'auth/id-token-expired') {
+        return res.status(401).json({ message: 'Session expirée. Veuillez vous reconnecter.' });
+      }
+      res.status(401).json({ message: 'Authentification échouée: ' + err.message });
     }
   };
 

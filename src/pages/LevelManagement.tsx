@@ -11,6 +11,7 @@ import {
 import { Level } from '../types';
 import { formatCurrency } from '../utils';
 import { useAuth } from '../context/AuthContext';
+import { toast } from 'sonner';
 
 export default function LevelManagement() {
   const { fetchWithAuth } = useAuth();
@@ -53,11 +54,11 @@ export default function LevelManagement() {
       if (res.ok) {
         setIsAddModalOpen(false);
         fetchLevels();
-        alert('Niveau créé avec succès');
+        toast.success('Niveau créé avec succès');
       }
     } catch (err) {
       console.error("Error adding level:", err);
-      alert('Erreur lors de la création du niveau');
+      toast.error('Erreur lors de la création du niveau');
     }
   };
 
@@ -81,11 +82,11 @@ export default function LevelManagement() {
       if (res.ok) {
         setEditingLevel(null);
         fetchLevels();
-        alert('Niveau modifié avec succès');
+        toast.success('Niveau modifié avec succès');
       }
     } catch (err) {
       console.error("Error editing level:", err);
-      alert('Erreur lors de la modification du niveau');
+      toast.error('Erreur lors de la modification du niveau');
     }
   };
 

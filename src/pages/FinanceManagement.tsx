@@ -14,6 +14,7 @@ import {
 import { cn, formatCurrency } from '../utils';
 import { FinanceRecord, Teacher, Student, Level, ClassRoom } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { toast } from 'sonner';
 
 export default function FinanceManagement() {
   const { fetchWithAuth } = useAuth();
@@ -72,9 +73,11 @@ export default function FinanceManagement() {
       if (res.ok) {
         setIsAddModalOpen(false);
         fetchData();
+        toast.success('Transaction enregistrée avec succès');
       }
     } catch (err) {
       console.error("Error adding finance record:", err);
+      toast.error('Erreur lors de l\'enregistrement de la transaction');
     }
   };
 

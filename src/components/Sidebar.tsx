@@ -66,7 +66,21 @@ export function Sidebar() {
         <div className="flex flex-col h-full">
           <div className="p-6">
             <div className="flex items-center gap-3 mb-10">
-              <img src="/logo.png" alt="DIA Logo" className="w-12 h-12 rounded-xl shadow-lg shadow-dia-red/10 object-contain" referrerPolicy="no-referrer" />
+              <div className="relative w-12 h-12">
+                <img 
+                  src="/logo.png" 
+                  alt="DIA Logo" 
+                  className="w-12 h-12 rounded-xl shadow-lg shadow-dia-red/10 object-contain bg-white" 
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                    (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                  }}
+                />
+                <div className="hidden w-12 h-12 rounded-xl bg-dia-red flex items-center justify-center text-white font-bold text-xl shadow-lg">
+                  D
+                </div>
+              </div>
               <div>
                 <h1 className="font-bold text-neutral-900 leading-tight">DIA_SAAS</h1>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">Deutsch Institut</p>
