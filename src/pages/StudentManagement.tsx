@@ -35,6 +35,7 @@ export default function StudentManagement() {
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   
   const printRef = useRef<HTMLDivElement>(null);
   const receiptRef = useRef<HTMLDivElement>(null);
@@ -71,6 +72,9 @@ export default function StudentManagement() {
 
   const handleAddStudent = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    
     const formData = new FormData(e.currentTarget);
     const matricule = generateMatricule('student');
     // Mot de passe généré respectant les critères: min 6 car, 1 maj, 1 point, 1 chiffre
@@ -120,10 +124,15 @@ export default function StudentManagement() {
         setIsAddModalOpen(false);
         fetchData();
         toast.success('Étudiant ajouté avec succès');
+      } else {
+        const errorData = await res.json();
+        toast.error(errorData.message || 'Erreur lors de l\'ajout de l\'étudiant');
       }
     } catch (err) {
       console.error("Error adding student:", err);
       toast.error('Erreur lors de l\'ajout de l\'étudiant');
+    } finally {
+      setSubmitting(false);
     }
   };
 

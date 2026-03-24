@@ -27,6 +27,7 @@ export default function TeacherManagement() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     fetchTeachers();
@@ -55,6 +56,9 @@ export default function TeacherManagement() {
 
   const handleAddTeacher = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    
     const formData = new FormData(e.currentTarget);
     const matricule = generateMatricule('teacher');
     const password = `Dia.${Math.random().toString(36).slice(-4)}.${Math.floor(Math.random() * 100)}`; 
@@ -86,10 +90,15 @@ export default function TeacherManagement() {
         setIsAddModalOpen(false);
         fetchTeachers();
         toast.success('Enseignant ajouté avec succès');
+      } else {
+        const errorData = await res.json();
+        toast.error(errorData.message || 'Erreur lors de l\'ajout de l\'enseignant');
       }
     } catch (err) {
       console.error("Error adding teacher:", err);
       toast.error('Erreur lors de l\'ajout de l\'enseignant');
+    } finally {
+      setSubmitting(false);
     }
   };
 

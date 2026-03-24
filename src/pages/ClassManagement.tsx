@@ -28,6 +28,7 @@ export default function ClassManagement() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedClass, setSelectedClass] = useState<ClassRoom | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -55,6 +56,9 @@ export default function ClassManagement() {
 
   const handleAddClass = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    
     const formData = new FormData(e.currentTarget);
     
     const newClass = {
@@ -77,10 +81,15 @@ export default function ClassManagement() {
         setIsAddModalOpen(false);
         fetchData();
         toast.success('Classe créée avec succès');
+      } else {
+        const errorData = await res.json();
+        toast.error(errorData.message || 'Erreur lors de la création de la classe');
       }
     } catch (err) {
       console.error("Error adding class:", err);
       toast.error('Erreur lors de la création de la classe');
+    } finally {
+      setSubmitting(false);
     }
   };
 

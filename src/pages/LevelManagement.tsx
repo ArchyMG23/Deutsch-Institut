@@ -19,6 +19,7 @@ export default function LevelManagement() {
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingLevel, setEditingLevel] = useState<Level | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     fetchLevels();
@@ -37,6 +38,9 @@ export default function LevelManagement() {
 
   const handleAddLevel = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    
     const formData = new FormData(e.currentTarget);
     
     const newLevel = {
@@ -55,10 +59,15 @@ export default function LevelManagement() {
         setIsAddModalOpen(false);
         fetchLevels();
         toast.success('Niveau créé avec succès');
+      } else {
+        const errorData = await res.json();
+        toast.error(errorData.message || 'Erreur lors de la création du niveau');
       }
     } catch (err) {
       console.error("Error adding level:", err);
       toast.error('Erreur lors de la création du niveau');
+    } finally {
+      setSubmitting(false);
     }
   };
 

@@ -20,6 +20,7 @@ import { cn } from '../utils';
 export function Sidebar() {
   const { profile, logout } = useAuth();
   const [isOpen, setIsOpen] = React.useState(false);
+  const [logoError, setLogoError] = React.useState(false);
 
   const adminLinks = [
     { to: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
@@ -67,19 +68,24 @@ export function Sidebar() {
           <div className="p-6">
             <div className="flex items-center gap-3 mb-10">
               <div className="relative w-12 h-12">
-                <img 
-                  src="/logo.png" 
-                  alt="DIA Logo" 
-                  className="w-12 h-12 rounded-xl shadow-lg shadow-dia-red/10 object-contain bg-white" 
-                  referrerPolicy="no-referrer"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none';
-                    (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
-                  }}
-                />
-                <div className="hidden w-12 h-12 rounded-xl bg-dia-red flex items-center justify-center text-white font-bold text-xl shadow-lg">
-                  D
-                </div>
+                {!logoError ? (
+                  <img 
+                    src="/logo.png" 
+                    alt="DIA Logo" 
+                    className="w-12 h-12 rounded-xl shadow-lg shadow-dia-red/10 object-contain bg-white" 
+                    referrerPolicy="no-referrer"
+                    onError={() => setLogoError(true)}
+                    onLoad={(e) => {
+                      if ((e.target as HTMLImageElement).naturalWidth === 0) {
+                        setLogoError(true);
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-xl bg-dia-red flex items-center justify-center text-white font-bold text-xl shadow-lg">
+                    D
+                  </div>
+                )}
               </div>
               <div>
                 <h1 className="font-bold text-neutral-900 leading-tight">DIA_SAAS</h1>

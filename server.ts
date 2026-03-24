@@ -350,6 +350,12 @@ async function startServer() {
     }
 
     try {
+      // Check if matricule already exists in users collection
+      const existingUser = await dbAdmin.collection('users').where('matricule', '==', studentData.matricule).get();
+      if (!existingUser.empty) {
+        return res.status(400).json({ message: "Ce matricule est déjà utilisé par un autre utilisateur." });
+      }
+
       // Create User in Firebase Auth
       const userRecord = await authAdmin.createUser({
         email: studentData.email,
@@ -423,6 +429,9 @@ async function startServer() {
       res.json(newStudent);
     } catch (err: any) {
       console.error("Error creating student in Firebase:", err);
+      if (err.code === 'auth/email-already-in-use') {
+        return res.status(400).json({ message: "Cette adresse email est déjà utilisée par un autre compte." });
+      }
       res.status(500).json({ message: err.message || "Erreur lors de la création de l'étudiant." });
     }
   });
@@ -445,8 +454,14 @@ async function startServer() {
         lastName: studentData.lastName,
       }, { merge: true });
 
-      if (password) {
-        await authAdmin.updateUser(req.params.id, { password });
+      if (password || studentData.email || (studentData.firstName && studentData.lastName)) {
+        const updateData: any = {};
+        if (password) updateData.password = password;
+        if (studentData.email) updateData.email = studentData.email;
+        if (studentData.firstName && studentData.lastName) {
+          updateData.displayName = `${studentData.firstName} ${studentData.lastName}`;
+        }
+        await authAdmin.updateUser(req.params.id, updateData);
       }
 
       // Handle finances if payments updated
@@ -472,7 +487,11 @@ async function startServer() {
 
       res.json({ id: req.params.id, ...studentData });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error("Error updating student:", err);
+      if (err.code === 'auth/email-already-in-use') {
+        return res.status(400).json({ message: "Cette adresse email est déjà utilisée par un autre compte." });
+      }
+      res.status(500).json({ message: err.message || "Erreur lors de la mise à jour de l'étudiant." });
     }
   });
 
@@ -517,6 +536,12 @@ async function startServer() {
     }
 
     try {
+      // Check if matricule already exists in users collection
+      const existingUser = await dbAdmin.collection('users').where('matricule', '==', teacherData.matricule).get();
+      if (!existingUser.empty) {
+        return res.status(400).json({ message: "Ce matricule est déjà utilisé par un autre utilisateur." });
+      }
+
       // Create User in Firebase Auth
       const userRecord = await authAdmin.createUser({
         email: teacherData.email,
@@ -562,6 +587,9 @@ async function startServer() {
       res.json(newTeacher);
     } catch (err: any) {
       console.error("Error creating teacher in Firebase:", err);
+      if (err.code === 'auth/email-already-in-use') {
+        return res.status(400).json({ message: "Cette adresse email est déjà utilisée par un autre compte." });
+      }
       res.status(500).json({ message: err.message || "Erreur lors de la création de l'enseignant." });
     }
   });
@@ -577,13 +605,23 @@ async function startServer() {
         lastName: teacherData.lastName,
       }, { merge: true });
 
-      if (password) {
-        await authAdmin.updateUser(req.params.id, { password });
+      if (password || teacherData.email || (teacherData.firstName && teacherData.lastName)) {
+        const updateData: any = {};
+        if (password) updateData.password = password;
+        if (teacherData.email) updateData.email = teacherData.email;
+        if (teacherData.firstName && teacherData.lastName) {
+          updateData.displayName = `${teacherData.firstName} ${teacherData.lastName}`;
+        }
+        await authAdmin.updateUser(req.params.id, updateData);
       }
 
       res.json({ id: req.params.id, ...teacherData });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error("Error updating teacher:", err);
+      if (err.code === 'auth/email-already-in-use') {
+        return res.status(400).json({ message: "Cette adresse email est déjà utilisée par un autre compte." });
+      }
+      res.status(500).json({ message: err.message || "Erreur lors de la mise à jour de l'enseignant." });
     }
   });
 
