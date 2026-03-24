@@ -9,6 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import admin from 'firebase-admin';
+import { getFirestore } from 'firebase-admin/firestore';
 import nodemailer from 'nodemailer';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -48,7 +49,7 @@ if (!admin.apps.length) {
       }
       
       credential = admin.credential.cert(serviceAccount);
-      admin.initializeApp({
+      const app = admin.initializeApp({
         credential
       });
       isFirebaseAdminInitialized = true;
@@ -56,7 +57,7 @@ if (!admin.apps.length) {
       
       // Use the specific database ID if provided, otherwise default
       const dbId = firebaseConfig.firestoreDatabaseId || process.env.FIREBASE_DATABASE_ID;
-      dbAdmin = dbId ? admin.firestore(dbId) : admin.firestore();
+      dbAdmin = dbId ? getFirestore(app, dbId) : getFirestore(app);
       
       console.log(`✅ Firebase Admin: Initialisé avec succès (Database: ${dbId || '(default)'}).`);
     } catch (err) {
@@ -69,7 +70,7 @@ if (!admin.apps.length) {
   isFirebaseAdminInitialized = true;
   authAdmin = admin.auth();
   const dbId = firebaseConfig.firestoreDatabaseId || process.env.FIREBASE_DATABASE_ID;
-  dbAdmin = dbId ? admin.firestore(dbId) : admin.firestore();
+  dbAdmin = dbId ? getFirestore(admin.app(), dbId) : getFirestore(admin.app());
 }
 
 // Email Transporter Config
