@@ -21,7 +21,7 @@ import { cn, formatCurrency } from '../utils';
 import { Student } from '../types';
 
 export default function StudentProfile() {
-  const { profile, updateProfile, changePassword, validatePassword } = useAuth();
+  const { profile, updateProfile, changePassword, validatePassword, fetchWithAuth } = useAuth();
   const student = profile as Student;
   
   const [isEditing, setIsEditing] = useState(false);
@@ -43,7 +43,7 @@ export default function StudentProfile() {
 
   React.useEffect(() => {
     const fetchMe = async () => {
-      const res = await fetch('/api/auth/me');
+      const res = await fetchWithAuth('/api/auth/me');
       if (res.ok) {
         const currentProfile = await res.json();
         updateProfile(currentProfile);
@@ -63,7 +63,7 @@ export default function StudentProfile() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`/api/students/${student.uid}`, {
+      const res = await fetchWithAuth(`/api/students/${student.uid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)

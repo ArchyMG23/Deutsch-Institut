@@ -20,8 +20,10 @@ import { useReactToPrint } from 'react-to-print';
 import { cn, formatCurrency, generateMatricule } from '../utils';
 import { Student, ClassRoom, Level, TuitionPayment } from '../types';
 import { NotificationService } from '../services/NotificationService';
+import { useAuth } from '../context/AuthContext';
 
 export default function StudentManagement() {
+  const { fetchWithAuth } = useAuth();
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<ClassRoom[]>([]);
   const [levels, setLevels] = useState<Level[]>([]);
@@ -51,9 +53,9 @@ export default function StudentManagement() {
   const fetchData = async () => {
     try {
       const [studentsRes, classesRes, levelsRes] = await Promise.all([
-        fetch('/api/students'),
-        fetch('/api/classes'),
-        fetch('/api/levels')
+        fetchWithAuth('/api/students'),
+        fetchWithAuth('/api/classes'),
+        fetchWithAuth('/api/levels')
       ]);
       
       if (studentsRes.ok) setStudents(await studentsRes.json());
@@ -103,7 +105,7 @@ export default function StudentManagement() {
     };
 
     try {
-      const res = await fetch('/api/students', {
+      const res = await fetchWithAuth('/api/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newStudent)
@@ -143,7 +145,7 @@ export default function StudentManagement() {
     };
 
     try {
-      const res = await fetch(`/api/students/${selectedStudent.id}`, {
+      const res = await fetchWithAuth(`/api/students/${selectedStudent.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedStudent)
@@ -161,7 +163,7 @@ export default function StudentManagement() {
     if (!window.confirm('Êtes-vous sûr de vouloir supprimer cet étudiant ?')) return;
     
     try {
-      const res = await fetch(`/api/students/${id}`, {
+      const res = await fetchWithAuth(`/api/students/${id}`, {
         method: 'DELETE'
       });
       if (res.ok) {
@@ -180,7 +182,7 @@ export default function StudentManagement() {
     );
 
     try {
-      const res = await fetch(`/api/students/${selectedStudent.id}`, {
+      const res = await fetchWithAuth(`/api/students/${selectedStudent.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ payments: updatedPayments })
@@ -602,8 +604,8 @@ export default function StudentManagement() {
                 <div ref={receiptRef} className="bg-white p-8 shadow-sm rounded-xl text-neutral-900 font-sans">
                   <div className="flex justify-between items-start mb-8 border-b pb-6">
                     <div>
-                      <h2 className="text-2xl font-black text-dia-red">DIA</h2>
-                      <p className="text-[10px] uppercase font-bold tracking-widest text-neutral-400">Deutsch Institut Für Alle</p>
+                      <img src="/logo.png" alt="DIA Logo" className="h-10 object-contain mb-1" referrerPolicy="no-referrer" />
+                      <p className="text-[10px] uppercase font-bold tracking-widest text-neutral-400">DIA_SAAS</p>
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-bold">REÇU DE PAIEMENT</p>

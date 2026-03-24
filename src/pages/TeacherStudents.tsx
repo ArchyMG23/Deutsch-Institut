@@ -13,7 +13,7 @@ import { cn } from '../utils';
 import { NotificationService } from '../services/NotificationService';
 
 export default function TeacherStudents() {
-  const { profile } = useAuth();
+  const { profile, fetchWithAuth } = useAuth();
   const [classes, setClasses] = useState<ClassRoom[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,8 +27,8 @@ export default function TeacherStudents() {
   const fetchData = async () => {
     try {
       const [classesRes, studentsRes] = await Promise.all([
-        fetch('/api/teachers/me/classes'),
-        fetch('/api/students')
+        fetchWithAuth('/api/teachers/me/classes'),
+        fetchWithAuth('/api/students')
       ]);
 
       if (classesRes.ok && studentsRes.ok) {

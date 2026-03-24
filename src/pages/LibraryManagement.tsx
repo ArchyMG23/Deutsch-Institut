@@ -18,7 +18,7 @@ import { LibraryItem } from '../types';
 import { useAuth } from '../context/AuthContext';
 
 export default function LibraryManagement() {
-  const { profile } = useAuth();
+  const { profile, fetchWithAuth } = useAuth();
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -35,7 +35,7 @@ export default function LibraryManagement() {
 
   const fetchLibrary = async () => {
     try {
-      const res = await fetch('/api/library');
+      const res = await fetchWithAuth('/api/library');
       if (res.ok) setItems(await res.json());
     } catch (err) {
       console.error("Error fetching library:", err);
@@ -63,7 +63,7 @@ export default function LibraryManagement() {
         uploadData.append('category', formData.get('category') as string);
         uploadData.append('type', formData.get('type') as string);
 
-        const res = await fetch('/api/library/upload', {
+        const res = await fetchWithAuth('/api/library/upload', {
           method: 'POST',
           body: uploadData
         });
@@ -84,7 +84,7 @@ export default function LibraryManagement() {
           addedBy: profile?.firstName || 'Admin',
         };
 
-        const res = await fetch('/api/library', {
+        const res = await fetchWithAuth('/api/library', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newItem)
@@ -105,7 +105,7 @@ export default function LibraryManagement() {
     if (!canManage) return;
     if (!window.confirm('Supprimer ce document ?')) return;
     try {
-      const res = await fetch(`/api/library/${id}`, { method: 'DELETE' });
+      const res = await fetchWithAuth(`/api/library/${id}`, { method: 'DELETE' });
       if (res.ok) fetchLibrary();
     } catch (err) {
       console.error("Error deleting item:", err);

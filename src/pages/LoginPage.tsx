@@ -64,10 +64,8 @@ export default function LoginPage() {
     <div className="min-h-screen bg-[#F8F9FA] flex items-center justify-center p-4 font-sans">
       <div className="w-full max-w-[440px]">
         <div className="text-center mb-10">
-          <div className="w-16 h-16 bg-dia-red rounded-2xl flex items-center justify-center font-bold text-3xl text-white mx-auto mb-4 shadow-xl shadow-dia-red/10">
-            DIA
-          </div>
-          <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Deutsch Institut Für Alle</h1>
+          <img src="/logo.png" alt="DIA Logo" className="w-20 h-20 mx-auto mb-4 shadow-xl shadow-dia-red/10 object-contain" referrerPolicy="no-referrer" />
+          <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">DIA_SAAS</h1>
           <p className="text-neutral-500 text-sm mt-1">Système de Gestion Académique</p>
         </div>
 
@@ -130,7 +128,7 @@ export default function LoginPage() {
         
         <div className="mt-8 flex flex-col items-center gap-4">
           <p className="text-neutral-300 text-[10px] uppercase tracking-[0.2em] font-medium">
-            &copy; 2026 Deutsch Institut Für Alle
+            &copy; 2026 DIA_SAAS
           </p>
         </div>
       </div>

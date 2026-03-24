@@ -15,8 +15,10 @@ import {
 import { cn, formatCurrency, generateMatricule } from '../utils';
 import { Teacher, ClassRoom } from '../types';
 import { NotificationService } from '../services/NotificationService';
+import { useAuth } from '../context/AuthContext';
 
 export default function TeacherManagement() {
+  const { fetchWithAuth } = useAuth();
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [classes, setClasses] = useState<ClassRoom[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,7 +34,7 @@ export default function TeacherManagement() {
 
   const fetchTeachers = async () => {
     try {
-      const res = await fetch('/api/teachers');
+      const res = await fetchWithAuth('/api/teachers');
       if (res.ok) setTeachers(await res.json());
     } catch (err) {
       console.error("Error fetching teachers:", err);
@@ -43,7 +45,7 @@ export default function TeacherManagement() {
 
   const fetchClasses = async () => {
     try {
-      const res = await fetch('/api/classes');
+      const res = await fetchWithAuth('/api/classes');
       if (res.ok) setClasses(await res.json());
     } catch (err) {
       console.error("Error fetching classes:", err);
@@ -72,7 +74,7 @@ export default function TeacherManagement() {
     };
 
     try {
-      const res = await fetch('/api/teachers', {
+      const res = await fetchWithAuth('/api/teachers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newTeacher)
@@ -104,7 +106,7 @@ export default function TeacherManagement() {
     };
 
     try {
-      const res = await fetch(`/api/teachers/${selectedTeacher.id}`, {
+      const res = await fetchWithAuth(`/api/teachers/${selectedTeacher.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedTeacher)
@@ -122,7 +124,7 @@ export default function TeacherManagement() {
     if (!window.confirm('Êtes-vous sûr de vouloir supprimer cet enseignant ?')) return;
     
     try {
-      const res = await fetch(`/api/teachers/${id}`, {
+      const res = await fetchWithAuth(`/api/teachers/${id}`, {
         method: 'DELETE'
       });
       if (res.ok) {

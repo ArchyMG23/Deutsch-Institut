@@ -66,12 +66,10 @@ export function Sidebar() {
         <div className="flex flex-col h-full">
           <div className="p-6">
             <div className="flex items-center gap-3 mb-10">
-              <div className="w-10 h-10 bg-dia-red rounded-xl flex items-center justify-center font-bold text-xl text-white shadow-lg shadow-dia-red/10">
-                DIA
-              </div>
+              <img src="/logo.png" alt="DIA Logo" className="w-12 h-12 rounded-xl shadow-lg shadow-dia-red/10 object-contain" referrerPolicy="no-referrer" />
               <div>
-                <h1 className="font-bold text-neutral-900 leading-tight">Deutsch Institut</h1>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">Für Alle</p>
+                <h1 className="font-bold text-neutral-900 leading-tight">DIA_SAAS</h1>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">Deutsch Institut</p>
               </div>
             </div>
 

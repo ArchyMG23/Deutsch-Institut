@@ -13,8 +13,10 @@ import {
 } from 'lucide-react';
 import { cn, formatCurrency } from '../utils';
 import { FinanceRecord, Teacher, Student, Level, ClassRoom } from '../types';
+import { useAuth } from '../context/AuthContext';
 
 export default function FinanceManagement() {
+  const { fetchWithAuth } = useAuth();
   const [records, setRecords] = useState<FinanceRecord[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -31,11 +33,11 @@ export default function FinanceManagement() {
   const fetchData = async () => {
     try {
       const [recordsRes, teachersRes, studentsRes, levelsRes, classesRes] = await Promise.all([
-        fetch('/api/finances'),
-        fetch('/api/teachers'),
-        fetch('/api/students'),
-        fetch('/api/levels'),
-        fetch('/api/classes')
+        fetchWithAuth('/api/finances'),
+        fetchWithAuth('/api/teachers'),
+        fetchWithAuth('/api/students'),
+        fetchWithAuth('/api/levels'),
+        fetchWithAuth('/api/classes')
       ]);
       
       if (recordsRes.ok) setRecords(await recordsRes.json());
@@ -62,7 +64,7 @@ export default function FinanceManagement() {
     };
 
     try {
-      const res = await fetch('/api/finances', {
+      const res = await fetchWithAuth('/api/finances', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newRecord)

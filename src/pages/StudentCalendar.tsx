@@ -14,7 +14,7 @@ import { cn } from '../utils';
 import { Student, ClassRoom, ScheduleItem, ExamItem } from '../types';
 
 export default function StudentCalendar() {
-  const { profile } = useAuth();
+  const { profile, fetchWithAuth } = useAuth();
   const student = profile as Student;
   const [studentClass, setStudentClass] = useState<ClassRoom | null>(null);
   const [loading, setLoading] = useState(true);
@@ -23,7 +23,7 @@ export default function StudentCalendar() {
   useEffect(() => {
     const fetchClass = async () => {
       try {
-        const res = await fetch('/api/classes');
+        const res = await fetchWithAuth('/api/classes');
         if (res.ok) {
           const classes: ClassRoom[] = await res.json();
           setStudentClass(classes.find(c => c.id === student.classId) || null);

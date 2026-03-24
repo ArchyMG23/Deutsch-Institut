@@ -5,7 +5,7 @@ export const NotificationService = {
    * Notifie un utilisateur de ses identifiants de connexion.
    */
   async sendCredentials(user: Student | Teacher, password: string, className?: string, schedule?: string) {
-    let message = `Bonjour ${user.firstName},\n\nBienvenue chez Deutsch Institut !\n\nVoici vos identifiants de connexion :\nMatricule : ${user.matricule}\nMot de passe : ${password}\n\n`;
+    let message = `Bonjour ${user.firstName},\n\nBienvenue chez DIA_SAAS !\n\nVoici vos identifiants de connexion :\nMatricule : ${user.matricule}\nMot de passe : ${password}\n\n`;
     
     if (className) {
       message += `Vous avez été affecté à la classe : ${className}\n`;

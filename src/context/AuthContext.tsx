@@ -28,6 +28,7 @@ interface AuthContextType {
   updateProfile: (updatedProfile: UserProfile) => void;
   changePassword: (newPassword: string) => Promise<void>;
   validatePassword: (password: string) => { isValid: boolean; message: string };
+  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -105,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log("AuthProvider: Loading complete.");
       setLoading(false);
     }, (error) => {
-      console.error("AuthProvider: onAuthStateChanged error:", error.code, error.message);
+      console.error("AuthProvider: onAuthStateChanged error:", (error as any).code, error.message);
       clearTimeout(safetyTimeout);
       setLoading(false);
     });
@@ -184,8 +185,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
+    if (!auth.currentUser) {
+      throw new Error('Non authentifié');
+    }
+    const token = await auth.currentUser.getIdToken();
+    const headers = {
+      ...options.headers,
+      'Authorization': `Bearer ${token}`
+    };
+    return fetch(url, { ...options, headers });
+  };
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading, login, logout, updateProfile, changePassword, validatePassword }}>
+    <AuthContext.Provider value={{ user, profile, loading, login, logout, updateProfile, changePassword, validatePassword, fetchWithAuth }}>
       {children}
     </AuthContext.Provider>
   );

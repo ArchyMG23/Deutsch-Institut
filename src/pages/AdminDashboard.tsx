@@ -18,8 +18,10 @@ import {
 } from 'recharts';
 import { cn, formatCurrency } from '../utils';
 import { Student, Teacher, FinanceRecord } from '../types';
+import { useAuth } from '../context/AuthContext';
 
 export default function AdminDashboard() {
+  const { fetchWithAuth } = useAuth();
   const [students, setStudents] = useState<Student[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [finances, setFinances] = useState<FinanceRecord[]>([]);
@@ -29,9 +31,9 @@ export default function AdminDashboard() {
     const fetchData = async () => {
       try {
         const [sRes, tRes, fRes] = await Promise.all([
-          fetch('/api/students'),
-          fetch('/api/teachers'),
-          fetch('/api/finances')
+          fetchWithAuth('/api/students'),
+          fetchWithAuth('/api/teachers'),
+          fetchWithAuth('/api/finances')
         ]);
         if (sRes.ok) setStudents(await sRes.json());
         if (tRes.ok) setTeachers(await tRes.json());

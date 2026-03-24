@@ -92,7 +92,7 @@ async function sendEmail(to: string, subject: string, text: string, html?: strin
 
   try {
     await transporter.sendMail({
-      from: process.env.SMTP_FROM || '"Deutsch Institut" <noreply@dia.com>',
+      from: process.env.SMTP_FROM || '"DIA_SAAS" <noreply@dia.com>',
       to,
       subject,
       text,
@@ -210,19 +210,40 @@ async function startServer() {
   });
 
   // Auth Middleware
-  const authenticate = (req: any, res: any, next: any) => {
-    console.log(`[AUTH] Authenticating request for: ${req.path}`);
-    const token = req.cookies.token || req.headers.authorization?.split(' ')[1];
+  const authenticate = async (req: any, res: any, next: any) => {
+    const token = req.headers.authorization?.split(' ')[1] || req.cookies.token;
+    
     if (!token) {
-      console.warn(`[AUTH] No token found for: ${req.path}`);
       return res.status(401).json({ message: 'Non authentifié' });
     }
+
     try {
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
-      req.user = decoded;
-      next();
+      if (isFirebaseAdminInitialized) {
+        // Verify Firebase ID Token
+        const decodedToken = await authAdmin.verifyIdToken(token);
+        req.user = {
+          id: decodedToken.uid,
+          email: decodedToken.email,
+          role: decodedToken.role || 'user' // We might need to fetch the role from Firestore if not in claims
+        };
+        
+        // Fetch role from Firestore if not in token
+        if (!decodedToken.role) {
+          const userDoc = await dbAdmin.collection('users').doc(decodedToken.uid).get();
+          if (userDoc.exists) {
+            req.user.role = userDoc.data()?.role || 'user';
+          }
+        }
+        
+        return next();
+      } else {
+        // Fallback to JWT if Firebase Admin is not available (for local dev without service account)
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        req.user = decoded;
+        return next();
+      }
     } catch (err) {
-      console.error(`[AUTH] Invalid token for: ${req.path}`, err);
+      console.error(`[AUTH] Invalid token:`, err);
       res.status(401).json({ message: 'Token invalide' });
     }
   };
@@ -376,11 +397,11 @@ async function startServer() {
       }
       
       // Envoi d'email réel
-      const emailSubject = "Bienvenue chez Deutsch Institut - Vos identifiants";
-      const emailText = `Bonjour ${studentData.firstName},\n\nBienvenue chez Deutsch Institut !\n\nVoici vos identifiants de connexion :\nMatricule : ${studentData.matricule}\nMot de passe : ${password || 'DIA2026.'}\n\nLien de connexion : ${req.headers.origin}/login`;
+      const emailSubject = "Bienvenue chez DIA_SAAS - Vos identifiants";
+      const emailText = `Bonjour ${studentData.firstName},\n\nBienvenue chez DIA_SAAS !\n\nVoici vos identifiants de connexion :\nMatricule : ${studentData.matricule}\nMot de passe : ${password || 'DIA2026.'}\n\nLien de connexion : ${req.headers.origin}/login`;
       const emailHtml = `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #E31E24;">Bienvenue chez Deutsch Institut !</h2>
+          <h2 style="color: #E31E24;">Bienvenue chez DIA_SAAS !</h2>
           <p>Bonjour <strong>${studentData.firstName}</strong>,</p>
           <p>Votre compte a été créé avec succès. Voici vos identifiants de connexion :</p>
           <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
@@ -517,11 +538,11 @@ async function startServer() {
       await dbAdmin.collection('teachers').doc(userRecord.uid).set(newTeacher);
 
       // Envoi d'email réel
-      const emailSubject = "Bienvenue chez Deutsch Institut - Compte Enseignant";
-      const emailText = `Bonjour ${teacherData.firstName},\n\nVotre compte enseignant a été créé chez Deutsch Institut.\n\nVoici vos identifiants :\nMatricule : ${teacherData.matricule}\nMot de passe : ${password || 'DIA2026.'}\n\nLien : ${req.headers.origin}/login`;
+      const emailSubject = "Bienvenue chez DIA_SAAS - Compte Enseignant";
+      const emailText = `Bonjour ${teacherData.firstName},\n\nVotre compte enseignant a été créé chez DIA_SAAS.\n\nVoici vos identifiants :\nMatricule : ${teacherData.matricule}\nMot de passe : ${password || 'DIA2026.'}\n\nLien : ${req.headers.origin}/login`;
       const emailHtml = `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #E31E24;">Bienvenue chez Deutsch Institut !</h2>
+          <h2 style="color: #E31E24;">Bienvenue chez DIA_SAAS !</h2>
           <p>Bonjour <strong>${teacherData.firstName}</strong>,</p>
           <p>Votre compte enseignant a été configuré. Voici vos accès :</p>
           <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin: 20px 0;">

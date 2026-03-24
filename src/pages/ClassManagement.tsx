@@ -15,8 +15,10 @@ import {
 import { cn, formatCurrency } from '../utils';
 import { ClassRoom, Level, Teacher, Student } from '../types';
 import { NotificationService } from '../services/NotificationService';
+import { useAuth } from '../context/AuthContext';
 
 export default function ClassManagement() {
+  const { fetchWithAuth } = useAuth();
   const [classes, setClasses] = useState<ClassRoom[]>([]);
   const [levels, setLevels] = useState<Level[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -33,10 +35,10 @@ export default function ClassManagement() {
   const fetchData = async () => {
     try {
       const [classesRes, levelsRes, teachersRes, studentsRes] = await Promise.all([
-        fetch('/api/classes'),
-        fetch('/api/levels'),
-        fetch('/api/teachers'),
-        fetch('/api/students')
+        fetchWithAuth('/api/classes'),
+        fetchWithAuth('/api/levels'),
+        fetchWithAuth('/api/teachers'),
+        fetchWithAuth('/api/students')
       ]);
       
       if (classesRes.ok) setClasses(await classesRes.json());
@@ -65,7 +67,7 @@ export default function ClassManagement() {
     };
 
     try {
-      const res = await fetch('/api/classes', {
+      const res = await fetchWithAuth('/api/classes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newClass)
@@ -90,7 +92,7 @@ export default function ClassManagement() {
 
     try {
       // Update class sub-level
-      const res = await fetch(`/api/classes/${classId}`, {
+      const res = await fetchWithAuth(`/api/classes/${classId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentSubLevel: subLevel })
@@ -101,14 +103,14 @@ export default function ClassManagement() {
         const salaryAmount = hoursPerSubLevel * teacher.hourlyRate;
 
         // Update teacher total hours
-        await fetch(`/api/teachers/${teacher.id}`, {
+        await fetchWithAuth(`/api/teachers/${teacher.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ totalHoursWorked: (teacher.totalHoursWorked || 0) + hoursPerSubLevel })
         });
 
         // Record expense in finances
-        await fetch('/api/finances', {
+        await fetchWithAuth('/api/finances', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -282,7 +284,7 @@ export default function ClassManagement() {
                       subject: formData.get('subject') as string
                     };
                     const updatedSchedule = [...selectedClass.schedule, newItem];
-                    const res = await fetch(`/api/classes/${selectedClass.id}`, {
+                    const res = await fetchWithAuth(`/api/classes/${selectedClass.id}`, {
                       method: 'PUT',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ schedule: updatedSchedule })
@@ -336,7 +338,7 @@ export default function ClassManagement() {
                         <button 
                           onClick={async () => {
                             const updatedSchedule = selectedClass.schedule.filter((_, i) => i !== idx);
-                            const res = await fetch(`/api/classes/${selectedClass.id}`, {
+                            const res = await fetchWithAuth(`/api/classes/${selectedClass.id}`, {
                               method: 'PUT',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ schedule: updatedSchedule })
@@ -374,7 +376,7 @@ export default function ClassManagement() {
                       endTime: formData.get('endTime')
                     };
                     const updatedExams = [...selectedClass.exams, newItem];
-                    const res = await fetch(`/api/classes/${selectedClass.id}`, {
+                    const res = await fetchWithAuth(`/api/classes/${selectedClass.id}`, {
                       method: 'PUT',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ exams: updatedExams })
@@ -409,7 +411,7 @@ export default function ClassManagement() {
                         <button 
                           onClick={async () => {
                             const updatedExams = selectedClass.exams.filter(e => e.id !== exam.id);
-                            const res = await fetch(`/api/classes/${selectedClass.id}`, {
+                            const res = await fetchWithAuth(`/api/classes/${selectedClass.id}`, {
                               method: 'PUT',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ exams: updatedExams })
@@ -441,7 +443,7 @@ export default function ClassManagement() {
                         const studentId = e.target.value;
                         if (!studentId) return;
                         const updatedStudentIds = [...selectedClass.studentIds, studentId];
-                        const res = await fetch(`/api/classes/${selectedClass.id}`, {
+                        const res = await fetchWithAuth(`/api/classes/${selectedClass.id}`, {
                           method: 'PUT',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ studentIds: updatedStudentIds })
@@ -483,7 +485,7 @@ export default function ClassManagement() {
                       <button 
                         onClick={async () => {
                           const updatedStudentIds = selectedClass.studentIds.filter(id => id !== student.id);
-                          const res = await fetch(`/api/classes/${selectedClass.id}`, {
+                          const res = await fetchWithAuth(`/api/classes/${selectedClass.id}`, {
                             method: 'PUT',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ studentIds: updatedStudentIds })

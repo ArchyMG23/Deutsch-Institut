@@ -10,8 +10,10 @@ import {
 } from 'lucide-react';
 import { Level } from '../types';
 import { formatCurrency } from '../utils';
+import { useAuth } from '../context/AuthContext';
 
 export default function LevelManagement() {
+  const { fetchWithAuth } = useAuth();
   const [levels, setLevels] = useState<Level[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -23,7 +25,7 @@ export default function LevelManagement() {
 
   const fetchLevels = async () => {
     try {
-      const res = await fetch('/api/levels');
+      const res = await fetchWithAuth('/api/levels');
       if (res.ok) setLevels(await res.json());
     } catch (err) {
       console.error("Error fetching levels:", err);
@@ -43,7 +45,7 @@ export default function LevelManagement() {
     };
 
     try {
-      const res = await fetch('/api/levels', {
+      const res = await fetchWithAuth('/api/levels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newLevel)
@@ -71,7 +73,7 @@ export default function LevelManagement() {
     };
 
     try {
-      const res = await fetch(`/api/levels/${editingLevel.id}`, {
+      const res = await fetchWithAuth(`/api/levels/${editingLevel.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedLevel)
@@ -90,7 +92,7 @@ export default function LevelManagement() {
   const handleDeleteLevel = async (id: string) => {
     if (!window.confirm('Supprimer ce niveau ?')) return;
     try {
-      const res = await fetch(`/api/levels/${id}`, { method: 'DELETE' });
+      const res = await fetchWithAuth(`/api/levels/${id}`, { method: 'DELETE' });
       if (res.ok) fetchLevels();
     } catch (err) {
       console.error("Error deleting level:", err);

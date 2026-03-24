@@ -14,7 +14,7 @@ import { ClassRoom, Teacher } from '../types';
 import { formatCurrency } from '../utils';
 
 export default function TeacherDashboard() {
-  const { profile } = useAuth();
+  const { profile, fetchWithAuth } = useAuth();
   const [classes, setClasses] = useState<ClassRoom[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -24,7 +24,7 @@ export default function TeacherDashboard() {
 
   const fetchTeacherData = async () => {
     try {
-      const res = await fetch('/api/teachers/me/classes');
+      const res = await fetchWithAuth('/api/teachers/me/classes');
       if (res.ok) {
         const data = await res.json();
         setClasses(data);

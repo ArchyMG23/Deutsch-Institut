@@ -14,7 +14,7 @@ import { ClassRoom, ScheduleItem } from '../types';
 import { cn } from '../utils';
 
 export default function TeacherPlanning() {
-  const { profile } = useAuth();
+  const { profile, fetchWithAuth } = useAuth();
   const [classes, setClasses] = useState<ClassRoom[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -25,7 +25,7 @@ export default function TeacherPlanning() {
 
   const fetchTeacherClasses = async () => {
     try {
-      const res = await fetch('/api/teachers/me/classes');
+      const res = await fetchWithAuth('/api/teachers/me/classes');
       if (res.ok) {
         const data = await res.json();
         setClasses(data);

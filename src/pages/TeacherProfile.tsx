@@ -20,7 +20,7 @@ import { Teacher } from '../types';
 import { cn, formatCurrency } from '../utils';
 
 export default function TeacherProfile() {
-  const { profile, updateProfile, changePassword, validatePassword } = useAuth();
+  const { profile, updateProfile, changePassword, validatePassword, fetchWithAuth } = useAuth();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<Partial<Teacher>>({});
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
@@ -38,7 +38,7 @@ export default function TeacherProfile() {
 
   const fetchLatestProfile = async () => {
     try {
-      const res = await fetch('/api/auth/me');
+      const res = await fetchWithAuth('/api/auth/me');
       if (res.ok) {
         const data = await res.json();
         setFormData(data);
@@ -60,12 +60,12 @@ export default function TeacherProfile() {
 
     try {
       const teacher = profile as Teacher;
-      const res = await fetch(`/api/teachers/${teacher.uid}`, {
+      const res = await fetchWithAuth(`/api/teachers/${teacher.uid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
-
+      
       if (res.ok) {
         const updated = await res.json();
         updateProfile(updated);

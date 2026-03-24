@@ -21,7 +21,7 @@ import { Student, ClassRoom, Level, LibraryItem } from '../types';
 import { useNavigate } from 'react-router-dom';
 
 export default function StudentDashboard() {
-  const { profile, updateProfile } = useAuth();
+  const { profile, updateProfile, fetchWithAuth } = useAuth();
   const student = profile as Student;
   const navigate = useNavigate();
   
@@ -35,10 +35,10 @@ export default function StudentDashboard() {
     const fetchData = async () => {
       try {
         const [classesRes, levelsRes, libraryRes, meRes] = await Promise.all([
-          fetch('/api/classes'),
-          fetch('/api/levels'),
-          fetch('/api/library'),
-          fetch('/api/auth/me')
+          fetchWithAuth('/api/classes'),
+          fetchWithAuth('/api/levels'),
+          fetchWithAuth('/api/library'),
+          fetchWithAuth('/api/auth/me')
         ]);
 
         if (classesRes.ok && levelsRes.ok && libraryRes.ok && meRes.ok) {
