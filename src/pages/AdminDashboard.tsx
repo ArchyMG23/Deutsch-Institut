@@ -214,6 +214,12 @@ export default function AdminDashboard() {
                       : "Simulation. Ajoutez SMTP_PASS (Mot de passe d'application Google) pour envoyer de vrais emails.")
                 }
               </p>
+              {configStatus.smtpError && !configStatus.smtp && (
+                <div className="mt-2 p-2 bg-red-50 dark:bg-red-950/20 rounded border border-red-100 dark:border-red-900/30">
+                  <p className="text-[10px] uppercase font-bold text-red-500 mb-1">Détail de l'erreur brute :</p>
+                  <p className="text-xs font-mono break-all text-red-600 dark:text-red-400">{configStatus.smtpError}</p>
+                </div>
+              )}
               {configStatus.smtpConfigured && (
                 <button 
                   onClick={handleTestEmail}

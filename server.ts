@@ -109,14 +109,19 @@ const transporter = nodemailer.createTransport({
 
 // Verify SMTP connection at startup
 let isSmtpOperational = false;
+let lastSmtpError = "";
 if (process.env.SMTP_USER && process.env.SMTP_PASS) {
   transporter.verify((error, success) => {
     if (error) {
       console.error("❌ SMTP Error: La configuration mail est incorrecte (vérifiez le mot de passe d'application).", error.message);
       isSmtpOperational = false;
+      lastSmtpError = error.message;
+      addLog('ERROR', "Échec de la connexion SMTP au démarrage", error.message);
     } else {
       console.log("✅ SMTP Ready: Le serveur est prêt à envoyer des emails.");
       isSmtpOperational = true;
+      lastSmtpError = "";
+      addLog('INFO', "Connexion SMTP établie avec succès");
     }
   });
 }
@@ -298,6 +303,7 @@ async function startServer() {
       serviceAccountProjectId,
       configProjectId: firebaseConfig.projectId,
       smtp: isSmtpOperational,
+      smtpError: lastSmtpError,
       smtpConfigured: !!(process.env.SMTP_USER && process.env.SMTP_PASS),
       firebaseServiceAccountMissing: !process.env.FIREBASE_SERVICE_ACCOUNT,
       smtpPassMissing: !process.env.SMTP_PASS
