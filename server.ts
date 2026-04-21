@@ -30,9 +30,24 @@ try {
   console.warn("Could not read firebase-applet-config.json");
 }
 
+// Global Server Logs for diagnostics
+const serverLogs: any[] = [];
+function addLog(type: 'INFO' | 'ERROR' | 'EMAIL' | 'AUTH', message: string, details?: any) {
+  const log = {
+    timestamp: new Date().toISOString(),
+    type,
+    message,
+    details: details ? JSON.stringify(details) : undefined
+  };
+  serverLogs.push(log);
+  if (serverLogs.length > 50) serverLogs.shift();
+  console.log(`[${type}] ${message}`);
+}
+
 let isFirebaseAdminInitialized = false;
 let authAdmin: admin.auth.Auth;
 let dbAdmin: admin.firestore.Firestore;
+let serviceAccountProjectId: string | null = null;
 
 if (!admin.apps.length) {
   const serviceAccountVar = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -42,6 +57,7 @@ if (!admin.apps.length) {
     try {
       const cleanedJson = serviceAccountVar.trim();
       const serviceAccount = JSON.parse(cleanedJson);
+      serviceAccountProjectId = serviceAccount.project_id;
       
       // Fix for private key newline characters often mangled in env vars
       if (serviceAccount.private_key) {
@@ -61,8 +77,10 @@ if (!admin.apps.length) {
       dbAdmin.settings({ ignoreUndefinedProperties: true });
       
       console.log(`✅ Firebase Admin: Initialisé avec succès (Database: ${dbId || '(default)'}).`);
-    } catch (err) {
+      addLog('INFO', `Firebase Admin initialisé pour le projet: ${serviceAccountProjectId}`);
+    } catch (err: any) {
       console.error("❌ Firebase Admin: Erreur lors du parsing de FIREBASE_SERVICE_ACCOUNT:", err);
+      addLog('ERROR', "Erreur initialisation Firebase Admin", err.message);
     }
   } else {
     console.warn("⚠️ Firebase Admin: FIREBASE_SERVICE_ACCOUNT manquant. Les fonctions d'administration seront désactivées.");
@@ -118,9 +136,9 @@ async function sendEmail(to: string, subject: string, text: string, html?: strin
       text,
       html,
     });
-    console.log(`[EMAIL SUCCESS] to ${to}: ${subject} (MessageId: ${info.messageId})`);
+    addLog('EMAIL', `Email envoyé avec succès à ${to}`, { messageId: info.messageId });
   } catch (err: any) {
-    console.error(`[EMAIL ERROR] to ${to}:`, err.message);
+    addLog('ERROR', `Échec de l'envoi d'email à ${to}`, err.message);
   }
 }
 
@@ -277,11 +295,18 @@ async function startServer() {
     
     res.json({
       firebaseAdmin: isFirebaseAdminInitialized,
+      serviceAccountProjectId,
+      configProjectId: firebaseConfig.projectId,
       smtp: isSmtpOperational,
       smtpConfigured: !!(process.env.SMTP_USER && process.env.SMTP_PASS),
       firebaseServiceAccountMissing: !process.env.FIREBASE_SERVICE_ACCOUNT,
       smtpPassMissing: !process.env.SMTP_PASS
     });
+  });
+
+  app.get('/api/admin/logs', authenticate, (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Interdit' });
+    res.json({ logs: serverLogs });
   });
 
   app.post('/api/health/test-email', authenticate, async (req: any, res) => {

@@ -30,12 +30,26 @@ export default function AdminDashboard() {
   const { students, teachers, finances, loading, refreshAll } = useData();
   const { fetchWithAuth } = useAuth();
   const [configStatus, setConfigStatus] = useState<any>(null);
+  const [logs, setLogs] = useState<any[]>([]);
   const [testingEmail, setTestingEmail] = useState(false);
 
   useEffect(() => {
     refreshAll();
     checkConfig();
+    fetchLogs();
   }, [refreshAll]);
+
+  const fetchLogs = async () => {
+    try {
+      const res = await fetchWithAuth('/api/admin/logs');
+      if (res.ok) {
+        const data = await res.json();
+        setLogs(data.logs);
+      }
+    } catch (err) {
+      console.error("Error fetching logs:", err);
+    }
+  };
 
   const checkConfig = async () => {
     try {
@@ -163,6 +177,29 @@ export default function AdminDashboard() {
                   ? "Opérationnel. Les comptes sont créés automatiquement." 
                   : "Désactivé. Ajoutez le secret FIREBASE_SERVICE_ACCOUNT pour automatiser la création des comptes."}
               </p>
+              {configStatus.firebaseAdmin && (
+                <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-700 space-y-1">
+                  <p className="text-[10px] text-neutral-500 uppercase font-bold">Vérification du Projet</p>
+                  <p className="text-xs flex items-center justify-between">
+                    <span>Config Client :</span>
+                    <span className="font-mono font-bold text-dia-red">{configStatus.configProjectId}</span>
+                  </p>
+                  <p className="text-xs flex items-center justify-between">
+                    <span>Admin Secret :</span>
+                    <span className={cn(
+                      "font-mono font-bold",
+                      configStatus.configProjectId === configStatus.serviceAccountProjectId ? "text-green-500" : "text-dia-red"
+                    )}>
+                      {configStatus.serviceAccountProjectId}
+                    </span>
+                  </p>
+                  {configStatus.configProjectId !== configStatus.serviceAccountProjectId && (
+                    <p className="text-[10px] text-dia-red font-bold animate-pulse mt-1">
+                      ⚠️ ERREUR : Le secret de service ne correspond pas au projet !
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
             <div className="p-4 rounded-2xl bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700">
               <div className="flex items-center justify-between mb-2">
@@ -198,6 +235,49 @@ export default function AdminDashboard() {
           )}
         </div>
       )}
+
+      {/* Server Logs Section */}
+      <div className="card p-6 mb-6">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="font-bold text-lg">Journaux du Serveur (Diagnostics)</h3>
+          <button 
+            onClick={fetchLogs}
+            className="text-xs font-bold text-dia-red flex items-center gap-1 hover:underline"
+          >
+            Actualiser les logs ❯
+          </button>
+        </div>
+        <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
+          {logs.length === 0 ? (
+            <p className="text-center text-neutral-500 py-10">Aucun log récent.</p>
+          ) : (
+            [...logs].reverse().map((log, idx) => (
+              <div key={idx} className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-100 dark:border-neutral-800">
+                <div className="flex items-center justify-between mb-1">
+                  <span className={cn(
+                    "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase",
+                    log.type === 'ERROR' ? "bg-red-100 text-red-600" : 
+                    log.type === 'EMAIL' ? "bg-blue-100 text-blue-600" :
+                    log.type === 'AUTH' ? "bg-purple-100 text-purple-600" :
+                    "bg-green-100 text-green-600"
+                  )}>
+                    {log.type}
+                  </span>
+                  <span className="text-[10px] text-neutral-400 font-mono">
+                    {new Date(log.timestamp).toLocaleTimeString()}
+                  </span>
+                </div>
+                <p className="text-sm font-medium">{log.message}</p>
+                {log.details && (
+                  <p className="text-[10px] font-mono text-neutral-500 mt-1 break-all bg-neutral-100 dark:bg-neutral-900 p-1 rounded">
+                    {log.details}
+                  </p>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Financial Chart */}
