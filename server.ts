@@ -89,6 +89,20 @@ const transporter = nodemailer.createTransport({
   }
 });
 
+// Verify SMTP connection at startup
+let isSmtpOperational = false;
+if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+  transporter.verify((error, success) => {
+    if (error) {
+      console.error("❌ SMTP Error: La configuration mail est incorrecte (vérifiez le mot de passe d'application).", error.message);
+      isSmtpOperational = false;
+    } else {
+      console.log("✅ SMTP Ready: Le serveur est prêt à envoyer des emails.");
+      isSmtpOperational = true;
+    }
+  });
+}
+
 async function sendEmail(to: string, subject: string, text: string, html?: string) {
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
     console.log(`[EMAIL SIMULATION] to ${to}: ${subject}\n${text}`);
@@ -263,10 +277,27 @@ async function startServer() {
     
     res.json({
       firebaseAdmin: isFirebaseAdminInitialized,
-      smtp: !!(process.env.SMTP_USER && process.env.SMTP_PASS),
+      smtp: isSmtpOperational,
+      smtpConfigured: !!(process.env.SMTP_USER && process.env.SMTP_PASS),
       firebaseServiceAccountMissing: !process.env.FIREBASE_SERVICE_ACCOUNT,
       smtpPassMissing: !process.env.SMTP_PASS
     });
+  });
+
+  app.post('/api/health/test-email', authenticate, async (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Interdit' });
+    
+    try {
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM || `"DIA_SAAS TEST" <${process.env.SMTP_USER}>`,
+        to: req.user.email,
+        subject: "Test de configuration DIA_SAAS",
+        text: "Ceci est un email de test pour vérifier vos paramètres SMTP. Si vous recevez ce message, tout est opérationnel !",
+      });
+      res.json({ message: 'Email de test envoyé avec succès.' });
+    } catch (err: any) {
+      res.status(500).json({ message: `Erreur SMTP : ${err.message}` });
+    }
   });
 
   // Password Validation Utility

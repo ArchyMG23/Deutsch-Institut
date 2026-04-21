@@ -152,7 +152,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err: any) {
       console.error("Firebase login error:", err.code, err.message);
       if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        throw new Error('Identifiants incorrects. Veuillez vérifier votre email/matricule et mot de passe.');
+        throw new Error('Identifiants incorrects. Veuillez vérifier email/matricule et mot de passe.');
+      }
+      if (err.code === 'auth/operation-not-allowed') {
+        throw new Error("L'authentification par email/mot de passe n'est pas activée dans votre console Firebase.");
+      }
+      if (err.code === 'auth/too-many-requests') {
+        throw new Error("Trop de tentatives infructueuses. Le compte est temporairement bloqué.");
       }
       throw new Error(err.message || 'Erreur de connexion au serveur d\'authentification.');
     }

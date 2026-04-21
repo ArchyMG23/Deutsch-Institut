@@ -24,11 +24,13 @@ import {
 import { cn, formatCurrency } from '../utils';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
+import { toast } from 'sonner';
 
 export default function AdminDashboard() {
   const { students, teachers, finances, loading, refreshAll } = useData();
   const { fetchWithAuth } = useAuth();
   const [configStatus, setConfigStatus] = useState<any>(null);
+  const [testingEmail, setTestingEmail] = useState(false);
 
   useEffect(() => {
     refreshAll();
@@ -44,6 +46,23 @@ export default function AdminDashboard() {
       }
     } catch (err) {
       console.error("Error checking config:", err);
+    }
+  };
+
+  const handleTestEmail = async () => {
+    setTestingEmail(true);
+    try {
+      const res = await fetchWithAuth('/api/health/test-email', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message);
+      } else {
+        toast.error(data.message);
+      }
+    } catch (err) {
+      toast.error("Erreur lors du test de l'email.");
+    } finally {
+      setTestingEmail(false);
     }
   };
 
@@ -153,8 +172,20 @@ export default function AdminDashboard() {
               <p className="text-sm">
                 {configStatus.smtp 
                   ? "Opérationnel. Les emails sont envoyés aux utilisateurs." 
-                  : "Simulation. Ajoutez SMTP_PASS (Mot de passe d'application Google) pour envoyer de vrais emails."}
+                  : (configStatus.smtpConfigured 
+                      ? "Erreur de connexion SMTP. Le mot de passe d'application est probablement invalide ou bloqué." 
+                      : "Simulation. Ajoutez SMTP_PASS (Mot de passe d'application Google) pour envoyer de vrais emails.")
+                }
               </p>
+              {configStatus.smtpConfigured && (
+                <button 
+                  onClick={handleTestEmail}
+                  disabled={testingEmail}
+                  className="mt-3 text-xs font-bold text-dia-red hover:underline flex items-center gap-1 disabled:opacity-50"
+                >
+                  {testingEmail ? "Envoi du test..." : "Tester l'envoi d'email ❯"}
+                </button>
+              )}
             </div>
           </div>
           
