@@ -728,8 +728,68 @@ async function startServer() {
       await dbAdmin.collection('students').doc(req.params.id).delete();
       await dbAdmin.collection('users').doc(req.params.id).delete();
       await authAdmin.deleteUser(req.params.id);
-      res.json({ message: 'Student and user account deleted' });
+      res.json({ message: 'L\'Étudiant et son compte utilisateur ont été définitivement supprimés.' });
     } catch (err: any) {
+      console.error("Hard delete error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/students/resend-credentials/:id', authenticate, async (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Interdit' });
+    
+    try {
+      const studentDoc = await dbAdmin.collection('students').doc(req.params.id).get();
+      if (!studentDoc.exists) return res.status(404).json({ message: 'Étudiant non trouvé' });
+      const studentData = studentDoc.data() as any;
+      
+      const newPassword = 'DIA' + Math.floor(1000 + Math.random() * 9000) + '.';
+      
+      await authAdmin.updateUser(req.params.id, {
+        password: newPassword
+      });
+
+      const emailSubject = "Réinitialisation de vos identifiants - DIA_SAAS";
+      const emailHtml = `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+          <h2 style="color: #E31E24;">Vos nouveaux identifiants DIA_SAAS</h2>
+          <p>Bonjour <strong>${studentData.firstName}</strong>,</p>
+          <p>Suite à votre demande, vos identifiants de connexion ont été réinitialisés :</p>
+          <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
+            <p style="margin: 5px 0;"><strong>Matricule :</strong> ${studentData.matricule}</p>
+            <p style="margin: 5px 0;"><strong>Nouveau Mot de passe :</strong> ${newPassword}</p>
+          </div>
+          <p>Veuillez vous connecter et changer votre mot de passe dès que possible.</p>
+          <p>Lien : <a href="${req.headers.origin}/login" style="color: #E31E24; font-weight: bold;">Accéder au portail</a></p>
+        </div>
+      `;
+      
+      await sendEmail(studentData.email, emailSubject, `Matricule: ${studentData.matricule}, Nouveau Mot de passe: ${newPassword}`, emailHtml);
+      
+      res.json({ message: 'Nouveaux identifiants générés et envoyés par email.' });
+    } catch (err: any) {
+      console.error("Resend credentials error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/students/send-receipt-email', authenticate, async (req: any, res) => {
+    const { studentId, html } = req.body;
+    try {
+      const studentDoc = await dbAdmin.collection('students').doc(studentId).get();
+      if (!studentDoc.exists) return res.status(404).json({ message: 'Étudiant non trouvé' });
+      const studentData = studentDoc.data() as any;
+      
+      await sendEmail(
+        studentData.email, 
+        `[REÇU] Votre reçu de scolarité - DIA_SAAS`, 
+        "Veuillez trouver ci-joint votre reçu de scolarité.", 
+        html
+      );
+      
+      res.json({ message: 'Reçu envoyé par email.' });
+    } catch (err: any) {
+      console.error("Send receipt email error:", err);
       res.status(500).json({ message: err.message });
     }
   });

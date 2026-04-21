@@ -2,6 +2,7 @@ import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { RoleGuard } from './components/RoleGuard';
 import { DashboardLayout } from './components/DashboardLayout';
 import LoginPage from './pages/LoginPage';
@@ -221,19 +222,21 @@ function AnimatedRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <DataProvider>
-        <Toaster position="top-right" richColors />
-        <Router>
-          <Suspense fallback={
-            <div className="flex items-center justify-center min-h-screen">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-dia-red"></div>
-            </div>
-          }>
-            <AnimatedRoutes />
-          </Suspense>
-        </Router>
-      </DataProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <DataProvider>
+          <Toaster position="top-right" richColors />
+          <Router>
+            <Suspense fallback={
+              <div className="flex items-center justify-center min-h-screen">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-dia-red"></div>
+              </div>
+            }>
+              <AnimatedRoutes />
+            </Suspense>
+          </Router>
+        </DataProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

@@ -15,7 +15,10 @@ import {
   Eye,
   CreditCard,
   FileText,
-  Bell
+  Bell,
+  RefreshCw,
+  Trash2,
+  Send
 } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import { cn, formatCurrency, generateMatricule } from '../utils';
@@ -152,7 +155,7 @@ export default function StudentManagement() {
     }
   };
 
-  const handleDeleteStudent = async (id: string) => {
+  const handleArchiveStudent = async (id: string) => {
     if (!window.confirm('Voulez-vous vraiment déplacer cet étudiant vers les archives (Anciens Élèves) ?')) return;
     
     try {
@@ -168,6 +171,67 @@ export default function StudentManagement() {
     } catch (err) {
       console.error("Error archiving student:", err);
       toast.error('Erreur lors de l\'archivage');
+    }
+  };
+
+  const handleHardDeleteStudent = async (id: string) => {
+    if (!window.confirm('ÊTES-VOUS SÛR ? Cette action supprimera définitivement l\'étudiant et son compte utilisateur. Cette opération est irréversible.')) return;
+    
+    try {
+      setSubmitting(true);
+      const res = await fetchWithAuth(`/api/students/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        toast.success('Étudiant supprimé définitivement');
+        refreshStudents();
+      }
+    } catch (err) {
+      console.error("Error deleting student:", err);
+      toast.error('Erreur lors de la suppression');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleResetCredentials = async (id: string) => {
+    if (!window.confirm('Voulez-vous réinitialiser les identifiants de cet étudiant et lui envoyer par email ?')) return;
+    
+    try {
+      setSubmitting(true);
+      const res = await fetchWithAuth(`/api/students/resend-credentials/${id}`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        toast.success('Nouveaux identifiants envoyés');
+      }
+    } catch (err) {
+      console.error("Error resetting credentials:", err);
+      toast.error('Erreur lors de la réinitialisation');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSendReceiptEmail = async () => {
+    if (!selectedStudent || !receiptRef.current) return;
+    
+    try {
+      setSubmitting(true);
+      const html = receiptRef.current.innerHTML;
+      const res = await fetchWithAuth('/api/students/send-receipt-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId: selectedStudent.id, html })
+      });
+      if (res.ok) {
+        toast.success('Reçu envoyé par email');
+      }
+    } catch (err) {
+      console.error("Error sending receipt email:", err);
+      toast.error('Erreur lors de l\'envoi');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -393,6 +457,13 @@ export default function StudentManagement() {
                         {activeTab === 'active' ? (
                           <>
                             <button 
+                              onClick={() => handleResetCredentials(student.id)}
+                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-dia-yellow"
+                              title="Renvoyer identifiants"
+                            >
+                              <RefreshCw size={18} />
+                            </button>
+                            <button 
                               onClick={() => {
                                 setSelectedStudent(student);
                                 setIsReceiptModalOpen(true);
@@ -413,21 +484,37 @@ export default function StudentManagement() {
                               <Edit size={18} />
                             </button>
                             <button 
-                              onClick={() => handleDeleteStudent(student.id)}
-                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-red-600"
+                              onClick={() => handleArchiveStudent(student.id)}
+                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-orange-600"
                               title="Archiver"
                             >
                               <X size={18} />
                             </button>
+                            <button 
+                              onClick={() => handleHardDeleteStudent(student.id)}
+                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-red-600 font-bold"
+                              title="Supprimer définitivement"
+                            >
+                              <Trash2 size={18} />
+                            </button>
                           </>
                         ) : (
-                          <button 
-                            onClick={() => handleRestoreStudent(student.id)}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-green-100 text-green-600 rounded-lg text-xs font-bold hover:bg-green-200 transition-colors"
-                          >
-                            <Plus size={14} />
-                            Restaurer
-                          </button>
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => handleRestoreStudent(student.id)}
+                              className="flex items-center gap-2 px-3 py-1.5 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-lg text-xs font-bold hover:bg-green-200 transition-colors"
+                            >
+                              <Plus size={14} />
+                              Restaurer
+                            </button>
+                            <button 
+                              onClick={() => handleHardDeleteStudent(student.id)}
+                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-red-600"
+                              title="Supprimer définitivement"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
                         )}
                       </div>
                     </td>
@@ -650,8 +737,8 @@ export default function StudentManagement() {
                 </button>
                 <button 
                   onClick={handleSendReminder}
-                  disabled={submitting}
-                  className="flex-1 min-w-[120px] bg-dia-red/10 text-dia-red py-3 rounded-2xl font-bold hover:bg-dia-red/20 transition-all flex items-center justify-center gap-2 text-sm"
+                  disabled={submitting || (selectedStudent.payments.reduce((acc, p) => acc + p.amount, 0) >= (levels.find(l => l.id === selectedStudent.levelId)?.tuition || 0))}
+                  className="flex-1 min-w-[120px] bg-dia-red/10 text-dia-red py-3 rounded-2xl font-bold hover:bg-dia-red/20 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:grayscale"
                 >
                   {submitting ? (
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-dia-red/30 border-t-dia-red"></div>
@@ -676,6 +763,14 @@ export default function StudentManagement() {
                 <p className="text-neutral-500 text-sm">{selectedStudent.firstName} {selectedStudent.lastName} ({selectedStudent.matricule})</p>
               </div>
               <div className="flex gap-2">
+                <button 
+                  onClick={handleSendReceiptEmail}
+                  disabled={submitting}
+                  className="p-3 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-xl hover:bg-blue-200 transition-colors"
+                  title="Envoyer par Email"
+                >
+                  {submitting ? <div className="animate-spin rounded-full h-5 w-5 border-2 border-current border-t-transparent" /> : <Send size={20} />}
+                </button>
                 <button onClick={handlePrintReceipt} className="p-3 bg-neutral-100 dark:bg-neutral-800 rounded-xl hover:bg-neutral-200 transition-colors">
                   <Printer size={20} />
                 </button>
