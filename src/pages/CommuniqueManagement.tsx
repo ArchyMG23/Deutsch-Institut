@@ -40,45 +40,86 @@ export default function CommuniqueManagement() {
   const fetchCommuniques = async () => {
     setLoading(true);
     try {
-      const q = query(
-        collection(db, 'communiques'),
-        orderBy('createdAt', 'desc')
-      );
-      
-      const querySnapshot = await getDocs(q);
-      const docs = querySnapshot.docs.map(doc => ({
+      // Fetch the main list
+      const commRef = collection(db, 'communiques');
+      // We try with orderBy but fall back if it fails (e.g. missing index)
+      let snapshot;
+      try {
+        const q = query(commRef, orderBy('createdAt', 'desc'));
+        snapshot = await getDocs(q);
+      } catch (e) {
+        console.warn("Communique orderBy failed, fetching without sort:", e);
+        snapshot = await getDocs(commRef);
+      }
+
+      let docs = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Communique[];
+
+      // Manual sort if index was missing or as a safety measure
+      docs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       
       // Filter based on user role if not admin
       const visibleDocs = isAdmin 
         ? docs 
         : docs.filter(c => c.targetRoles.includes(profile?.role as UserRole) && !c.isArchived);
 
-      // Fetch read statuses
-      if (user) {
-        const statuses: Record<string, boolean> = {};
-        for (const c of visibleDocs) {
-          const readDoc = await getDoc(doc(db, 'communiques', c.id, 'reads', user.uid));
-          statuses[c.id] = readDoc.exists();
-          
-          if (isAdmin) {
-            const readersSnap = await getDocs(collection(db, 'communiques', c.id, 'reads'));
-            const readers = readersSnap.docs.map(rd => rd.data() as CommuniqueRead);
-            setCommuniqueReaders(prev => ({ ...prev, [c.id]: readers }));
-            c.readCount = readers.length;
-          }
-        }
-        setReadStatuses(statuses);
-      }
-
       setCommuniques(visibleDocs);
-    } catch (err) {
-      console.error("Error fetching communiques:", err);
-      toast.error("Erreur lors du chargement des communiqués");
+      
+      // Fetch metadata (read status and counts) asynchronously without blocking the list
+      fetchReadMetadata(visibleDocs);
+
+    } catch (err: any) {
+      console.error("Critical error fetching communiques:", err);
+      // More detailed error for the user to help debug
+      const errorMsg = err.code === 'permission-denied' 
+        ? "Accès refusé (Vérifiez votre connexion)" 
+        : "Erreur de connexion à la base de données";
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchReadMetadata = async (targetDocs: Communique[]) => {
+    if (!user) return;
+    
+    try {
+      const statuses: Record<string, boolean> = {};
+      const readers: Record<string, CommuniqueRead[]> = {};
+      const counts: Record<string, number> = {};
+
+      await Promise.all(targetDocs.map(async (c) => {
+        try {
+          // Check if current user has read it
+          const readRef = doc(db, 'communiques', c.id, 'reads', user.uid);
+          const readSnap = await getDoc(readRef);
+          statuses[c.id] = readSnap.exists();
+
+          // For admins, get the readers count and list
+          if (isAdmin) {
+            const readersRef = collection(db, 'communiques', c.id, 'reads');
+            const readersSnap = await getDocs(readersRef);
+            const readersList = readersSnap.docs.map(rd => rd.data() as CommuniqueRead);
+            readers[c.id] = readersList;
+            counts[c.id] = readersList.length;
+          }
+        } catch (e) {
+          console.warn(`Could not fetch metadata for communique ${c.id}:`, e);
+        }
+      }));
+
+      setReadStatuses(prev => ({ ...prev, ...statuses }));
+      if (isAdmin) {
+        setCommuniqueReaders(prev => ({ ...prev, ...readers }));
+        setCommuniques(prev => prev.map(c => ({
+          ...c,
+          readCount: counts[c.id] ?? c.readCount
+        })));
+      }
+    } catch (err) {
+      console.error("Error fetching read metadata:", err);
     }
   };
 
