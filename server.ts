@@ -199,16 +199,6 @@ async function startServer() {
   app.use(cookieParser());
   app.use('/uploads', express.static(UPLOADS_DIR));
 
-  // Health Check
-  app.get('/health', (req, res) => {
-    res.json({ 
-      status: 'ok', 
-      env: process.env.NODE_ENV,
-      firebase: admin.apps.length > 0 ? 'initialized' : 'not initialized',
-      timestamp: new Date().toISOString()
-    });
-  });
-
   // Auth Middleware
   const authenticate = async (req: any, res: any, next: any) => {
     const token = req.headers.authorization?.split(' ')[1] || req.cookies.token;
@@ -251,6 +241,27 @@ async function startServer() {
       res.status(401).json({ message: 'Authentification échouée: ' + err.message });
     }
   };
+
+  // Health Check
+  app.get('/health', (req, res) => {
+    res.json({ 
+      status: 'ok', 
+      env: process.env.NODE_ENV,
+      firebase: admin.apps.length > 0 ? 'initialized' : 'not initialized',
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  app.get('/api/health/config', authenticate, (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Interdit' });
+    
+    res.json({
+      firebaseAdmin: isFirebaseAdminInitialized,
+      smtp: !!(process.env.SMTP_USER && process.env.SMTP_PASS),
+      firebaseServiceAccountMissing: !process.env.FIREBASE_SERVICE_ACCOUNT,
+      smtpPassMissing: !process.env.SMTP_PASS
+    });
+  });
 
   // Password Validation Utility
   const validatePassword = (password: string) => {
@@ -429,6 +440,11 @@ async function startServer() {
       res.json(newStudent);
     } catch (err: any) {
       console.error("Error creating student in Firebase:", err);
+      if (err.code === 'auth/operation-not-allowed') {
+        return res.status(500).json({ 
+          message: "L'authentification par Email/Mot de passe n'est pas activée dans votre console Firebase. Veuillez l'activer dans 'Authentication' > 'Sign-in method'." 
+        });
+      }
       if (err.code === 'auth/email-already-in-use') {
         return res.status(400).json({ message: "Cette adresse email est déjà utilisée par un autre compte." });
       }
@@ -587,6 +603,11 @@ async function startServer() {
       res.json(newTeacher);
     } catch (err: any) {
       console.error("Error creating teacher in Firebase:", err);
+      if (err.code === 'auth/operation-not-allowed') {
+        return res.status(500).json({ 
+          message: "L'authentification par Email/Mot de passe n'est pas activée dans votre console Firebase. Veuillez l'activer dans 'Authentication' > 'Sign-in method'." 
+        });
+      }
       if (err.code === 'auth/email-already-in-use') {
         return res.status(400).json({ message: "Cette adresse email est déjà utilisée par un autre compte." });
       }

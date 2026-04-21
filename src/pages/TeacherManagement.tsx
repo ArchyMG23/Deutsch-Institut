@@ -39,7 +39,7 @@ export default function TeacherManagement() {
     
     const formData = new FormData(e.currentTarget);
     const matricule = generateMatricule('teacher');
-    const password = `Dia.${Math.random().toString(36).slice(-4)}.${Math.floor(Math.random() * 100)}`; 
+    const password = formData.get('password') as string || 'DIA2026.';
     
     const newTeacher = {
       matricule,
@@ -298,6 +298,11 @@ export default function TeacherManagement() {
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Mot de passe temporaire</label>
+                  <input name="password" type="text" defaultValue="DIA2026." className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                  <p className="text-[10px] text-neutral-500 mt-1">L'enseignant pourra le modifier par la suite.</p>
                 </div>
               </div>
               <div className="pt-4 flex gap-4">

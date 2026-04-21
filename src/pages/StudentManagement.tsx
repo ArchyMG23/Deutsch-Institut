@@ -14,7 +14,8 @@ import {
   Edit,
   Eye,
   CreditCard,
-  FileText
+  FileText,
+  Bell
 } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import { cn, formatCurrency, generateMatricule } from '../utils';
@@ -58,8 +59,7 @@ export default function StudentManagement() {
     
     const formData = new FormData(e.currentTarget);
     const matricule = generateMatricule('student');
-    // Mot de passe généré respectant les critères: min 6 car, 1 maj, 1 point, 1 chiffre
-    const password = `Dia.${Math.random().toString(36).slice(-4)}.${Math.floor(Math.random() * 100)}`; 
+    const password = formData.get('password') as string || 'DIA2026.';
     
     const levelId = formData.get('levelId') as string;
     const level = levels.find(l => l.id === levelId);
@@ -208,6 +208,27 @@ export default function StudentManagement() {
       }
     } catch (err) {
       console.error("Error updating payment:", err);
+    }
+  };
+
+  const handleSendReminder = async () => {
+    if (!selectedStudent) return;
+    
+    const level = levels.find(l => l.id === selectedStudent.levelId);
+    if (!level) {
+      toast.error("Niveau non trouvé pour cet étudiant");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await NotificationService.sendPaymentReminder(selectedStudent, level.tuition);
+      toast.success("Rappel de paiement envoyé");
+    } catch (err) {
+      console.error("Error sending reminder:", err);
+      toast.error("Erreur lors de l'envoi du rappel");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -471,6 +492,11 @@ export default function StudentManagement() {
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Paiement Initial (Tranche 3)</label>
                   <input name="tranche3" type="number" placeholder="0" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Mot de passe par défaut</label>
+                  <input name="password" type="text" defaultValue="DIA2026." className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                  <p className="text-[10px] text-neutral-500 mt-1">L'étudiant pourra le modifier après sa première connexion.</p>
+                </div>
               </div>
               <div className="pt-4 flex gap-4">
                 <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
@@ -601,15 +627,15 @@ export default function StudentManagement() {
                   </p>
                 </div>
               </div>
-              <div className="pt-6 border-t border-neutral-100 dark:border-neutral-800 flex gap-4">
+              <div className="pt-6 border-t border-neutral-100 dark:border-neutral-800 flex gap-3 flex-wrap">
                 <button 
                   onClick={() => {
                     setIsDetailModalOpen(false);
                     setIsEditModalOpen(true);
                   }}
-                  className="flex-1 btn-primary py-3 flex items-center justify-center gap-2"
+                  className="flex-1 min-w-[120px] btn-primary py-3 flex items-center justify-center gap-2 text-sm"
                 >
-                  <Edit size={18} />
+                  <Edit size={16} />
                   Modifier
                 </button>
                 <button 
@@ -617,10 +643,22 @@ export default function StudentManagement() {
                     setIsDetailModalOpen(false);
                     setIsReceiptModalOpen(true);
                   }}
-                  className="flex-1 bg-neutral-100 dark:bg-neutral-800 py-3 rounded-2xl font-bold hover:bg-neutral-200 transition-all flex items-center justify-center gap-2"
+                  className="flex-1 min-w-[120px] bg-neutral-100 dark:bg-neutral-800 py-3 rounded-2xl font-bold hover:bg-neutral-200 transition-all flex items-center justify-center gap-2 text-sm"
                 >
-                  <CreditCard size={18} />
+                  <CreditCard size={16} />
                   Paiements
+                </button>
+                <button 
+                  onClick={handleSendReminder}
+                  disabled={submitting}
+                  className="flex-1 min-w-[120px] bg-dia-red/10 text-dia-red py-3 rounded-2xl font-bold hover:bg-dia-red/20 transition-all flex items-center justify-center gap-2 text-sm"
+                >
+                  {submitting ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-dia-red/30 border-t-dia-red"></div>
+                  ) : (
+                    <Bell size={16} />
+                  )}
+                  Rappel
                 </button>
               </div>
             </div>

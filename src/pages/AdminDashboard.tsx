@@ -5,7 +5,12 @@ import {
   TrendingUp, 
   TrendingDown,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  AlertTriangle,
+  CheckCircle2,
+  Settings,
+  ShieldAlert,
+  ExternalLink
 } from 'lucide-react';
 import { 
   XAxis, 
@@ -18,13 +23,29 @@ import {
 } from 'recharts';
 import { cn, formatCurrency } from '../utils';
 import { useData } from '../context/DataContext';
+import { useAuth } from '../context/AuthContext';
 
 export default function AdminDashboard() {
   const { students, teachers, finances, loading, refreshAll } = useData();
+  const { fetchWithAuth } = useAuth();
+  const [configStatus, setConfigStatus] = useState<any>(null);
 
   useEffect(() => {
     refreshAll();
+    checkConfig();
   }, [refreshAll]);
+
+  const checkConfig = async () => {
+    try {
+      const res = await fetchWithAuth('/api/health/config');
+      if (res.ok) {
+        const data = await res.json();
+        setConfigStatus(data);
+      }
+    } catch (err) {
+      console.error("Error checking config:", err);
+    }
+  };
 
   const totalIncome = finances
     .filter(f => f.type === 'income')
@@ -80,6 +101,72 @@ export default function AdminDashboard() {
           trendType="down"
         />
       </div>
+
+      {/* Configuration Assistant */}
+      {configStatus && (
+        <div className={cn(
+          "card p-6 border-l-4",
+          (configStatus.firebaseServiceAccountMissing || configStatus.smtpPassMissing) 
+            ? "border-l-amber-500 bg-amber-50/30 dark:bg-amber-950/10" 
+            : "border-l-green-500 bg-green-50/30 dark:bg-green-950/10"
+        )}>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-4">
+              <div className={cn(
+                "w-12 h-12 rounded-2xl flex items-center justify-center",
+                (configStatus.firebaseServiceAccountMissing || configStatus.smtpPassMissing) ? "bg-amber-100 text-amber-600" : "bg-green-100 text-green-600"
+              )}>
+                { (configStatus.firebaseServiceAccountMissing || configStatus.smtpPassMissing) ? <ShieldAlert size={24} /> : <CheckCircle2 size={24} /> }
+              </div>
+              <div>
+                <h3 className="font-bold text-lg">Assistant de Configuration</h3>
+                <p className="text-sm text-neutral-500">Vérifiez l'état de vos services backend.</p>
+              </div>
+            </div>
+            <a 
+              href="https://console.firebase.google.com/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-sm font-bold text-dia-red hover:underline"
+            >
+              Console Firebase <ExternalLink size={14} />
+            </a>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+            <div className="p-4 rounded-2xl bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Automatisation (Firebase Admin)</span>
+                {configStatus.firebaseAdmin ? <CheckCircle2 size={16} className="text-green-500" /> : <AlertTriangle size={16} className="text-amber-500" />}
+              </div>
+              <p className="text-sm">
+                {configStatus.firebaseAdmin 
+                  ? "Opérationnel. Les comptes sont créés automatiquement." 
+                  : "Désactivé. Ajoutez le secret FIREBASE_SERVICE_ACCOUNT pour automatiser la création des comptes."}
+              </p>
+            </div>
+            <div className="p-4 rounded-2xl bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Emails (SMTP)</span>
+                {configStatus.smtp ? <CheckCircle2 size={16} className="text-green-500" /> : <AlertTriangle size={16} className="text-amber-500" />}
+              </div>
+              <p className="text-sm">
+                {configStatus.smtp 
+                  ? "Opérationnel. Les emails sont envoyés aux utilisateurs." 
+                  : "Simulation. Ajoutez SMTP_PASS (Mot de passe d'application Google) pour envoyer de vrais emails."}
+              </p>
+            </div>
+          </div>
+          
+          {!configStatus.firebaseAdmin && (
+            <div className="mt-4 p-4 bg-dia-red/5 rounded-xl border border-dia-red/10">
+              <p className="text-xs text-dia-red leading-relaxed">
+                <strong>Important :</strong> Pour que les élèves se connectent directement, assurez-vous également que la méthode <strong>"Email / Mot de passe"</strong> est bien <strong>activée</strong> dans l'onglet Authentication de votre console Firebase.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Financial Chart */}
