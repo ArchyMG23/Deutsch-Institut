@@ -172,10 +172,8 @@ export default function TeacherManagement() {
         </button>
       </div>
 
-      {/* Search */}
       <div className="card p-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={18} />
+        <div className="relative group">
           <input 
             type="text" 
             value={searchQuery}
@@ -183,6 +181,7 @@ export default function TeacherManagement() {
             placeholder="Rechercher un enseignant..."
             className="w-full pl-10 pr-4 py-2 bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg focus:ring-2 focus:ring-dia-red transition-all"
           />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none z-10" size={18} />
         </div>
       </div>
 

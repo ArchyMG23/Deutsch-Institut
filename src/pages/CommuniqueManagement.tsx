@@ -257,7 +257,6 @@ export default function CommuniqueManagement() {
       {/* Filters */}
       <div className="flex flex-col md:flex-row gap-4 items-center">
         <div className="relative flex-1 group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors" size={20} />
           <input 
             type="text" 
             placeholder="Rechercher une annonce..." 
@@ -265,6 +264,7 @@ export default function CommuniqueManagement() {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-12 pr-4 py-3 bg-white border border-neutral-100 rounded-2xl focus:ring-2 focus:ring-dia-red/10 focus:border-dia-red outline-none shadow-sm transition-all text-sm"
           />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none z-10" size={20} />
         </div>
         {isAdmin && (
           <div className="flex items-center gap-2 bg-white p-1 rounded-2xl border border-neutral-100 shadow-sm">
