@@ -124,8 +124,10 @@ export default function CommuniqueManagement() {
   };
 
   useEffect(() => {
-    fetchCommuniques();
-  }, [profile?.role]);
+    if (user && profile) {
+      fetchCommuniques();
+    }
+  }, [user, profile?.role]);
 
   const handleAddCommunique = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
