@@ -32,6 +32,9 @@ export default function AdminDashboard() {
   const [configStatus, setConfigStatus] = useState<any>(null);
   const [logs, setLogs] = useState<any[]>([]);
   const [testingEmail, setTestingEmail] = useState(false);
+  const [diagMatricule, setDiagMatricule] = useState('');
+  const [diagResult, setDiagResult] = useState<any>(null);
+  const [checkingDiag, setCheckingDiag] = useState(false);
 
   useEffect(() => {
     refreshAll();
@@ -77,6 +80,25 @@ export default function AdminDashboard() {
       toast.error("Erreur lors du test de l'email.");
     } finally {
       setTestingEmail(false);
+    }
+  };
+
+  const handleCheckUser = async () => {
+    if (!diagMatricule) return;
+    setCheckingDiag(true);
+    setDiagResult(null);
+    try {
+      const res = await fetchWithAuth('/api/admin/check-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matricule: diagMatricule })
+      });
+      const data = await res.json();
+      setDiagResult(data);
+    } catch (err) {
+      toast.error("Erreur lors du diagnostic utilisateur.");
+    } finally {
+      setCheckingDiag(false);
     }
   };
 
@@ -249,44 +271,95 @@ export default function AdminDashboard() {
 
       {/* Server Logs Section */}
       <div className="card p-6 mb-6">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="font-bold text-lg">Journaux du Serveur (Diagnostics)</h3>
-          <button 
-            onClick={fetchLogs}
-            className="text-xs font-bold text-dia-red flex items-center gap-1 hover:underline"
-          >
-            Actualiser les logs ❯
-          </button>
-        </div>
-        <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
-          {logs.length === 0 ? (
-            <p className="text-center text-neutral-500 py-10">Aucun log récent.</p>
-          ) : (
-            [...logs].reverse().map((log, idx) => (
-              <div key={idx} className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-100 dark:border-neutral-800">
-                <div className="flex items-center justify-between mb-1">
-                  <span className={cn(
-                    "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase",
-                    log.type === 'ERROR' ? "bg-red-100 text-red-600" : 
-                    log.type === 'EMAIL' ? "bg-blue-100 text-blue-600" :
-                    log.type === 'AUTH' ? "bg-purple-100 text-purple-600" :
-                    "bg-green-100 text-green-600"
-                  )}>
-                    {log.type}
-                  </span>
-                  <span className="text-[10px] text-neutral-400 font-mono">
-                    {new Date(log.timestamp).toLocaleTimeString()}
-                  </span>
+        <div className="flex flex-col lg:flex-row gap-6">
+          <div className="lg:w-2/3">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-bold text-lg">Journaux du Serveur (Diagnostics)</h3>
+              <button 
+                onClick={fetchLogs}
+                className="text-xs font-bold text-dia-red flex items-center gap-1 hover:underline"
+              >
+                Actualiser les logs ❯
+              </button>
+            </div>
+            <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
+              {logs.length === 0 ? (
+                <p className="text-center text-neutral-500 py-10">Aucun log récent.</p>
+              ) : (
+                [...logs].reverse().map((log, idx) => (
+                  <div key={idx} className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-100 dark:border-neutral-800">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={cn(
+                        "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase",
+                        log.type === 'ERROR' ? "bg-red-100 text-red-600" : 
+                        log.type === 'EMAIL' ? "bg-blue-100 text-blue-600" :
+                        log.type === 'AUTH' ? "bg-purple-100 text-purple-600" :
+                        "bg-green-100 text-green-600"
+                      )}>
+                        {log.type}
+                      </span>
+                      <span className="text-[10px] text-neutral-400 font-mono">
+                        {new Date(log.timestamp).toLocaleTimeString()}
+                      </span>
+                    </div>
+                    <p className="text-sm font-medium">{log.message}</p>
+                    {log.details && (
+                      <p className="text-[10px] font-mono text-neutral-500 mt-1 break-all bg-neutral-100 dark:bg-neutral-900 p-1 rounded">
+                        {log.details}
+                      </p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+          
+          <div className="lg:w-1/3 p-4 rounded-3xl bg-neutral-50 dark:bg-neutral-800/20 border border-dashed border-neutral-200 dark:border-neutral-700">
+            <h4 className="font-bold text-sm mb-4">Vérificateur d'Identifiants</h4>
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-bold uppercase text-neutral-400 ml-1">Matricule à tester</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={diagMatricule}
+                    onChange={(e) => setDiagMatricule(e.target.value)}
+                    placeholder="Ex: S261234"
+                    className="flex-1 px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-dia-red/20"
+                  />
+                  <button 
+                    onClick={handleCheckUser}
+                    disabled={checkingDiag}
+                    className="px-4 py-2 bg-dia-red text-white text-xs font-bold rounded-xl disabled:opacity-50"
+                  >
+                    Vérifier
+                  </button>
                 </div>
-                <p className="text-sm font-medium">{log.message}</p>
-                {log.details && (
-                  <p className="text-[10px] font-mono text-neutral-500 mt-1 break-all bg-neutral-100 dark:bg-neutral-900 p-1 rounded">
-                    {log.details}
-                  </p>
-                )}
               </div>
-            ))
-          )}
+
+              {diagResult && (
+                <div className="p-3 bg-white dark:bg-neutral-800 rounded-2xl border border-neutral-100 dark:border-neutral-700 animate-in fade-in zoom-in-95">
+                  {diagResult.exists ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-green-500 text-xs font-bold mb-1">
+                        <CheckCircle2 size={14} /> Trouvé
+                      </div>
+                      <p className="text-xs"><strong>Nom :</strong> {diagResult.user.firstName} {diagResult.user.lastName}</p>
+                      <p className="text-xs"><strong>Email exact :</strong> {diagResult.user.email}</p>
+                      <p className="text-xs"><strong>Rôle :</strong> <span className="capitalize">{diagResult.user.role}</span></p>
+                      <p className="text-[10px] text-neutral-400 mt-2 italic leading-tight">
+                        Note : Pour se connecter, cet utilisateur doit utiliser l'email ci-dessus si le matricule échoue.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-dia-red text-xs font-bold">
+                      <AlertTriangle size={14} /> {diagResult.message}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

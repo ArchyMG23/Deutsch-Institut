@@ -108,7 +108,7 @@ const transporter = nodemailer.createTransport({
   // Force IPv4 because some environments have issues routing IPv6 for SMTP
   // @ts-ignore - family is a valid option but missing in some specific type definitions
   family: 4
-});
+} as any);
 
 // Verify SMTP connection at startup
 let isSmtpOperational = false;
@@ -147,6 +147,27 @@ async function sendEmail(to: string, subject: string, text: string, html?: strin
     addLog('EMAIL', `Email envoyé avec succès à ${to}`, { messageId: info.messageId });
   } catch (err: any) {
     addLog('ERROR', `Échec de l'envoi d'email à ${to}`, err.message);
+  }
+}
+
+async function sendPushNotification(tokens: string[], title: string, body: string, data: any = {}) {
+  if (!isFirebaseAdminInitialized || tokens.length === 0) return;
+  
+  try {
+    const messaging = admin.messaging();
+    const response = await messaging.sendEachForMulticast({
+      tokens,
+      notification: {
+        title,
+        body,
+      },
+      data: {
+        ...data,
+      },
+    });
+    addLog('INFO', `Push notifications envoyées (${response.successCount} succès, ${response.failureCount} échecs)`);
+  } catch (err: any) {
+    addLog('ERROR', `Échec de l'envoi des notifications push`, err.message);
   }
 }
 
@@ -352,10 +373,10 @@ async function startServer() {
   // Auth Routes
   app.post('/api/auth/login', async (req, res) => {
     const { matricule, password } = req.body;
-    console.log(`[LOGIN] Attempting lookup for matricule: ${matricule}`);
+    addLog('AUTH', `Tentative de recherche d'email pour: ${matricule}`);
     
     if (!isFirebaseAdminInitialized) {
-      console.error("[LOGIN] Firebase Admin not initialized, cannot perform lookup.");
+      addLog('ERROR', "Login: Firebase Admin non initialisé");
       return res.status(503).json({ message: 'Service temporairement indisponible (Firebase non initialisé)' });
     }
 
@@ -365,22 +386,141 @@ async function startServer() {
       let userDoc = userQuery.docs[0];
       
       if (!userDoc) {
-        console.log(`[LOGIN] Matricule ${matricule} not found, trying email lookup...`);
-        // Try by email
+        addLog('INFO', `Matricule ${matricule} non trouvé, essai par email...`);
         const emailQuery = await dbAdmin.collection('users').where('email', '==', matricule.toLowerCase()).get();
         userDoc = emailQuery.docs[0];
       }
 
       if (!userDoc) {
-        console.warn(`[LOGIN] No user found for identifier: ${matricule}`);
+        addLog('AUTH', `Aucun profil trouvé pour: ${matricule}`);
         return res.status(401).json({ message: 'Identifiants incorrects' });
       }
 
       const userData = userDoc.data();
-      console.log(`[LOGIN] User found: ${userData.email} (Role: ${userData.role})`);
+      addLog('AUTH', `Email trouvé pour ${matricule}: ${userData.email}`);
       res.json({ user: userData });
     } catch (err: any) {
-      console.error(`[LOGIN] Error during lookup for ${matricule}:`, err);
+      addLog('ERROR', `Erreur lors du login/lookup pour ${matricule}`, err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/notifications/send-email', authenticate, async (req: any, res) => {
+    // Only allow admins and teachers to send notifications
+    if (req.user.role !== 'admin' && req.user.role !== 'teacher') {
+      return res.status(403).json({ message: 'Droits insuffisants' });
+    }
+
+    const { to, subject, text, html, pushTitle, pushBody } = req.body;
+    
+    if (!to || !subject || (!text && !html)) {
+      return res.status(400).json({ message: 'Données manquantes pour l\'envoi de l\'email' });
+    }
+
+    try {
+      // Async send to avoid blocking the client
+      sendEmail(to, subject, text, html).catch(e => console.error("Notification API email error:", e));
+      
+      // If push info is provided, try to find user's token and send push
+      if (pushTitle && pushBody) {
+        const usersRef = dbAdmin.collection('users');
+        const snapshot = await usersRef.where('email', '==', to).get();
+        if (!snapshot.empty) {
+          const userDoc = snapshot.docs[0].data();
+          if (userDoc.fcmToken) {
+            sendPushNotification([userDoc.fcmToken], pushTitle, pushBody).catch(e => console.error("Push error:", e));
+          }
+        }
+      }
+
+      res.json({ message: 'Notification envoyée' });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // API to send a communique to multiple users
+  app.post('/api/communiques', authenticate, async (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Seul l\'administrateur peut envoyer un communiqué' });
+    
+    const { title, content, targetRoles } = req.body;
+    if (!title || !content || !targetRoles || !Array.isArray(targetRoles)) {
+      return res.status(400).json({ message: 'Données de communiqué invalides' });
+    }
+
+    try {
+      const createdAt = new Date().toISOString();
+      const communique = {
+        title,
+        content,
+        targetRoles,
+        authorId: req.user.uid,
+        authorName: req.user.name || 'Admin',
+        createdAt,
+        isArchived: false
+      };
+
+      const docRef = await dbAdmin.collection('communiques').add(communique);
+      
+      // Distribute notification asynchronously
+      // 1. Fetch target users
+      const usersRef = dbAdmin.collection('users');
+      let query = usersRef.where('role', 'in', targetRoles);
+      const snapshot = await query.get();
+      
+      const tokens: string[] = [];
+      const emails: string[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.fcmToken) tokens.push(data.fcmToken);
+        if (data.email) emails.push(data.email);
+      });
+
+      // 2. Send Push
+      if (tokens.length > 0) {
+        sendPushNotification(tokens, `Communiqué: ${title}`, content, { type: 'communique', id: docRef.id });
+      }
+
+      // 3. Send Emails (batched slightly)
+      emails.forEach(email => {
+        const html = `
+          <div style="font-family: sans-serif; max-width: 600px; padding: 20px; border: 1px solid #eee; border-radius: 12px;">
+            <h2 style="color: #E31E24;">Communiqué Officiel - DIA_SAAS</h2>
+            <h3 style="margin-top: 20px;">${title}</h3>
+            <div style="padding: 15px; background: #f9f9f9; border-left: 4px solid #E31E24; margin: 20px 0; white-space: pre-wrap;">
+              ${content}
+            </div>
+            <p style="font-size: 12px; color: #888;">Envoyé par l'administration le ${new Date(createdAt).toLocaleString('fr-FR')}</p>
+            <p><a href="${process.env.APP_URL || 'https://' + req.get('host')}/login" style="color: #E31E24; font-weight: bold;">Consulter les archives</a></p>
+          </div>
+        `;
+        sendEmail(email, `[COMMUNIQUÉ] ${title}`, content, html).catch(e => console.error(`Communique email failed for ${email}:`, e));
+      });
+
+      res.json({ id: docRef.id, message: 'Communiqué créé et distribué' });
+    } catch (err: any) {
+      console.error("Communique creation error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/admin/check-user', authenticate, async (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Interdit' });
+    const { matricule } = req.body;
+    
+    try {
+      const userQuery = await dbAdmin.collection('users').where('matricule', '==', matricule.toUpperCase()).get();
+      if (userQuery.empty) {
+        // Try email
+        const emailQuery = await dbAdmin.collection('users').where('email', '==', matricule.toLowerCase()).get();
+        if (emailQuery.empty) {
+          return res.json({ exists: false, message: "Utilisateur introuvable." });
+        }
+        return res.json({ exists: true, user: emailQuery.docs[0].data() });
+      }
+      return res.json({ exists: true, user: userQuery.docs[0].data() });
+    } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });
@@ -913,7 +1053,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  app.listen(Number(PORT), "0.0.0.0", () => {
     console.log(`Server running on port ${PORT} (env: ${process.env.NODE_ENV || 'development'})`);
   });
 }

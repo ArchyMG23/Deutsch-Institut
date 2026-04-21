@@ -11,6 +11,7 @@ export interface UserProfile {
   photoURL?: string;
   mustChangePassword?: boolean;
   status: 'online' | 'offline';
+  fcmToken?: string;
   createdAt: string;
 }
 
@@ -96,4 +97,22 @@ export interface LibraryItem {
   addedBy: string;
   fileName?: string;
   fileSize?: number;
+}
+
+export interface Communique {
+  id: string;
+  title: string;
+  content: string;
+  authorId: string;
+  authorName: string;
+  targetRoles: UserRole[];
+  createdAt: string;
+  isArchived: boolean;
+  readCount?: number; // Optional metadata for display
+}
+
+export interface CommuniqueRead {
+  userId: string;
+  userName: string;
+  readAt: string;
 }

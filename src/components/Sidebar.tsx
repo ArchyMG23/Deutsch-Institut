@@ -12,7 +12,8 @@ import {
   LogOut,
   Menu,
   X,
-  User
+  User,
+  Bell
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../utils';
@@ -30,6 +31,7 @@ export function Sidebar() {
     { to: '/admin/classes', icon: LayoutDashboard, label: 'Classes' },
     { to: '/admin/finances', icon: Wallet, label: 'Finances' },
     { to: '/admin/library', icon: Library, label: 'Bibliothèque' },
+    { to: '/admin/communiques', icon: Bell, label: 'Communiqués' },
   ];
 
   const teacherLinks = [
@@ -37,6 +39,7 @@ export function Sidebar() {
     { to: '/teacher/planning', icon: Calendar, label: 'Planning' },
     { to: '/teacher/students', icon: Users, label: 'Étudiants' },
     { to: '/teacher/library', icon: Library, label: 'Bibliothèque' },
+    { to: '/teacher/communiques', icon: Bell, label: 'Communiqués' },
     { to: '/teacher/profile', icon: User, label: 'Mon Profil' },
   ];
 
@@ -44,6 +47,7 @@ export function Sidebar() {
     { to: '/student', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/student/calendar', icon: Calendar, label: 'Calendrier' },
     { to: '/student/library', icon: Library, label: 'Bibliothèque' },
+    { to: '/student/communiques', icon: Bell, label: 'Communiqués' },
     { to: '/student/profile', icon: User, label: 'Mon Profil' },
   ];
 

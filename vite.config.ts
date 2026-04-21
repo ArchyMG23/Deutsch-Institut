@@ -14,9 +14,14 @@ export default defineConfig(({mode}) => {
       chunkSizeWarningLimit: 1000,
       rollupOptions: {
         output: {
-          manualChunks: {
-            'vendor': ['react', 'react-dom', 'react-router-dom'],
-            'icons': ['lucide-react']
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('lucide-react')) return 'icons';
+              if (id.includes('motion') || id.includes('framer-motion')) return 'animations';
+              if (id.includes('recharts') || id.includes('d3')) return 'charts';
+              if (id.includes('firebase')) return 'firebase';
+              return 'vendor';
+            }
           }
         }
       }

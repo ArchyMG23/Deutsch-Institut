@@ -16,6 +16,7 @@ const ClassManagement = lazy(() => import('./pages/ClassManagement'));
 const FinanceManagement = lazy(() => import('./pages/FinanceManagement'));
 const LibraryManagement = lazy(() => import('./pages/LibraryManagement'));
 const LevelManagement = lazy(() => import('./pages/LevelManagement'));
+const CommuniqueManagement = lazy(() => import('./pages/CommuniqueManagement'));
 const StudentDashboard = lazy(() => import('./pages/StudentDashboard'));
 const StudentCalendar = lazy(() => import('./pages/StudentCalendar'));
 const StudentProfile = lazy(() => import('./pages/StudentProfile'));
@@ -104,6 +105,13 @@ function AnimatedRoutes() {
             </DashboardLayout>
           </RoleGuard>
         } />,
+        <Route path="/admin/communiques" element={
+          <RoleGuard allowedRoles={['admin']}>
+            <DashboardLayout>
+              <PageWrapper><CommuniqueManagement /></PageWrapper>
+            </DashboardLayout>
+          </RoleGuard>
+        } />,
 
         /* Teacher Routes */
         <Route path="/teacher" element={
@@ -134,6 +142,13 @@ function AnimatedRoutes() {
             </DashboardLayout>
           </RoleGuard>
         } />,
+        <Route path="/teacher/communiques" element={
+          <RoleGuard allowedRoles={['teacher']}>
+            <DashboardLayout>
+              <PageWrapper><CommuniqueManagement /></PageWrapper>
+            </DashboardLayout>
+          </RoleGuard>
+        } />,
         <Route path="/teacher/profile" element={
           <RoleGuard allowedRoles={['teacher']}>
             <DashboardLayout>
@@ -161,6 +176,13 @@ function AnimatedRoutes() {
           <RoleGuard allowedRoles={['student', 'admin']}>
             <DashboardLayout>
               <PageWrapper><LibraryManagement /></PageWrapper>
+            </DashboardLayout>
+          </RoleGuard>
+        } />,
+        <Route path="/student/communiques" element={
+          <RoleGuard allowedRoles={['student']}>
+            <DashboardLayout>
+              <PageWrapper><CommuniqueManagement /></PageWrapper>
             </DashboardLayout>
           </RoleGuard>
         } />,

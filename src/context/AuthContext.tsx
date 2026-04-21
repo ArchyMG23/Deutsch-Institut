@@ -16,9 +16,10 @@ import {
   getDocs,
   serverTimestamp 
 } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { auth, db, messaging } from '../firebase';
 import { UserProfile } from '../types';
 import { toast } from 'sonner';
+import { getToken } from 'firebase/messaging';
 
 interface AuthContextType {
   user: any | null;
@@ -89,6 +90,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.log("AuthProvider: Profile found:", userData.role);
             setUser(firebaseUser);
             setProfile(userData);
+
+            // Register for Push Notifications if supported
+            if (messaging && typeof window !== 'undefined') {
+              try {
+                const permission = await Notification.requestPermission();
+                if (permission === 'granted') {
+                  const token = await getToken(messaging).catch(e => {
+                    console.warn("FCM Token fetch failed:", e);
+                    return null;
+                  });
+                  
+                  if (token && userData.fcmToken !== token) {
+                    await setDoc(doc(db, 'users', firebaseUser.uid), { fcmToken: token }, { merge: true });
+                    console.log("AuthProvider: FCM Token updated");
+                  }
+                }
+              } catch (err) {
+                console.warn("AuthProvider: Push permission request error:", err);
+              }
+            }
           } else {
             console.warn("AuthProvider: User exists in Auth but no Firestore profile found for UID:", firebaseUser.uid);
             console.log("AuthProvider: This might mean the server bootstrap hasn't finished or failed.");
@@ -192,7 +213,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
+  const fetchWithAuth = React.useCallback(async (url: string, options: RequestInit = {}) => {
     if (!auth.currentUser) {
       toast.error('Session expirée. Veuillez vous reconnecter.');
       throw new Error('Non authentifié');
@@ -215,7 +236,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       toast.error("Erreur réseau ou serveur. Veuillez réessayer.");
       throw err;
     }
-  };
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, login, logout, updateProfile, changePassword, validatePassword, fetchWithAuth }}>

@@ -75,7 +75,7 @@ export default function TeacherManagement() {
           });
         }
 
-        await NotificationService.sendCredentials(teacher, password);
+        await NotificationService.sendCredentials(fetchWithAuth, teacher, password);
         setIsAddModalOpen(false);
         refreshTeachers();
         refreshClasses();

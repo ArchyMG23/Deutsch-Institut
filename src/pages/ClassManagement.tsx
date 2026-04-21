@@ -296,11 +296,18 @@ export default function ClassManagement() {
                       const teacher = teachers.find(t => t.id === updated.teacherId);
                       const classStudents = students.filter(s => updated.studentIds.includes(s.id));
                       
+                      const eventDetails = { 
+                        className: updated.name, 
+                        subject: newItem.subject, 
+                        date: newItem.day, 
+                        time: `${newItem.startTime}-${newItem.endTime}` 
+                      };
+
                       if (teacher) {
-                        await NotificationService.sendCourseSchedule(teacher, updated.name, newItem.subject, newItem.day, `${newItem.startTime}-${newItem.endTime}`);
+                        await NotificationService.sendEventUpdate(fetchWithAuth, teacher, 'course', 'added', eventDetails);
                       }
                       for (const student of classStudents) {
-                        await NotificationService.sendCourseSchedule(student, updated.name, newItem.subject, newItem.day, `${newItem.startTime}-${newItem.endTime}`);
+                        await NotificationService.sendEventUpdate(fetchWithAuth, student, 'course', 'added', eventDetails);
                       }
 
                       setSelectedClass(updated);
@@ -345,6 +352,25 @@ export default function ClassManagement() {
                             });
                             if (res.ok) {
                               const updated = await res.json();
+                              const removedItem = selectedClass.schedule[idx];
+                              
+                              // Notify teacher and students
+                              const teacher = teachers.find(t => t.id === updated.teacherId);
+                              const classStudents = students.filter(s => updated.studentIds.includes(s.id));
+                              const eventDetails = { 
+                                className: updated.name, 
+                                subject: removedItem.subject, 
+                                date: removedItem.day, 
+                                time: `${removedItem.startTime}-${removedItem.endTime}` 
+                              };
+
+                              if (teacher) {
+                                await NotificationService.sendEventUpdate(fetchWithAuth, teacher, 'course', 'cancelled', eventDetails);
+                              }
+                              for (const student of classStudents) {
+                                await NotificationService.sendEventUpdate(fetchWithAuth, student, 'course', 'cancelled', eventDetails);
+                              }
+
                               setSelectedClass(updated);
                               refreshClasses();
                             }
@@ -370,10 +396,10 @@ export default function ClassManagement() {
                     const formData = new FormData(e.currentTarget);
                     const newItem = {
                       id: Date.now().toString(),
-                      title: formData.get('title'),
-                      date: formData.get('date'),
-                      startTime: formData.get('startTime'),
-                      endTime: formData.get('endTime')
+                      title: formData.get('title') as string,
+                      date: formData.get('date') as string,
+                      startTime: formData.get('startTime') as string,
+                      endTime: formData.get('endTime') as string
                     };
                     const updatedExams = [...selectedClass.exams, newItem];
                     const res = await fetchWithAuth(`/api/classes/${selectedClass.id}`, {
@@ -381,8 +407,26 @@ export default function ClassManagement() {
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ exams: updatedExams })
                     });
-                      if (res.ok) {
+                     if (res.ok) {
                         const updated = await res.json();
+                        
+                        // Notify teacher and students
+                        const teacher = teachers.find(t => t.id === updated.teacherId);
+                        const classStudents = students.filter(s => updated.studentIds.includes(s.id));
+                        const eventDetails = { 
+                          className: updated.name, 
+                          subject: newItem.title, 
+                          date: newItem.date as string, 
+                          time: `${newItem.startTime}-${newItem.endTime}` 
+                        };
+
+                        if (teacher) {
+                          await NotificationService.sendEventUpdate(fetchWithAuth, teacher, 'exam', 'added', eventDetails);
+                        }
+                        for (const student of classStudents) {
+                          await NotificationService.sendEventUpdate(fetchWithAuth, student, 'exam', 'added', eventDetails);
+                        }
+
                         setSelectedClass(updated);
                         refreshClasses();
                         (e.target as HTMLFormElement).reset();
@@ -418,6 +462,24 @@ export default function ClassManagement() {
                             });
                             if (res.ok) {
                               const updated = await res.json();
+                              
+                              // Notify teacher and students
+                              const teacher = teachers.find(t => t.id === updated.teacherId);
+                              const classStudents = students.filter(s => updated.studentIds.includes(s.id));
+                              const eventDetails = { 
+                                className: updated.name, 
+                                subject: exam.title, 
+                                date: exam.date, 
+                                time: `${exam.startTime}-${exam.endTime}` 
+                              };
+
+                              if (teacher) {
+                                await NotificationService.sendEventUpdate(fetchWithAuth, teacher, 'exam', 'cancelled', eventDetails);
+                              }
+                              for (const student of classStudents) {
+                                await NotificationService.sendEventUpdate(fetchWithAuth, student, 'exam', 'cancelled', eventDetails);
+                              }
+
                               setSelectedClass(updated);
                               refreshClasses();
                             }
@@ -455,7 +517,7 @@ export default function ClassManagement() {
                           const student = students.find(s => s.id === studentId);
                           if (student) {
                             const scheduleStr = updated.schedule?.map((s: any) => `${s.day} (${s.startTime}-${s.endTime})`).join(', ');
-                            await NotificationService.sendCredentials(student, '********', updated.name, scheduleStr);
+                            await NotificationService.sendCredentials(fetchWithAuth, student, '********', updated.name, scheduleStr);
                           }
 
                           setSelectedClass(updated);

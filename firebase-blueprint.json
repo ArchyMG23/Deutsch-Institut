@@ -13,6 +13,7 @@
         "lastName": { "type": "string" },
         "mustChangePassword": { "type": "boolean" },
         "status": { "type": "string", "enum": ["online", "offline"] },
+        "fcmToken": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "matricule", "email", "role", "firstName", "lastName"]
@@ -77,6 +78,32 @@
         "category": { "type": "string" },
         "addedAt": { "type": "string" }
       }
+    },
+    "communiques": {
+      "title": "Communique",
+      "description": "Administrative announcements and news",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "targetRoles": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "isArchived": { "type": "boolean" }
+      },
+      "required": ["title", "content", "authorId", "targetRoles", "createdAt"]
+    },
+    "communiqueRead": {
+      "title": "Communique Read Record",
+      "description": "Timestamp and user info of when a communique was read",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "readAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "readAt"]
     }
   },
   "firestore": {
@@ -103,6 +130,14 @@
     "/library/{itemId}": {
       "schema": "library",
       "description": "Library resources"
+    },
+    "/communiques/{communiqueId}": {
+      "schema": "communiques",
+      "description": "Announcements"
+    },
+    "/communiques/{communiqueId}/reads/{userId}": {
+      "schema": "communiqueRead",
+      "description": "Tracking who read the communique"
     }
   }
 }

@@ -100,7 +100,7 @@ export default function StudentManagement() {
         const student = await res.json();
         
         const scheduleStr = cls?.schedule?.map(s => `${s.day} (${s.startTime}-${s.endTime})`).join(', ');
-        await NotificationService.sendCredentials(student, password, cls?.name, scheduleStr);
+        await NotificationService.sendCredentials(fetchWithAuth, student, password, cls?.name, scheduleStr);
 
         setIsAddModalOpen(false);
         refreshStudents();
@@ -222,7 +222,7 @@ export default function StudentManagement() {
 
     try {
       setSubmitting(true);
-      await NotificationService.sendPaymentReminder(selectedStudent, level.tuition);
+      await NotificationService.sendPaymentReminder(fetchWithAuth, selectedStudent, level.tuition);
       toast.success("Rappel de paiement envoyé");
     } catch (err) {
       console.error("Error sending reminder:", err);
