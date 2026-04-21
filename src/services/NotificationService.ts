@@ -1,5 +1,6 @@
 import { Student, Teacher, ClassRoom } from '../types';
 import { formatCurrency } from '../utils';
+import { toast } from 'sonner';
 
 export const NotificationService = {
   /**
@@ -19,8 +20,13 @@ export const NotificationService = {
     message += `\nLien de connexion : ${window.location.origin}/login`;
     
     console.log("Credentials notification prepared:", message);
-    // In a real app, this would call a backend API to send an email.
-    // The backend already sends an email on creation.
+    
+    // Affichage des identifiants à l'écran pour l'admin comme sécurité
+    toast.info(`Identifiants générés : ${user.matricule} / ${password}`, {
+      duration: 10000,
+      description: "L'élève recevra également un email automatique."
+    });
+
     return true;
   },
 

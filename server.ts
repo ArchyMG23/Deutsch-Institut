@@ -58,6 +58,7 @@ if (!admin.apps.length) {
       // Use the specific database ID if provided, otherwise default
       const dbId = firebaseConfig.firestoreDatabaseId || process.env.FIREBASE_DATABASE_ID;
       dbAdmin = dbId ? getFirestore(app, dbId) : getFirestore(app);
+      dbAdmin.settings({ ignoreUndefinedProperties: true });
       
       console.log(`✅ Firebase Admin: Initialisé avec succès (Database: ${dbId || '(default)'}).`);
     } catch (err) {
@@ -71,6 +72,7 @@ if (!admin.apps.length) {
   authAdmin = admin.auth();
   const dbId = firebaseConfig.firestoreDatabaseId || process.env.FIREBASE_DATABASE_ID;
   dbAdmin = dbId ? getFirestore(admin.app(), dbId) : getFirestore(admin.app());
+  dbAdmin.settings({ ignoreUndefinedProperties: true });
 }
 
 // Email Transporter Config
@@ -82,6 +84,9 @@ const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
+  tls: {
+    rejectUnauthorized: false
+  }
 });
 
 async function sendEmail(to: string, subject: string, text: string, html?: string) {
@@ -90,17 +95,18 @@ async function sendEmail(to: string, subject: string, text: string, html?: strin
     return;
   }
 
+  console.log(`[EMAIL START] Attempting to send to ${to}...`);
   try {
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM || '"DIA_SAAS" <noreply@dia.com>',
+    const info = await transporter.sendMail({
+      from: process.env.SMTP_FROM || `"DIA_SAAS" <${process.env.SMTP_USER}>`,
       to,
       subject,
       text,
       html,
     });
-    console.log(`[EMAIL SUCCESS] to ${to}: ${subject}`);
-  } catch (err) {
-    console.error(`[EMAIL ERROR] to ${to}:`, err);
+    console.log(`[EMAIL SUCCESS] to ${to}: ${subject} (MessageId: ${info.messageId})`);
+  } catch (err: any) {
+    console.error(`[EMAIL ERROR] to ${to}:`, err.message);
   }
 }
 
@@ -417,7 +423,7 @@ async function startServer() {
         }
       }
       
-      // Envoi d'email réel
+      // Envoi d'email réel (Non-bloquant pour éviter le chargement infini)
       const emailSubject = "Bienvenue chez DIA_SAAS - Vos identifiants";
       const emailText = `Bonjour ${studentData.firstName},\n\nBienvenue chez DIA_SAAS !\n\nVoici vos identifiants de connexion :\nMatricule : ${studentData.matricule}\nMot de passe : ${password || 'DIA2026.'}\n\nLien de connexion : ${req.headers.origin}/login`;
       const emailHtml = `
@@ -435,7 +441,8 @@ async function startServer() {
         </div>
       `;
       
-      await sendEmail(studentData.email, emailSubject, emailText, emailHtml);
+      // On lance l'envoi sans attendre le résultat pour la réponse API
+      sendEmail(studentData.email, emailSubject, emailText, emailHtml).catch(e => console.error("Async email error:", e));
       
       res.json(newStudent);
     } catch (err: any) {
@@ -582,7 +589,7 @@ async function startServer() {
       await dbAdmin.collection('users').doc(userRecord.uid).set(newUser);
       await dbAdmin.collection('teachers').doc(userRecord.uid).set(newTeacher);
 
-      // Envoi d'email réel
+      // Envoi d'email réel (Non-bloquant)
       const emailSubject = "Bienvenue chez DIA_SAAS - Compte Enseignant";
       const emailText = `Bonjour ${teacherData.firstName},\n\nVotre compte enseignant a été créé chez DIA_SAAS.\n\nVoici vos identifiants :\nMatricule : ${teacherData.matricule}\nMot de passe : ${password || 'DIA2026.'}\n\nLien : ${req.headers.origin}/login`;
       const emailHtml = `
@@ -598,7 +605,7 @@ async function startServer() {
         </div>
       `;
       
-      await sendEmail(teacherData.email, emailSubject, emailText, emailHtml);
+      sendEmail(teacherData.email, emailSubject, emailText, emailHtml).catch(e => console.error("Async email error:", e));
 
       res.json(newTeacher);
     } catch (err: any) {
