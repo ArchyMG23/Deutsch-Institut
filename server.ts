@@ -104,7 +104,10 @@ const transporter = nodemailer.createTransport({
   },
   tls: {
     rejectUnauthorized: false
-  }
+  },
+  // Force IPv4 because some environments have issues routing IPv6 for SMTP
+  // @ts-ignore - family is a valid option but missing in some specific type definitions
+  family: 4
 });
 
 // Verify SMTP connection at startup

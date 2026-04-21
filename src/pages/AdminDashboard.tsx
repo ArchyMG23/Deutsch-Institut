@@ -217,7 +217,12 @@ export default function AdminDashboard() {
               {configStatus.smtpError && !configStatus.smtp && (
                 <div className="mt-2 p-2 bg-red-50 dark:bg-red-950/20 rounded border border-red-100 dark:border-red-900/30">
                   <p className="text-[10px] uppercase font-bold text-red-500 mb-1">Détail de l'erreur brute :</p>
-                  <p className="text-xs font-mono break-all text-red-600 dark:text-red-400">{configStatus.smtpError}</p>
+                  <p className="text-xs font-mono break-all text-red-600 dark:text-red-400 mb-2">{configStatus.smtpError}</p>
+                  {configStatus.smtpError.includes('ENETUNREACH') && (
+                    <p className="text-[10px] text-amber-600 font-bold leading-tight">
+                      ℹ️ Note : Cette erreur est liée au réseau (IPv6). J'ai forcé l'IPv4, redéployez pour tester à nouveau.
+                    </p>
+                  )}
                 </div>
               )}
               {configStatus.smtpConfigured && (
