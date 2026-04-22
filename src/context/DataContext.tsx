@@ -8,6 +8,7 @@ interface DataContextType {
   classes: ClassRoom[];
   levels: Level[];
   finances: FinanceRecord[];
+  trashFinances: FinanceRecord[];
   library: LibraryItem[];
   loading: boolean;
   refreshAll: () => Promise<void>;
@@ -16,6 +17,7 @@ interface DataContextType {
   refreshClasses: () => Promise<void>;
   refreshLevels: () => Promise<void>;
   refreshFinances: () => Promise<void>;
+  refreshTrash: () => Promise<void>;
   refreshLibrary: () => Promise<void>;
 }
 
@@ -28,6 +30,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [classes, setClasses] = useState<ClassRoom[]>([]);
   const [levels, setLevels] = useState<Level[]>([]);
   const [finances, setFinances] = useState<FinanceRecord[]>([]);
+  const [trashFinances, setTrashFinances] = useState<FinanceRecord[]>([]);
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -76,6 +79,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchWithAuth]);
 
+  const refreshTrash = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth('/api/finances/trash');
+      if (res.ok) setTrashFinances(await res.json());
+    } catch (err) {
+      console.error("Error fetching trash:", err);
+    }
+  }, [fetchWithAuth]);
+
   const refreshLibrary = useCallback(async () => {
     try {
       const res = await fetchWithAuth('/api/library');
@@ -95,6 +107,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         refreshClasses(),
         refreshLevels(),
         refreshFinances(),
+        refreshTrash(),
         refreshLibrary()
       ]);
     } finally {
@@ -109,6 +122,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       classes,
       levels,
       finances,
+      trashFinances,
       library,
       loading,
       refreshAll,
@@ -117,6 +131,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       refreshClasses,
       refreshLevels,
       refreshFinances,
+      refreshTrash,
       refreshLibrary
     }}>
       {children}

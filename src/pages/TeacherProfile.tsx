@@ -24,6 +24,8 @@ export default function TeacherProfile() {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<Partial<Teacher>>({});
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
@@ -81,6 +83,31 @@ export default function TeacherProfile() {
     }
   };
 
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('photo', file);
+
+    try {
+      const res = await fetchWithAuth('/api/profile/upload-photo', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        updateProfile({ ...profile, photoURL: data.photoURL });
+      }
+    } catch (err) {
+      console.error("Upload error:", err);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordError('');
@@ -119,18 +146,33 @@ export default function TeacherProfile() {
     <div className="max-w-5xl mx-auto space-y-8">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="flex items-center gap-6">
-          <div className="relative group">
-            <div className="w-32 h-32 rounded-[40px] bg-dia-red/10 border-4 border-white dark:border-neutral-900 shadow-xl flex items-center justify-center text-4xl font-bold text-dia-red overflow-hidden">
-              {profile.photoURL ? (
-                <img src={profile.photoURL} alt="Profile" className="w-full h-full object-cover" />
-              ) : (
-                `${profile.firstName[0]}${profile.lastName[0]}`
-              )}
+            <div className="relative group">
+              <div className="w-32 h-32 rounded-[40px] bg-dia-red/10 border-4 border-white dark:border-neutral-900 shadow-xl flex items-center justify-center text-4xl font-bold text-dia-red overflow-hidden">
+                {profile.photoURL ? (
+                  <img src={profile.photoURL} alt="Profile" className="w-full h-full object-cover" />
+                ) : (
+                  `${profile.firstName[0]}${profile.lastName[0]}`
+                )}
+              </div>
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="absolute bottom-0 right-0 p-3 bg-dia-red text-white rounded-2xl shadow-lg hover:scale-110 transition-transform"
+              >
+                {uploading ? (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <Camera size={20} />
+                )}
+              </button>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handlePhotoUpload} 
+                accept="image/*" 
+                className="hidden" 
+              />
             </div>
-            <button className="absolute bottom-0 right-0 p-3 bg-dia-red text-white rounded-2xl shadow-lg hover:scale-110 transition-transform">
-              <Camera size={20} />
-            </button>
-          </div>
           <div className="space-y-1">
             <div className="flex items-center gap-3">
               <h2 className="text-3xl font-bold tracking-tight">{profile.firstName} {profile.lastName}</h2>

@@ -151,8 +151,12 @@ export function Sidebar() {
               <span>Mode {isDarkMode ? 'Clair' : 'Sombre'}</span>
             </button>
             <div className="flex items-center gap-3 mb-4 p-2 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50">
-              <div className="w-9 h-9 shrink-0 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-700 flex items-center justify-center text-xs font-bold text-neutral-700 dark:text-neutral-300 shadow-sm">
-                {profile?.firstName?.[0]}{profile?.lastName?.[0]}
+              <div className="w-9 h-9 shrink-0 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-700 flex items-center justify-center text-xs font-bold text-neutral-700 dark:text-neutral-300 shadow-sm overflow-hidden">
+                {profile?.photoURL ? (
+                  <img src={profile.photoURL} alt="Ava" className="w-full h-full object-cover" />
+                ) : (
+                  <>{profile?.firstName?.[0]}{profile?.lastName?.[0]}</>
+                )}
               </div>
               <div className="overflow-hidden">
                 <p className="text-xs font-bold text-neutral-900 dark:text-white truncate">{profile?.firstName} {profile?.lastName}</p>

@@ -12,7 +12,8 @@ import {
   ChevronUp,
   ChevronDown,
   Calendar,
-  Layers
+  Layers,
+  Trash2
 } from 'lucide-react';
 import { cn, formatCurrency } from '../utils';
 import { FinanceRecord } from '../types';
@@ -20,15 +21,20 @@ import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { toast } from 'sonner';
 import { NotificationService } from '../services/NotificationService';
+import { motion } from 'motion/react';
 
 const TransactionTable = ({ 
   records, 
   onSort, 
-  sortConfig 
+  sortConfig,
+  onDelete,
+  isTrash = false
 }: { 
   records: FinanceRecord[], 
   onSort?: (key: string) => void, 
-  sortConfig?: { key: string, direction: 'asc' | 'desc' } | null 
+  sortConfig?: { key: string, direction: 'asc' | 'desc' } | null,
+  onDelete?: (id: string) => void,
+  isTrash?: boolean
 }) => {
   const SortIcon = ({ column }: { column: string }) => {
     if (!sortConfig || sortConfig.key !== column) return null;
@@ -48,7 +54,7 @@ const TransactionTable = ({
               onClick={() => onSort?.('date')}
             >
               <div className="flex items-center gap-1">
-                Date <SortIcon column="date" />
+                {isTrash ? 'Date Suppression' : 'Date'} <SortIcon column="date" />
               </div>
             </th>
             <th 
@@ -73,6 +79,11 @@ const TransactionTable = ({
                 Catégorie <SortIcon column="category" />
               </div>
             </th>
+            {isTrash && (
+              <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">
+                Raison / Par
+              </th>
+            )}
             <th 
               className={cn(
                 "px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 text-right transition-colors print:px-2",
@@ -84,6 +95,11 @@ const TransactionTable = ({
                 Montant <SortIcon column="amount" />
               </div>
             </th>
+            {!isTrash && (
+              <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 text-right print:hidden">
+                Actions
+              </th>
+            )}
           </tr>
         </thead>
         <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
@@ -91,7 +107,7 @@ const TransactionTable = ({
             records.map((record) => (
               <tr key={record.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors group">
                 <td className="px-6 py-4 text-sm font-medium print:px-2">
-                  {new Date(record.date).toLocaleDateString()}
+                  {new Date(isTrash && record.deletedAt ? record.deletedAt : record.date).toLocaleDateString()}
                 </td>
                 <td className="px-6 py-4 print:px-2">
                   <div className="flex items-center gap-3">
@@ -101,7 +117,10 @@ const TransactionTable = ({
                     )}>
                       {record.type === 'income' ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
                     </div>
-                    <span className="text-sm font-bold text-neutral-700 dark:text-neutral-300 group-hover:text-dia-red transition-colors">{record.description}</span>
+                    <div>
+                      <p className="text-sm font-bold text-neutral-700 dark:text-neutral-300 group-hover:text-dia-red transition-colors">{record.description}</p>
+                      {isTrash && <p className="text-[10px] text-neutral-400">Date trans: {new Date(record.date).toLocaleDateString()}</p>}
+                    </div>
                   </div>
                 </td>
                 <td className="px-6 py-4 print:px-2">
@@ -109,17 +128,34 @@ const TransactionTable = ({
                     {record.category}
                   </span>
                 </td>
+                {isTrash && (
+                  <td className="px-6 py-4">
+                    <p className="text-xs font-bold text-red-500">{record.deletionReason}</p>
+                    <p className="text-[9px] text-neutral-400 uppercase tracking-tighter">Supprimé par: {record.deletedBy}</p>
+                  </td>
+                )}
                 <td className={cn(
                   "px-6 py-4 text-right font-black print:px-2",
                   record.type === 'income' ? "text-green-600" : "text-red-600"
                 )}>
                   {record.type === 'income' ? '+' : '-'}{formatCurrency(record.amount)}
                 </td>
+                {!isTrash && (
+                  <td className="px-6 py-4 text-right print:hidden">
+                    <button 
+                      onClick={() => onDelete?.(record.id)}
+                      className="p-2 text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-all"
+                      title="Supprimer cette transaction"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </td>
+                )}
               </tr>
             ))
           ) : (
             <tr>
-              <td colSpan={4} className="px-6 py-20 text-center text-neutral-400 font-medium">
+              <td colSpan={isTrash ? 5 : 4} className="px-6 py-20 text-center text-neutral-400 font-medium">
                 Aucune transaction trouvée.
               </td>
             </tr>
@@ -131,10 +167,21 @@ const TransactionTable = ({
 };
 
 export default function FinanceManagement() {
-  const { finances: allRecords, loading, refreshFinances, refreshAll } = useData();
+  const { 
+    finances: allRecords, 
+    trashFinances, 
+    loading, 
+    refreshFinances, 
+    refreshTrash, 
+    refreshAll 
+  } = useData();
   const { user, fetchWithAuth } = useAuth();
   
+  const [viewMode, setViewMode] = useState<'active' | 'trash'>('active');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [recordToDelete, setRecordToDelete] = useState<string | null>(null);
+  const [deletionReason, setDeletionReason] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState('all'); // 'all' or '0'-'11'
@@ -199,6 +246,40 @@ export default function FinanceManagement() {
     } catch (err) {
       console.error("Error adding finance record:", err);
       toast.error('Erreur lors de l\'enregistrement de la transaction');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteRecord = async (id: string) => {
+    setRecordToDelete(id);
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDelete = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!recordToDelete || !deletionReason) return;
+
+    try {
+      setSubmitting(true);
+      const res = await fetchWithAuth(`/api/finances/${recordToDelete}/archive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: deletionReason })
+      });
+      if (res.ok) {
+        toast.success("Transaction déplacée vers la corbeille");
+        setIsDeleteModalOpen(false);
+        setDeletionReason('');
+        setRecordToDelete(null);
+        refreshFinances();
+        refreshTrash();
+      } else {
+        toast.error("Erreur lors de l'archivage");
+      }
+    } catch (err) {
+      console.error("Error archiving record:", err);
+      toast.error("Erreur réseau");
     } finally {
       setSubmitting(false);
     }
@@ -299,6 +380,27 @@ export default function FinanceManagement() {
           <p className="text-sm text-neutral-500 font-medium">Suivi précis des revenus et dépenses</p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center p-1 bg-neutral-100 dark:bg-neutral-800 rounded-2xl mr-2">
+            <button 
+              onClick={() => setViewMode('active')}
+              className={cn(
+                "px-4 py-2 rounded-xl text-xs font-bold transition-all",
+                viewMode === 'active' ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" : "text-neutral-500"
+              )}
+            >
+              Actives
+            </button>
+            <button 
+              onClick={() => setViewMode('trash')}
+              className={cn(
+                "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+                viewMode === 'trash' ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" : "text-neutral-500"
+              )}
+            >
+              <Trash2 size={14} />
+              Corbeille
+            </button>
+          </div>
           <button 
             onClick={() => setIsAddModalOpen(true)}
             className="btn-primary flex items-center gap-2 px-6 shadow-lg shadow-dia-red/20"
@@ -308,6 +410,18 @@ export default function FinanceManagement() {
           </button>
         </div>
       </div>
+
+      {/* Trash Warning */}
+      {viewMode === 'trash' && (
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded-2xl flex items-center gap-3 text-red-600 dark:text-red-400"
+        >
+          <Trash2 size={20} />
+          <p className="text-sm font-medium">Vous consultez la corbeille. Ces transactions ont été archivées pour des raisons d'audit et de lutte contre la fraude.</p>
+        </motion.div>
+      )}
 
       {/* Date Filters Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 print:hidden">
@@ -414,7 +528,17 @@ export default function FinanceManagement() {
         </div>
 
         {/* Transactions Section */}
-        {selectedMonth === 'all' ? (
+        {viewMode === 'trash' ? (
+          <div className="card overflow-hidden">
+            <div className="p-6 border-b border-neutral-100 dark:border-neutral-800">
+              <h5 className="font-bold flex items-center gap-2 text-red-600">
+                <Trash2 size={20} />
+                Archives de Suppression (Audit)
+              </h5>
+            </div>
+            <TransactionTable records={trashFinances} isTrash={true} />
+          </div>
+        ) : selectedMonth === 'all' ? (
           <div className="space-y-8">
             {months.filter(m => m.value !== 'all').map(month => {
               const monthRecords = filteredByType.filter(r => new Date(r.date).getMonth().toString() === month.value);
@@ -433,7 +557,7 @@ export default function FinanceManagement() {
                       <span className="text-dia-red">Solde: {formatCurrency(monthIncome - monthExpense)}</span>
                     </div>
                   </div>
-                  <TransactionTable records={monthRecords} />
+                  <TransactionTable records={monthRecords} onDelete={handleDeleteRecord} />
                 </div>
               );
             })}
@@ -462,11 +586,60 @@ export default function FinanceManagement() {
                 ))}
               </div>
             </div>
-            <TransactionTable records={sortedRecords} onSort={handleSort} sortConfig={sortConfig} />
+            <TransactionTable records={sortedRecords} onSort={handleSort} sortConfig={sortConfig} onDelete={handleDeleteRecord} />
           </div>
         )}
       </div>
 
+      {/* Delete Confirmation Modal */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-neutral-950 w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in slide-in-from-bottom-4 duration-300 border border-neutral-100 dark:border-neutral-800">
+            <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between bg-red-50/50 dark:bg-red-900/10">
+              <h3 className="text-2xl font-black tracking-tight text-red-600 flex items-center gap-2">
+                <Trash2 size={24} />
+                Justification
+              </h3>
+              <button onClick={() => setIsDeleteModalOpen(false)} className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-800 rounded-2xl transition-colors">
+                <X size={24} />
+              </button>
+            </div>
+            <form onSubmit={confirmDelete} className="p-8 space-y-6">
+              <div className="space-y-4">
+                <p className="text-sm font-medium text-neutral-500">
+                  Pour éviter toute fraude, vous devez obligatoirement préciser la raison de la suppression de cette transaction.
+                </p>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Raison de la suppression</label>
+                  <textarea 
+                    name="reason" 
+                    required 
+                    value={deletionReason}
+                    onChange={(e) => setDeletionReason(e.target.value)}
+                    placeholder="Ex: Erreur de saisie en doublon lors de la promotion de classe" 
+                    className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-900 border-2 border-neutral-100 dark:border-neutral-800 rounded-3xl focus:ring-4 focus:ring-red-500/10 focus:border-red-500 outline-none transition-all font-medium h-32 resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 space-y-3">
+                <button 
+                  type="submit" 
+                  disabled={submitting}
+                  className="w-full py-5 rounded-[24px] text-lg font-bold bg-red-600 text-white flex items-center justify-center gap-3 shadow-xl shadow-red-600/20 active:scale-95 transition-transform"
+                >
+                  {submitting ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    "Confirmer l'Archivage"
+                  )}
+                </button>
+                <button type="button" onClick={() => setIsDeleteModalOpen(false)} className="w-full py-4 text-sm font-bold text-neutral-400 hover:text-neutral-600 transition-colors uppercase tracking-widest">Annuler</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       {/* Add Record Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">

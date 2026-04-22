@@ -75,6 +75,7 @@ export default function ClassManagement() {
   };
 
   const handleUpdateSubLevel = async (classId: string) => {
+    if (submitting) return;
     const cls = classes.find(c => c.id === classId);
     if (!cls) return;
 
@@ -375,13 +376,17 @@ export default function ClassManagement() {
                 <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800 flex gap-2">
                   <button 
                     onClick={() => handleUpdateSubLevel(cls.id)}
+                    disabled={submitting}
                     className={cn(
-                      "flex-1 py-2 rounded-lg text-xs font-bold transition-colors",
+                      "flex-1 py-2 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
                       cls.currentSubLevel === 1 
                         ? "bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200" 
                         : "bg-dia-red text-white hover:bg-red-700"
                     )}
                   >
+                    {submitting && (
+                      <div className="inline-block w-2 h-2 mr-2 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    )}
                     {cls.currentSubLevel === 1 ? "Passer au Sous-Niveau 2" : "Passer au Niveau Suivant"}
                   </button>
                 </div>

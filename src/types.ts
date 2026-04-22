@@ -87,6 +87,9 @@ export interface FinanceRecord {
   description: string;
   category: string;
   date: string;
+  deletedAt?: string;
+  deletedBy?: string;
+  deletionReason?: string;
 }
 
 export interface LibraryItem {

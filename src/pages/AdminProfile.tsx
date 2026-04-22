@@ -9,15 +9,18 @@ import {
   Eye,
   EyeOff,
   Save,
-  Trash2
+  Trash2,
+  Camera
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../utils';
 import { toast } from 'sonner';
 
 export default function AdminProfile() {
-  const { user, fetchWithAuth, logout } = useAuth();
+  const { user, profile, updateProfile, fetchWithAuth, logout } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   
   // Profile state
   const [firstName, setFirstName] = useState(user?.firstName || '');
@@ -53,6 +56,34 @@ export default function AdminProfile() {
       toast.error("Échec de la mise à jour");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('photo', file);
+
+    try {
+      const res = await fetchWithAuth('/api/profile/upload-photo', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (profile) {
+          updateProfile({ ...profile, photoURL: data.photoURL });
+        }
+        toast.success("Photo de profil mise à jour");
+      }
+    } catch (err) {
+      toast.error("Échec du téléchargement");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -108,8 +139,32 @@ export default function AdminProfile() {
         {/* Left Column: Avatar & Basic Info */}
         <div className="space-y-6">
           <div className="card p-8 text-center flex flex-col items-center">
-            <div className="w-24 h-24 rounded-[32px] bg-dia-red/10 text-dia-red flex items-center justify-center text-3xl font-bold mb-4">
-              {firstName[0]}{lastName[0]}
+            <div className="relative group mb-4">
+              <div className="w-24 h-24 rounded-[32px] bg-dia-red/10 text-dia-red flex items-center justify-center text-3xl font-bold overflow-hidden border-4 border-white dark:border-neutral-900 shadow-lg">
+                {profile?.photoURL ? (
+                  <img src={profile.photoURL} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <>{firstName[0]}{lastName[0]}</>
+                )}
+              </div>
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="absolute -bottom-1 -right-1 p-2 bg-dia-red text-white rounded-xl shadow-lg hover:scale-110 transition-all border-2 border-white dark:border-neutral-900"
+              >
+                {uploading ? (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <Camera size={14} />
+                )}
+              </button>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handlePhotoUpload} 
+                accept="image/*" 
+                className="hidden" 
+              />
             </div>
             <h4 className="font-bold text-lg">{firstName} {lastName}</h4>
             <p className="text-sm text-neutral-500 font-mono mb-6">{user?.matricule}</p>

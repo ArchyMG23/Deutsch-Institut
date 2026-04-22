@@ -1163,8 +1163,22 @@ async function startServer() {
   app.get('/api/finances', authenticate, async (req, res) => {
     try {
       const snapshot = await dbAdmin.collection('finances').get();
-      const finances = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const finances = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter((f: any) => !f.deletedAt);
       res.json(finances);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/finances/trash', authenticate, async (req, res) => {
+    try {
+      const snapshot = await dbAdmin.collection('finances').get();
+      const trash = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter((f: any) => !!f.deletedAt);
+      res.json(trash);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -1181,10 +1195,40 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/finances/:id', authenticate, async (req, res) => {
+  app.post('/api/finances/:id/archive', authenticate, async (req: any, res) => {
     try {
-      await dbAdmin.collection('finances').doc(req.params.id).delete();
-      res.json({ message: 'Finance record deleted' });
+      const { reason } = req.body;
+      if (!reason) return res.status(400).json({ message: 'Raison requise' });
+      
+      const userDoc = await dbAdmin.collection('users').doc(req.user.id).get();
+      const userData = userDoc.data();
+      const deletedBy = `${userData?.firstName} ${userData?.lastName}`;
+
+      await dbAdmin.collection('finances').doc(req.params.id).update({
+        deletedAt: new Date().toISOString(),
+        deletedBy: deletedBy,
+        deletionReason: reason
+      });
+      res.json({ message: 'Transaction archivée' });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/finances/:id', authenticate, async (req: any, res) => {
+    try {
+      // Permanent delete only if explicitly requested or just keep it archived
+      // For now, let's just make the standard delete also move to trash if no reason provided
+      const userDoc = await dbAdmin.collection('users').doc(req.user.id).get();
+      const userData = userDoc.data();
+      const deletedBy = `${userData?.firstName} ${userData?.lastName}`;
+
+      await dbAdmin.collection('finances').doc(req.params.id).update({
+        deletedAt: new Date().toISOString(),
+        deletedBy: deletedBy,
+        deletionReason: 'Suppression standard (sans raison précisée)'
+      });
+      res.json({ message: 'Finance record moved to trash' });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -1279,6 +1323,36 @@ async function startServer() {
       await dbAdmin.collection('levels').doc(req.params.id).delete();
       res.json({ message: 'Level deleted' });
     } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Profile Upload API
+  app.post('/api/profile/upload-photo', authenticate, upload.single('photo'), async (req: any, res) => {
+    if (!req.file) return res.status(400).json({ message: 'Aucun fichier téléchargé' });
+    
+    try {
+      const photoURL = `/uploads/${req.file.filename}`;
+      
+      // Update Auth User
+      await authAdmin.updateUser(req.user.id, { photoURL });
+      
+      // Update Firestore Profile
+      await dbAdmin.collection('users').doc(req.user.id).update({ photoURL });
+      
+      // Update Role-specific profile
+      const userDoc = await dbAdmin.collection('users').doc(req.user.id).get();
+      const userData = userDoc.data();
+      
+      if (userData?.role === 'student') {
+        await dbAdmin.collection('students').doc(req.user.id).update({ photoURL });
+      } else if (userData?.role === 'teacher') {
+        await dbAdmin.collection('teachers').doc(req.user.id).update({ photoURL });
+      }
+      
+      res.json({ photoURL, message: 'Photo de profil mise à jour' });
+    } catch (err: any) {
+      console.error("Profile photo upload error:", err);
       res.status(500).json({ message: err.message });
     }
   });

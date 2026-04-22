@@ -36,6 +36,8 @@ export default function StudentProfile() {
     parentPhone: student?.parentPhone || '',
   });
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
@@ -79,6 +81,31 @@ export default function StudentProfile() {
       alert('Erreur lors de la mise à jour');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('photo', file);
+
+    try {
+      const res = await fetchWithAuth('/api/profile/upload-photo', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        updateProfile({ ...student, photoURL: data.photoURL });
+      }
+    } catch (err) {
+      console.error("Upload error:", err);
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -149,9 +176,24 @@ export default function StudentProfile() {
                   <User size={64} />
                 )}
               </div>
-              <button className="absolute bottom-0 right-0 p-2 bg-dia-red text-white rounded-2xl shadow-lg hover:scale-110 transition-transform">
-                <Camera size={16} />
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="absolute bottom-0 right-0 p-2 bg-dia-red text-white rounded-2xl shadow-lg hover:scale-110 transition-transform disabled:opacity-50"
+              >
+                {uploading ? (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <Camera size={16} />
+                )}
               </button>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handlePhotoUpload} 
+                accept="image/*" 
+                className="hidden" 
+              />
             </div>
             
             <div>
