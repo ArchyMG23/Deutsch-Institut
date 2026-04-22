@@ -160,15 +160,13 @@ export default function AdminManagement() {
           <h3 className="text-xl font-bold">Gestion des Administrateurs</h3>
           <p className="text-sm text-neutral-500">Gérez les accès administratifs de la plateforme.</p>
         </div>
-        {isSuperAdmin && (
-          <button 
-            onClick={() => setIsAddModalOpen(true)}
-            className="btn-primary flex items-center gap-2"
-          >
-            <UserPlus size={18} />
-            <span>Nouveau Administrateur</span>
-          </button>
-        )}
+        <button 
+          onClick={() => setIsAddModalOpen(true)}
+          className="btn-primary flex items-center gap-2"
+        >
+          <UserPlus size={18} />
+          <span>Nouveau Administrateur</span>
+        </button>
       </div>
 
       <div className="card p-4">

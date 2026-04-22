@@ -13,7 +13,9 @@ import {
   ChevronDown,
   Calendar,
   Layers,
-  Trash2
+  Trash2,
+  Search,
+  ArrowUpDown
 } from 'lucide-react';
 import { cn, formatCurrency } from '../utils';
 import { FinanceRecord } from '../types';
@@ -182,6 +184,7 @@ export default function FinanceManagement() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [recordToDelete, setRecordToDelete] = useState<string | null>(null);
   const [deletionReason, setDeletionReason] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState('all'); // 'all' or '0'-'11'
@@ -289,7 +292,11 @@ export default function FinanceManagement() {
     const d = new Date(r.date);
     const yearMatch = d.getFullYear().toString() === selectedYear;
     const monthMatch = selectedMonth === 'all' || d.getMonth().toString() === selectedMonth;
-    return yearMatch && monthMatch;
+    const searchMatch = searchQuery === '' || 
+      r.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.amount.toString().includes(searchQuery);
+    return yearMatch && monthMatch && searchMatch;
   });
 
   const filteredByType = filteredByDate.filter(r => filterType === 'all' || r.type === filterType);
@@ -457,20 +464,56 @@ export default function FinanceManagement() {
           </div>
         </div>
 
-        <div className="md:col-span-2 flex items-center gap-2">
+        <div className="card p-3 flex items-center gap-3">
+          <ArrowUpDown className="text-dia-red" size={20} />
+          <div className="flex-1">
+            <p className="text-[10px] font-bold text-neutral-400 uppercase">Trier par</p>
+            <div className="flex items-center gap-2">
+              <select 
+                value={sortConfig?.key || ''} 
+                onChange={(e) => handleSort(e.target.value)}
+                className="bg-transparent font-bold outline-none cursor-pointer text-sm"
+              >
+                <option value="date">Date</option>
+                <option value="amount">Montant</option>
+                <option value="description">Description</option>
+                <option value="category">Catégorie</option>
+              </select>
+              <button 
+                onClick={() => handleSort(sortConfig?.key || 'date')}
+                className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors"
+                title={sortConfig?.direction === 'asc' ? "Ascendant" : "Descendant"}
+              >
+                {sortConfig?.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="relative group flex-1">
+            <input 
+              type="text" 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Rechercher une transaction..."
+              className="w-full pl-10 pr-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl font-bold focus:ring-2 focus:ring-dia-red outline-none transition-all"
+            />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors" size={18} />
+          </div>
           <button 
             onClick={handlePrint}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl font-bold hover:bg-neutral-50 transition-all shadow-sm"
+            className="flex items-center justify-center p-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl font-bold hover:bg-neutral-50 transition-all shadow-sm"
+            title="Imprimer"
           >
             <Printer size={18} />
-            <span>Imprimer</span>
           </button>
           <button 
             onClick={handleEmailReport}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl font-bold hover:bg-neutral-50 transition-all shadow-sm"
+            className="flex items-center justify-center p-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl font-bold hover:bg-neutral-50 transition-all shadow-sm"
+            title="Envoyer par Mail"
           >
             <Mail size={18} />
-            <span>Envoyer par Mail</span>
           </button>
         </div>
       </div>
@@ -540,7 +583,7 @@ export default function FinanceManagement() {
           </div>
         ) : selectedMonth === 'all' ? (
           <div className="space-y-8">
-            {months.filter(m => m.value !== 'all').map(month => {
+            {[...months].filter(m => m.value !== 'all').reverse().map(month => {
               const monthRecords = filteredByType.filter(r => new Date(r.date).getMonth().toString() === month.value);
               if (monthRecords.length === 0) return null;
 

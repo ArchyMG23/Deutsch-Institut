@@ -540,10 +540,9 @@ async function startServer() {
   });
 
   app.post('/api/admins', authenticate, async (req: any, res) => {
-    // Only super admins can create other admins
-    const currentUserDoc = await dbAdmin.collection('users').doc(req.user.id).get();
-    if (!currentUserDoc.exists || !currentUserDoc.data()?.isSuperAdmin) {
-      return res.status(403).json({ message: 'Seul le Super Administrateur peut ajouter d\'autres administrateurs' });
+    // Only admins can create other admins
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Droits insuffisants' });
     }
 
     const { email, password, firstName, lastName, matricule } = req.body;

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { LogIn, ShieldAlert, Loader2, Eye, EyeOff } from 'lucide-react';
+import { LogIn, ShieldAlert, Loader2, Eye, EyeOff, Wrench } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { downloadProtectedArchive } from '../utils/documentation';
 
 export default function LoginPage() {
   const [matricule, setMatricule] = useState('');
@@ -10,10 +11,31 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const [downloadingDoc, setDownloadingDoc] = useState(false);
   
   const { login, profile } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const handleSupportDownload = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    const code = window.prompt("Veuillez entrer le code d'accès Super Administrateur pour télécharger la documentation technique :");
+    
+    // In a real app, this should be validated against a server
+    // For this implementation, we use the known super admin code or initials
+    if (code === 'vyombi_dia_2026' || code === 'RESET_FACTORY') {
+      try {
+        setDownloadingDoc(true);
+        await downloadProtectedArchive(code);
+      } catch (err) {
+        alert("Erreur lors de la génération du document.");
+      } finally {
+        setDownloadingDoc(false);
+      }
+    } else if (code) {
+      alert("Code incorrect. Accès refusé.");
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -151,7 +173,14 @@ export default function LoginPage() {
 
           <div className="mt-10 text-center">
             <p className="text-xs text-neutral-400">
-              Besoin d'aide ? <a href="#" className="text-dia-red font-bold hover:underline">Support Technique</a>
+              Besoin d'aide ?{' '}
+              <button 
+                onClick={handleSupportDownload}
+                disabled={downloadingDoc}
+                className="text-dia-red font-bold hover:underline disabled:opacity-50"
+              >
+                {downloadingDoc ? "Préparation..." : "Support Technique"}
+              </button>
             </p>
           </div>
         </div>
