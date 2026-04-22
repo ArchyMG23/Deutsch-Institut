@@ -13,16 +13,23 @@ import {
   Menu,
   X,
   User,
-  Bell
+  Shield,
+  Bell,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { cn } from '../utils';
 import { motion, AnimatePresence } from 'motion/react';
 
 export function Sidebar() {
   const { profile, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [isOpen, setIsOpen] = React.useState(false);
   const [logoError, setLogoError] = React.useState(false);
+
+  const isDarkMode = theme === 'dark';
 
   const adminLinks = [
     { to: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
@@ -31,8 +38,10 @@ export function Sidebar() {
     { to: '/admin/levels', icon: Layers, label: 'Niveaux' },
     { to: '/admin/classes', icon: LayoutDashboard, label: 'Classes' },
     { to: '/admin/finances', icon: Wallet, label: 'Finances' },
-    { to: '/admin/library', icon: Library, label: 'Bibliothèque' },
+    {to: '/admin/library', icon: Library, label: 'Bibliothèque' },
     { to: '/admin/communiques', icon: Bell, label: 'Communiqués' },
+    { to: '/admin/admins', icon: Shield, label: 'Gérer Admins' },
+    { to: '/admin/profile', icon: User, label: 'Mon Profil' },
   ];
 
   const teacherLinks = [
@@ -134,6 +143,13 @@ export function Sidebar() {
           </div>
 
           <div className="mt-auto p-4 border-t border-neutral-50 dark:border-neutral-800">
+            <button 
+              onClick={toggleTheme}
+              className="flex items-center gap-3 w-full px-4 py-3 mb-2 text-neutral-500 dark:text-neutral-400 hover:text-dia-red hover:bg-dia-red/5 rounded-xl transition-all font-bold text-sm"
+            >
+              {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+              <span>Mode {isDarkMode ? 'Clair' : 'Sombre'}</span>
+            </button>
             <div className="flex items-center gap-3 mb-4 p-2 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50">
               <div className="w-9 h-9 shrink-0 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-700 flex items-center justify-center text-xs font-bold text-neutral-700 dark:text-neutral-300 shadow-sm">
                 {profile?.firstName?.[0]}{profile?.lastName?.[0]}

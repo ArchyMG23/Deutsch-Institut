@@ -18,7 +18,9 @@ import {
   Bell,
   RefreshCw,
   Trash2,
-  Send
+  Send,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import { cn, formatCurrency, generateMatricule } from '../utils';
@@ -39,6 +41,7 @@ export default function StudentManagement() {
   const [searchQuery, setSearchQuery] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<'active' | 'former'>('active');
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
   
   const printRef = useRef<HTMLDivElement>(null);
   const receiptRef = useRef<HTMLDivElement>(null);
@@ -81,6 +84,7 @@ export default function StudentManagement() {
       gender: formData.get('gender'),
       parentName: formData.get('parentName'),
       parentPhone: formData.get('parentPhone'),
+      parentEmail: formData.get('parentEmail'),
       levelId,
       classId,
       role: 'student',
@@ -136,6 +140,7 @@ export default function StudentManagement() {
       gender: formData.get('gender'),
       parentName: formData.get('parentName'),
       parentPhone: formData.get('parentPhone'),
+      parentEmail: formData.get('parentEmail'),
       levelId: formData.get('levelId'),
       classId: formData.get('classId'),
     };
@@ -195,7 +200,9 @@ export default function StudentManagement() {
   };
 
   const handleResetCredentials = async (id: string) => {
-    if (!window.confirm('Voulez-vous réinitialiser les identifiants de cet étudiant et lui envoyer par email ?')) return;
+    const student = students.find(s => s.id === id);
+    if (!student) return;
+    if (!window.confirm(`Voulez-vous réinitialiser les identifiants de ${student.firstName} et lui envoyer un email ?`)) return;
     
     try {
       setSubmitting(true);
@@ -203,7 +210,14 @@ export default function StudentManagement() {
         method: 'POST'
       });
       if (res.ok) {
-        toast.success('Nouveaux identifiants envoyés');
+        const { password } = await res.json();
+        
+        // Send email with new credentials
+        const cls = classes.find(c => c.id === student.classId);
+        const scheduleStr = cls?.schedule?.map(s => `${s.day} (${s.startTime}-${s.endTime})`).join(', ');
+        await NotificationService.sendCredentials(fetchWithAuth, student, password, cls?.name, scheduleStr);
+
+        toast.success('Nouveaux identifiants envoyés par email');
       }
     } catch (err) {
       console.error("Error resetting credentials:", err);
@@ -275,10 +289,11 @@ export default function StudentManagement() {
     }
   };
 
-  const handleSendReminder = async () => {
-    if (!selectedStudent) return;
+  const handleSendReminder = async (targetStudent?: Student) => {
+    const studentToRemind = targetStudent || selectedStudent;
+    if (!studentToRemind) return;
     
-    const level = levels.find(l => l.id === selectedStudent.levelId);
+    const level = levels.find(l => l.id === studentToRemind.levelId);
     if (!level) {
       toast.error("Niveau non trouvé pour cet étudiant");
       return;
@@ -286,7 +301,7 @@ export default function StudentManagement() {
 
     try {
       setSubmitting(true);
-      await NotificationService.sendPaymentReminder(fetchWithAuth, selectedStudent, level.tuition);
+      await NotificationService.sendPaymentReminder(fetchWithAuth, studentToRemind, level.tuition);
       toast.success("Rappel de paiement envoyé");
     } catch (err) {
       console.error("Error sending reminder:", err);
@@ -326,6 +341,48 @@ export default function StudentManagement() {
     const matchesTab = activeTab === 'active' ? !s.isFormer : s.isFormer;
     return matchesSearch && matchesTab;
   });
+
+  const sortedStudents = [...filteredStudents].sort((a, b) => {
+    if (!sortConfig) return 0;
+    const { key, direction } = sortConfig;
+    
+    let aValue: any;
+    let bValue: any;
+
+    if (key === 'name') {
+      aValue = `${a.lastName} ${a.firstName}`.toLowerCase();
+      bValue = `${b.lastName} ${b.firstName}`.toLowerCase();
+    } else if (key === 'matricule') {
+      aValue = a.matricule.toLowerCase();
+      bValue = b.matricule.toLowerCase();
+    } else if (key === 'level') {
+      aValue = levels.find(l => l.id === a.levelId)?.name?.toLowerCase() || '';
+      bValue = levels.find(l => l.id === b.levelId)?.name?.toLowerCase() || '';
+    } else if (key === 'tuition') {
+      aValue = a.payments.reduce((acc, p) => acc + p.amount, 0);
+      bValue = b.payments.reduce((acc, p) => acc + p.amount, 0);
+    } else {
+      aValue = (a as any)[key];
+      bValue = (b as any)[key];
+    }
+
+    if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+    if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const SortIcon = ({ column }: { column: string }) => {
+    if (!sortConfig || sortConfig.key !== column) return null;
+    return sortConfig.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />;
+  };
 
   return (
     <div className="space-y-6">
@@ -399,15 +456,43 @@ export default function StudentManagement() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-neutral-50 dark:bg-neutral-800/50 border-bottom border-neutral-200 dark:border-neutral-800">
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">Étudiant</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">Matricule</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">Niveau / Classe</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">Scolarité</th>
+                <th 
+                  className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 cursor-pointer hover:text-dia-red transition-colors"
+                  onClick={() => handleSort('name')}
+                >
+                  <div className="flex items-center gap-1">
+                    Étudiant <SortIcon column="name" />
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 cursor-pointer hover:text-dia-red transition-colors"
+                  onClick={() => handleSort('matricule')}
+                >
+                  <div className="flex items-center gap-1">
+                    Matricule <SortIcon column="matricule" />
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 cursor-pointer hover:text-dia-red transition-colors"
+                  onClick={() => handleSort('level')}
+                >
+                  <div className="flex items-center gap-1">
+                    Niveau / Classe <SortIcon column="level" />
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 cursor-pointer hover:text-dia-red transition-colors"
+                  onClick={() => handleSort('tuition')}
+                >
+                  <div className="flex items-center gap-1">
+                    Scolarité <SortIcon column="tuition" />
+                  </div>
+                </th>
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-              {filteredStudents.map((student) => {
+              {sortedStudents.map((student) => {
                 const totalPaid = student.payments.reduce((acc, p) => acc + p.amount, 0);
                 const level = levels.find(l => l.id === student.levelId);
                 const tuition = level?.tuition || 0;
@@ -462,6 +547,17 @@ export default function StudentManagement() {
                               title="Renvoyer identifiants"
                             >
                               <RefreshCw size={18} />
+                            </button>
+                            <button 
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                handleSendReminder(student);
+                              }}
+                              disabled={submitting || isFullyPaid}
+                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-dia-red disabled:opacity-30 disabled:grayscale"
+                              title={isFullyPaid ? "Scolarité réglée" : "Envoyer rappel"}
+                            >
+                              <Bell size={18} />
                             </button>
                             <button 
                               onClick={() => {
@@ -580,6 +676,18 @@ export default function StudentManagement() {
                   <input name="tranche3" type="number" placeholder="0" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Parent / Tuteur</label>
+                  <input name="parentName" required type="text" placeholder="Nom complet" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Téléphone Parent</label>
+                  <input name="parentPhone" required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Email Parent</label>
+                  <input name="parentEmail" type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
+                <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Mot de passe par défaut</label>
                   <input name="password" type="text" defaultValue="DIA2026." className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                   <p className="text-[10px] text-neutral-500 mt-1">L'étudiant pourra le modifier après sa première connexion.</p>
@@ -648,6 +756,18 @@ export default function StudentManagement() {
                     {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Parent / Tuteur</label>
+                  <input name="parentName" defaultValue={selectedStudent.parentName} required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Téléphone Parent</label>
+                  <input name="parentPhone" defaultValue={selectedStudent.parentPhone} required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Email Parent</label>
+                  <input name="parentEmail" defaultValue={selectedStudent.parentEmail} type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
               </div>
               <div className="pt-4 flex gap-4">
                 <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
@@ -706,6 +826,7 @@ export default function StudentManagement() {
                   <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">Parent / Tuteur</p>
                   <p className="text-sm font-bold">{selectedStudent.parentName}</p>
                   <p className="text-sm">{selectedStudent.parentPhone}</p>
+                  {selectedStudent.parentEmail && <p className="text-sm">{selectedStudent.parentEmail}</p>}
                 </div>
                 <div>
                   <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">Statut Scolarité</p>

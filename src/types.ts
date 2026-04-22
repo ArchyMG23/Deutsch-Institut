@@ -13,6 +13,7 @@ export interface UserProfile {
   status: 'online' | 'offline';
   fcmToken?: string;
   createdAt: string;
+  isSuperAdmin?: boolean;
 }
 
 export interface Student extends UserProfile {
@@ -24,6 +25,7 @@ export interface Student extends UserProfile {
   phone: string;
   parentName: string;
   parentPhone: string;
+  parentEmail?: string;
   classId?: string;
   levelId?: string;
   payments: TuitionPayment[];

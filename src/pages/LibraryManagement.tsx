@@ -11,7 +11,9 @@ import {
   Filter,
   Youtube,
   FileArchive,
-  Link as LinkIcon
+  Link as LinkIcon,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import { cn } from '../utils';
 import { LibraryItem } from '../types';
@@ -112,11 +114,36 @@ export default function LibraryManagement() {
     }
   };
 
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'title', direction: 'asc' });
+
   const filteredItems = items.filter(item => {
     const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = filterCategory === 'all' || item.category === filterCategory;
     return matchesSearch && matchesCategory;
   });
+
+  const sortedItems = [...filteredItems].sort((a, b) => {
+    const direction = sortConfig.direction === 'asc' ? 1 : -1;
+    if (sortConfig.key === 'title') {
+      return direction * a.title.localeCompare(b.title);
+    }
+    if (sortConfig.key === 'category') {
+      return direction * a.category.localeCompare(b.category);
+    }
+    if (sortConfig.key === 'date') {
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return direction * (dateA - dateB);
+    }
+    return 0;
+  });
+
+  const handleSort = (key: string) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
 
   const categories = ['all', ...new Set(items.map(i => i.category))];
 
@@ -146,25 +173,47 @@ export default function LibraryManagement() {
           />
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none z-10" size={18} />
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0">
-          {categories.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setFilterCategory(cat)}
+        <div className="flex gap-2 items-center">
+          <div className="flex items-center gap-1 bg-neutral-100 dark:bg-neutral-800 p-1 rounded-xl">
+            <button 
+              onClick={() => handleSort('title')}
               className={cn(
-                "px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap",
-                filterCategory === cat ? "bg-dia-red text-white" : "bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200"
+                "px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all flex items-center gap-1",
+                sortConfig.key === 'title' ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" : "text-neutral-500"
               )}
             >
-              {cat === 'all' ? 'Tout' : cat}
+              Nom {sortConfig.key === 'title' && (sortConfig.direction === 'asc' ? <ChevronUp size={12}/> : <ChevronDown size={12}/>)}
             </button>
-          ))}
+            <button 
+              onClick={() => handleSort('date')}
+              className={cn(
+                "px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all flex items-center gap-1",
+                sortConfig.key === 'date' ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" : "text-neutral-500"
+              )}
+            >
+              Date {sortConfig.key === 'date' && (sortConfig.direction === 'asc' ? <ChevronUp size={12}/> : <ChevronDown size={12}/>)}
+            </button>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+            {categories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setFilterCategory(cat)}
+                className={cn(
+                  "px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap",
+                  filterCategory === cat ? "bg-dia-red text-white" : "bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200"
+                )}
+              >
+                {cat === 'all' ? 'Tout' : cat}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Library Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {filteredItems.map((item) => (
+        {sortedItems.map((item) => (
           <div key={item.id} className="card p-6 group hover:shadow-xl transition-all border-dia-red/0 hover:border-dia-red/20 border">
             <div className="w-12 h-12 rounded-2xl bg-dia-red/10 text-dia-red flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
               {item.type === 'video' ? <Youtube size={24} /> : 

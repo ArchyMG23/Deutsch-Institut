@@ -10,7 +10,9 @@ import {
   GraduationCap,
   ChevronRight,
   BookOpen,
-  Layout
+  Layout,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import { cn, formatCurrency } from '../utils';
 import { ClassRoom, Level, Teacher, Student } from '../types';
@@ -25,6 +27,8 @@ export default function ClassManagement() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedClass, setSelectedClass] = useState<ClassRoom | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>({ key: 'name', direction: 'asc' });
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -70,49 +74,198 @@ export default function ClassManagement() {
     }
   };
 
-  const handleUpdateSubLevel = async (classId: string, subLevel: 1 | 2) => {
+  const handleUpdateSubLevel = async (classId: string) => {
     const cls = classes.find(c => c.id === classId);
     if (!cls) return;
 
-    const level = levels.find(l => l.id === cls.levelId);
-    const teacher = teachers.find(t => t.id === cls.teacherId);
-
-    try {
-      // Update class sub-level
-      const res = await fetchWithAuth(`/api/classes/${classId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentSubLevel: subLevel })
-      });
-
-      if (res.ok && teacher && level) {
-        const hoursPerSubLevel = level.hours / 2;
-        const salaryAmount = hoursPerSubLevel * teacher.hourlyRate;
-
-        // Update teacher total hours
-        await fetchWithAuth(`/api/teachers/${teacher.id}`, {
+    if (cls.currentSubLevel === 1) {
+      if (!window.confirm(`Passer la classe ${cls.name} au Sous-Niveau 2 ? Cela enregistrera la moitié du salaire pour l'enseignant.`)) return;
+      
+      try {
+        setSubmitting(true);
+        const res = await fetchWithAuth(`/api/classes/${classId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ totalHoursWorked: (teacher.totalHoursWorked || 0) + hoursPerSubLevel })
+          body: JSON.stringify({ currentSubLevel: 2 })
         });
 
-        // Record expense in finances
-        await fetchWithAuth('/api/finances', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'expense',
-            amount: salaryAmount,
-            description: `Salaire Enseignant - ${teacher.firstName} ${teacher.lastName} - ${cls.name} (Sous-Niveau ${cls.currentSubLevel})`,
-            category: 'Salary'
-          })
-        });
+        if (res.ok) {
+          // Record Salary for Teacher for the sub-level completion
+          const level = levels.find(l => l.id === cls.levelId);
+          const teacher = teachers.find(t => t.id === cls.teacherId);
+          if (level && teacher) {
+            const hoursPerSubLevel = level.hours / 2;
+            const salaryAmount = hoursPerSubLevel * teacher.hourlyRate;
 
-        refreshClasses();
+            await fetchWithAuth(`/api/teachers/${teacher.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ totalHoursWorked: (teacher.totalHoursWorked || 0) + hoursPerSubLevel })
+            });
+
+            await fetchWithAuth('/api/finances', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'expense',
+                amount: salaryAmount,
+                description: `Salaire Enseignant - ${teacher.firstName} ${teacher.lastName} - ${cls.name} (Sous-Niveau 1 complété)`,
+                category: 'Salary',
+                date: new Date().toISOString()
+              })
+            });
+          }
+
+          toast.success("Classe passée au sous-niveau 2");
+          
+          // Notify teacher and students
+          const classStudents = students.filter(s => cls.studentIds.includes(s.id) && !s.isFormer);
+          const message = `La classe ${cls.name} est officiellement passée au sous-niveau 2. Bonne continuation !`;
+          
+          if (teacher) {
+             await NotificationService._triggerEmail(fetchWithAuth, teacher.email, `Changement de niveau - ${cls.name}`, message, `<h2>${message}</h2>`);
+          }
+          for (const student of classStudents) {
+             await NotificationService._triggerEmail(fetchWithAuth, student.email, `Progression : Sous-Niveau 2 - ${cls.name}`, message, `<div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 12px; text-align: center;"><h2 style="color: #E31E24;">Félicitations !</h2><p>${message}</p></div>`, "Progression de Niveau", message, student.parentEmail);
+          }
+          
+          refreshClasses();
+        }
+      } catch (err) {
+        console.error("Error promoting to sub-level 2:", err);
+        toast.error("Erreur lors de la mise à jour");
+      } finally {
+        setSubmitting(false);
       }
-    } catch (err) {
-      console.error("Error updating sub-level:", err);
+    } else {
+      // Promotion to next level - logical selection
+      // Sort levels logically by name (typical A1, A2, B1...)
+      const sortedAllLevels = [...levels].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+      const currentLevelIndex = sortedAllLevels.findIndex(l => l.id === cls.levelId);
+      const nextLevel = sortedAllLevels[currentLevelIndex + 1];
+      
+      if (!nextLevel) {
+        toast.error("Fin du cursus atteinte. Aucun niveau supérieur configuré.");
+        return;
+      }
+
+      const confirmPromote = window.confirm(`Félicitations ! Voulez-vous promouvoir la classe ${cls.name} au niveau suivant : ${nextLevel.name} ?\n\nCela mettra à jour le niveau de tous les étudiants actifs de cette classe.`);
+      if (!confirmPromote) return;
+
+      try {
+        setSubmitting(true);
+        // 1. Update Class
+        const res = await fetchWithAuth(`/api/classes/${classId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ levelId: nextLevel.id, currentSubLevel: 1 })
+        });
+
+        if (res.ok) {
+          // Record Salary for Teacher for the sub-level 2 completion
+          const level = levels.find(l => l.id === cls.levelId);
+          const teacher = teachers.find(t => t.id === cls.teacherId);
+          if (level && teacher) {
+            const hoursPerSubLevel = level.hours / 2;
+            const salaryAmount = hoursPerSubLevel * teacher.hourlyRate;
+
+            await fetchWithAuth(`/api/teachers/${teacher.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ totalHoursWorked: (teacher.totalHoursWorked || 0) + hoursPerSubLevel })
+            });
+
+            await fetchWithAuth('/api/finances', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'expense',
+                amount: salaryAmount,
+                description: `Salaire Enseignant - ${teacher.firstName} ${teacher.lastName} - ${cls.name} (Sous-Niveau 2 complété)`,
+                category: 'Salary',
+                date: new Date().toISOString()
+              })
+            });
+          }
+
+          // 2. Update all students in this class
+          const classStudents = students.filter(s => cls.studentIds.includes(s.id) && !s.isFormer);
+          for (const student of classStudents) {
+            await fetchWithAuth(`/api/students/${student.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ levelId: nextLevel.id })
+            });
+            
+            // Notify student & parent
+            const message = `Félicitations ! Vous avez réussi le niveau ${level?.name}. Votre classe ${cls.name} passe maintenant au niveau suivant : ${nextLevel.name}.`;
+            await NotificationService._triggerEmail(fetchWithAuth, student.email, `PROMOTION AU NIVEAU ${nextLevel.name} - ${cls.name}`, message, `
+              <div style="font-family: sans-serif; padding: 30px; border: 2px solid #E31E24; border-radius: 20px; text-align: center;">
+                <h1 style="color: #E31E24;">BRAVO !</h1>
+                <p style="font-size: 1.2em;">Vous avez brillamment terminé le niveau <strong>${level?.name}</strong>.</p>
+                <div style="background: #f9f9f9; padding: 20px; border-radius: 12px; margin: 20px 0;">
+                  <p>Votre classe <strong>${cls.name}</strong> est maintenant au niveau :</p>
+                  <p style="font-size: 2em; font-weight: bold; color: #E31E24; margin: 10px 0;">${nextLevel.name}</p>
+                </div>
+                <p>Bonne chance pour cette nouvelle étape !</p>
+              </div>
+            `, "Promotion de Niveau !", `Niveau ${nextLevel.name} atteint !`, student.parentEmail);
+          }
+
+          // 3. Notify teacher
+          if (teacher) {
+            const message = `Votre classe ${cls.name} a été promue avec succès au niveau ${nextLevel.name}.`;
+            await NotificationService._triggerEmail(fetchWithAuth, teacher.email, `Promotion de Classe - ${cls.name}`, message, `<h2>Promotion de classe</h2><p>${message}</p>`);
+          }
+
+          toast.success(`Classe promue au niveau ${nextLevel.name} !`);
+          refreshClasses();
+        }
+      } catch (err) {
+        console.error("Error promoting to next level:", err);
+        toast.error("Erreur lors de la promotion");
+      } finally {
+        setSubmitting(false);
+      }
     }
+  };
+
+  const filteredClasses = classes.filter(c => 
+    c.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const sortedClasses = [...filteredClasses].sort((a, b) => {
+    if (!sortConfig) return 0;
+    const { key, direction } = sortConfig;
+    
+    let aValue: any;
+    let bValue: any;
+
+    if (key === 'name') {
+      aValue = a.name.toLowerCase();
+      bValue = b.name.toLowerCase();
+    } else if (key === 'level') {
+      aValue = levels.find(l => l.id === a.levelId)?.name?.toLowerCase() || '';
+      bValue = levels.find(l => l.id === b.levelId)?.name?.toLowerCase() || '';
+    } else if (key === 'students') {
+      aValue = students.filter(s => s.classId === a.id && !s.isFormer).length;
+      bValue = students.filter(s => s.classId === b.id && !s.isFormer).length;
+    } else {
+      aValue = (a as any)[key];
+      bValue = (b as any)[key];
+    }
+
+    if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+    if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
   };
 
   return (
@@ -128,9 +281,40 @@ export default function ClassManagement() {
         </button>
       </div>
 
+      <div className="card p-4 flex flex-col sm:flex-row gap-4 items-center">
+        <div className="relative group flex-1">
+          <input 
+            type="text" 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Rechercher une classe..."
+            className="w-full pl-10 pr-4 py-2 bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg focus:ring-2 focus:ring-dia-red transition-all"
+          />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none z-10" size={18} />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-neutral-400 uppercase">Trier par:</span>
+          <select 
+            value={sortConfig?.key || ''} 
+            onChange={(e) => handleSort(e.target.value)}
+            className="bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-dia-red outline-none"
+          >
+            <option value="name">Nom</option>
+            <option value="level">Niveau</option>
+            <option value="students">Effectif</option>
+          </select>
+          <button 
+            onClick={() => handleSort(sortConfig?.key || 'name')}
+            className="p-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg hover:bg-neutral-200 transition-colors"
+          >
+            {sortConfig?.direction === 'asc' ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </button>
+        </div>
+      </div>
+
       {/* Classes Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {classes.map((cls) => {
+        {sortedClasses.map((cls) => {
           const level = levels.find(l => l.id === cls.levelId);
           const teacher = teachers.find(t => t.id === cls.teacherId);
           const classStudents = students.filter(s => s.classId === cls.id && !s.isFormer);
@@ -190,10 +374,15 @@ export default function ClassManagement() {
 
                 <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800 flex gap-2">
                   <button 
-                    onClick={() => handleUpdateSubLevel(cls.id, cls.currentSubLevel === 1 ? 2 : 1)}
-                    className="flex-1 py-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg text-xs font-bold hover:bg-neutral-200 transition-colors"
+                    onClick={() => handleUpdateSubLevel(cls.id)}
+                    className={cn(
+                      "flex-1 py-2 rounded-lg text-xs font-bold transition-colors",
+                      cls.currentSubLevel === 1 
+                        ? "bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200" 
+                        : "bg-dia-red text-white hover:bg-red-700"
+                    )}
                   >
-                    Passer au Sous-Niveau {cls.currentSubLevel === 1 ? 2 : 1}
+                    {cls.currentSubLevel === 1 ? "Passer au Sous-Niveau 2" : "Passer au Niveau Suivant"}
                   </button>
                 </div>
               </div>

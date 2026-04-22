@@ -129,22 +129,23 @@ if (process.env.SMTP_USER && process.env.SMTP_PASS) {
   });
 }
 
-async function sendEmail(to: string, subject: string, text: string, html?: string) {
+async function sendEmail(to: string, subject: string, text: string, html?: string, cc?: string) {
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    console.log(`[EMAIL SIMULATION] to ${to}: ${subject}\n${text}`);
+    console.log(`[EMAIL SIMULATION] to ${to}${cc ? ' cc ' + cc : ''}: ${subject}\n${text}`);
     return;
   }
 
-  console.log(`[EMAIL START] Attempting to send to ${to}...`);
+  console.log(`[EMAIL START] Attempting to send to ${to}${cc ? ' cc ' + cc : ''}...`);
   try {
     const info = await transporter.sendMail({
       from: process.env.SMTP_FROM || `"DIA_SAAS" <${process.env.SMTP_USER}>`,
       to,
+      cc,
       subject,
       text,
       html,
     });
-    addLog('EMAIL', `Email envoyé avec succès à ${to}`, { messageId: info.messageId });
+    addLog('EMAIL', `Email envoyé avec succès à ${to}`, { messageId: info.messageId, cc });
   } catch (err: any) {
     addLog('ERROR', `Échec de l'envoi d'email à ${to}`, err.message);
   }
@@ -217,8 +218,8 @@ async function startServer() {
 
       // Bootstrap Admins
       const admins = [
-        { email: 'yombivictor@gmail.com', firstName: 'Victor', lastName: 'Yombi', matricule: 'SUPERADMIN' },
-        { email: 'gabrielyombi311@gmail.com', firstName: 'Gabriel', lastName: 'Yombi', matricule: 'ADMIN_GABRIEL' }
+        { email: 'yombivictor@gmail.com', firstName: 'Victor', lastName: 'Yombi', matricule: 'SUPERADMIN', isSuperAdmin: true },
+        { email: 'gabrielyombi311@gmail.com', firstName: 'Gabriel', lastName: 'Yombi', matricule: 'ADMIN_GABRIEL', isSuperAdmin: false }
       ];
 
       for (const adminData of admins) {
@@ -243,6 +244,7 @@ async function startServer() {
               matricule: adminData.matricule,
               email: adminData.email,
               role: 'admin',
+              isSuperAdmin: adminData.isSuperAdmin,
               firstName: adminData.firstName,
               lastName: adminData.lastName,
               status: 'offline',
@@ -411,7 +413,7 @@ async function startServer() {
       return res.status(403).json({ message: 'Droits insuffisants' });
     }
 
-    const { to, subject, text, html, pushTitle, pushBody } = req.body;
+    const { to, cc, subject, text, html, pushTitle, pushBody } = req.body;
     
     if (!to || !subject || (!text && !html)) {
       return res.status(400).json({ message: 'Données manquantes pour l\'envoi de l\'email' });
@@ -419,7 +421,7 @@ async function startServer() {
 
     try {
       // Async send to avoid blocking the client
-      sendEmail(to, subject, text, html).catch(e => console.error("Notification API email error:", e));
+      sendEmail(to, subject, text, html, cc).catch(e => console.error("Notification API email error:", e));
       
       // If push info is provided, try to find user's token and send push
       if (pushTitle && pushBody) {
@@ -521,6 +523,189 @@ async function startServer() {
       }
       return res.json({ exists: true, user: userQuery.docs[0].data() });
     } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Admins Management API (Super Admin only for management, admins can see)
+  app.get('/api/admins', authenticate, async (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Interdit' });
+    try {
+      const snapshot = await dbAdmin.collection('users').where('role', '==', 'admin').get();
+      const admins = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      res.json(admins);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/admins', authenticate, async (req: any, res) => {
+    // Only super admins can create other admins
+    const currentUserDoc = await dbAdmin.collection('users').doc(req.user.id).get();
+    if (!currentUserDoc.exists || !currentUserDoc.data()?.isSuperAdmin) {
+      return res.status(403).json({ message: 'Seul le Super Administrateur peut ajouter d\'autres administrateurs' });
+    }
+
+    const { email, password, firstName, lastName, matricule } = req.body;
+    
+    try {
+      const userRecord = await authAdmin.createUser({
+        email,
+        password: password || 'Admin.1234',
+        displayName: `${firstName} ${lastName}`,
+      });
+
+      const newAdmin = {
+        uid: userRecord.uid,
+        email,
+        firstName,
+        lastName,
+        matricule: matricule.toUpperCase(),
+        role: 'admin',
+        isSuperAdmin: false,
+        status: 'offline',
+        createdAt: new Date().toISOString()
+      };
+
+      await dbAdmin.collection('users').doc(userRecord.uid).set(newAdmin);
+      res.json(newAdmin);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/admins/:id', authenticate, async (req: any, res) => {
+    try {
+      const currentUserDoc = await dbAdmin.collection('users').doc(req.user.id).get();
+      const isSuperAdmin = currentUserDoc.data()?.isSuperAdmin;
+
+      if (!isSuperAdmin) {
+        return res.status(403).json({ message: 'Seul le Super Administrateur peut supprimer d\'autres administrateurs' });
+      }
+
+      const targetUserDoc = await dbAdmin.collection('users').doc(req.params.id).get();
+      if (targetUserDoc.exists && targetUserDoc.data()?.isSuperAdmin) {
+        return res.status(403).json({ message: 'Impossible de supprimer un Super Administrateur' });
+      }
+
+      await authAdmin.deleteUser(req.params.id);
+      await dbAdmin.collection('users').doc(req.params.id).delete();
+      res.json({ message: 'Administrateur supprimé' });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/students/resend-credentials/:id', authenticate, async (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Interdit' });
+    try {
+      const studentDoc = await dbAdmin.collection('users').doc(req.params.id).get();
+      if (!studentDoc.exists) return res.status(404).json({ message: 'Étudiant non trouvé' });
+      const student = studentDoc.data();
+      
+      const newPassword = 'DIA' + Math.floor(1000 + Math.random() * 9000) + '.';
+      await authAdmin.updateUser(req.params.id, { password: newPassword });
+      
+      // The frontend NotificationService will be called or we can trigger it here.
+      // Actually the frontend calls this, so we just return the password and let the frontend send the email.
+      // Or we can send it from here. The frontend expects a success message.
+      // Re-reading logic: the frontend calls this and expects success.
+      
+      res.json({ message: 'Mot de passe réinitialisé', password: newPassword });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/students/send-receipt-email', authenticate, async (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Interdit' });
+    const { studentId, html } = req.body;
+    try {
+      const studentDoc = await dbAdmin.collection('users').doc(studentId).get();
+      if (!studentDoc.exists) return res.status(404).json({ message: 'Étudiant non trouvé' });
+      const student = studentDoc.data();
+      
+      const subject = `Reçu de Scolarité - ${student.firstName} ${student.lastName}`;
+      await sendEmail(student.email, subject, "Veuillez trouver ci-joint votre reçu de scolarité.", html, student.parentEmail);
+      
+      res.json({ message: 'Reçu envoyé' });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/system/reset', authenticate, async (req: any, res) => {
+    try {
+      const currentUserDoc = await dbAdmin.collection('users').doc(req.user.id).get();
+      const userData = currentUserDoc.data();
+      
+      if (!userData || !userData.isSuperAdmin) {
+        return res.status(403).json({ message: 'Seul le Super Administrateur peut réinitialiser le système' });
+      }
+
+      const { confirmation } = req.body;
+      if (confirmation !== 'RESET_FACTORY') {
+        return res.status(400).json({ message: 'Code de confirmation incorrect' });
+      }
+
+      addLog('INFO', `Démarrage de la réinitialisation système par ${userData.email}`);
+
+      const collectionsToReset = [
+        'students', 'teachers', 'classes', 'levels', 'finances', 
+        'library', 'communiques', 'notifications', 'attendances', 
+        'exams', 'messages'
+      ];
+
+      // Delete all docs in specified collections
+      for (const collName of collectionsToReset) {
+        const snapshot = await dbAdmin.collection(collName).get();
+        if (snapshot.empty) continue;
+        
+        const chunks = [];
+        for (let i = 0; i < snapshot.docs.length; i += 500) {
+          chunks.push(snapshot.docs.slice(i, i + 500));
+        }
+
+        for (const chunk of chunks) {
+          const batch = dbAdmin.batch();
+          chunk.forEach((doc) => batch.delete(doc.ref));
+          await batch.commit();
+        }
+        addLog('INFO', `Collection ${collName} vidée`);
+      }
+
+      // Handle users collection: delete all except super admins
+      const usersSnapshot = await dbAdmin.collection('users').get();
+      const usersBatch = dbAdmin.batch();
+      let deletedUsersCount = 0;
+      usersSnapshot.docs.forEach((doc) => {
+        const data = doc.data();
+        if (!data.isSuperAdmin) {
+          usersBatch.delete(doc.ref);
+          deletedUsersCount++;
+        }
+      });
+      if (deletedUsersCount > 0) {
+        await usersBatch.commit();
+      }
+      addLog('INFO', `Utilisateurs non-admins supprimés (${deletedUsersCount})`);
+
+      // Re-bootstrap indispensable data (Levels)
+      const initialLevels = [
+        { id: 'a1', name: 'A1', tuition: 150000, hours: 120 },
+        { id: 'a2', name: 'A2', tuition: 175000, hours: 120 },
+        { id: 'b1', name: 'B1', tuition: 200000, hours: 160 },
+        { id: 'b2', name: 'B2', tuition: 250000, hours: 180 },
+        { id: 'c1', name: 'C1', tuition: 350000, hours: 200 }
+      ];
+      for (const level of initialLevels) {
+        await dbAdmin.collection('levels').doc(level.id).set(level);
+      }
+      addLog('INFO', `Niveaux réinitialisés aux valeurs d'origine`);
+
+      res.json({ message: 'Système réinitialisé avec succès. Les données ont été formatées mais les comptes Super Admin ont été conservés.' });
+    } catch (err: any) {
+      addLog('ERROR', `Échec de la réinitialisation système`, err.message);
       res.status(500).json({ message: err.message });
     }
   });

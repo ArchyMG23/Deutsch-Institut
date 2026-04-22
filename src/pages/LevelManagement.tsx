@@ -6,7 +6,10 @@ import {
   Trash2, 
   Layers,
   Clock,
-  Wallet
+  Wallet,
+  ChevronUp,
+  ChevronDown,
+  Search
 } from 'lucide-react';
 import { Level } from '../types';
 import { formatCurrency } from '../utils';
@@ -19,6 +22,8 @@ export default function LevelManagement() {
   const { levels, loading, refreshLevels } = useData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingLevel, setEditingLevel] = useState<Level | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>({ key: 'name', direction: 'asc' });
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -104,6 +109,35 @@ export default function LevelManagement() {
     }
   };
 
+  const filteredLevels = levels.filter(l => 
+    l.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const sortedLevels = [...filteredLevels].sort((a, b) => {
+    if (!sortConfig) return 0;
+    const { key, direction } = sortConfig;
+    
+    let aValue: any = (a as any)[key];
+    let bValue: any = (b as any)[key];
+
+    if (typeof aValue === 'string') {
+      aValue = aValue.toLowerCase();
+      bValue = bValue.toLowerCase();
+    }
+
+    if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+    if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -117,8 +151,39 @@ export default function LevelManagement() {
         </button>
       </div>
 
+      <div className="card p-4 flex flex-col sm:flex-row gap-4 items-center">
+        <div className="relative group flex-1">
+          <input 
+            type="text" 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Rechercher un niveau..."
+            className="w-full pl-10 pr-4 py-2 bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg focus:ring-2 focus:ring-dia-red transition-all"
+          />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none z-10" size={18} />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-neutral-400 uppercase">Trier par:</span>
+          <select 
+            value={sortConfig?.key || ''} 
+            onChange={(e) => handleSort(e.target.value)}
+            className="bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-dia-red outline-none"
+          >
+            <option value="name">Nom</option>
+            <option value="tuition">Scolarité</option>
+            <option value="hours">Heures</option>
+          </select>
+          <button 
+            onClick={() => handleSort(sortConfig?.key || 'name')}
+            className="p-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg hover:bg-neutral-200 transition-colors"
+          >
+            {sortConfig?.direction === 'asc' ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </button>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {levels.map((level) => (
+        {sortedLevels.map((level) => (
           <div key={level.id} className="card p-6 group hover:shadow-xl transition-all border-dia-red/0 hover:border-dia-red/20 border">
             <div className="flex justify-between items-start mb-4">
               <div className="w-12 h-12 rounded-2xl bg-dia-red/10 text-dia-red flex items-center justify-center">

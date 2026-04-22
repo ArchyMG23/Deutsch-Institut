@@ -11,7 +11,9 @@ import {
   X,
   ChevronRight,
   Clock,
-  CheckCircle2
+  CheckCircle2,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Communique, UserRole } from '../types';
@@ -224,12 +226,38 @@ export default function CommuniqueManagement() {
     setIsReadersModalOpen(true);
   };
 
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
+
   const filteredCommuniques = communiques.filter(c => {
     const matchesSearch = c.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                          c.content.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesRole = filterRole === 'all' || c.targetRoles.includes(filterRole as UserRole);
     return matchesSearch && matchesRole;
   });
+
+  const sortedCommuniques = [...filteredCommuniques].sort((a, b) => {
+    const direction = sortConfig.direction === 'asc' ? 1 : -1;
+    if (sortConfig.key === 'title') {
+      return direction * a.title.localeCompare(b.title);
+    }
+    if (sortConfig.key === 'date') {
+      const dateA = new Date(a.createdAt).getTime();
+      const dateB = new Date(b.createdAt).getTime();
+      return direction * (dateA - dateB);
+    }
+    if (sortConfig.key === 'priority') {
+      const priorityMap: Record<string, number> = { high: 3, medium: 2, low: 1 };
+      return direction * (priorityMap[a.priority || 'low'] - priorityMap[b.priority || 'low']);
+    }
+    return 0;
+  });
+
+  const handleSort = (key: string) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
 
   return (
     <div className="space-y-6">
@@ -255,48 +283,70 @@ export default function CommuniqueManagement() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-4 items-center">
-        <div className="relative flex-1 group">
+      <div className="card p-4 flex flex-col md:flex-row gap-4 items-center">
+        <div className="relative flex-1 group w-full">
           <input 
             type="text" 
-            placeholder="Rechercher une annonce..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 bg-white border border-neutral-100 rounded-2xl focus:ring-2 focus:ring-dia-red/10 focus:border-dia-red outline-none shadow-sm transition-all text-sm"
+            placeholder="Rechercher un communiqué..."
+            className="w-full pl-10 pr-4 py-2 bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg focus:ring-2 focus:ring-dia-red transition-all"
           />
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none z-10" size={20} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none z-10" size={18} />
         </div>
-        {isAdmin && (
-          <div className="flex items-center gap-2 bg-white p-1 rounded-2xl border border-neutral-100 shadow-sm">
+        <div className="flex gap-2 items-center shrink-0">
+          <div className="flex items-center gap-1 bg-neutral-100 dark:bg-neutral-800 p-1 rounded-xl">
             <button 
-              onClick={() => setFilterRole('all')}
+              onClick={() => handleSort('date')}
               className={cn(
-                "px-4 py-2 text-xs font-bold rounded-xl transition-all",
-                filterRole === 'all' ? "bg-dia-red text-white shadow-md" : "text-neutral-500 hover:bg-neutral-50"
+                "px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all flex items-center gap-1",
+                sortConfig.key === 'date' ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" : "text-neutral-500"
               )}
             >
-              Tous
+              Date {sortConfig.key === 'date' && (sortConfig.direction === 'asc' ? <ChevronUp size={12}/> : <ChevronDown size={12}/>)}
             </button>
             <button 
-              onClick={() => setFilterRole('student')}
+              onClick={() => handleSort('priority')}
               className={cn(
-                "px-4 py-2 text-xs font-bold rounded-xl transition-all",
-                filterRole === 'student' ? "bg-dia-red text-white shadow-md" : "text-neutral-500 hover:bg-neutral-50"
+                "px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all flex items-center gap-1",
+                sortConfig.key === 'priority' ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" : "text-neutral-500"
               )}
             >
-              Élèves
-            </button>
-            <button 
-              onClick={() => setFilterRole('teacher')}
-              className={cn(
-                "px-4 py-2 text-xs font-bold rounded-xl transition-all",
-                filterRole === 'teacher' ? "bg-dia-red text-white shadow-md" : "text-neutral-500 hover:bg-neutral-50"
-              )}
-            >
-              Enseignants
+              Priorité {sortConfig.key === 'priority' && (sortConfig.direction === 'asc' ? <ChevronUp size={12}/> : <ChevronDown size={12}/>)}
             </button>
           </div>
-        )}
+          {isAdmin && (
+            <div className="flex items-center gap-2 bg-neutral-100 dark:bg-neutral-800 p-1 rounded-xl shadow-sm">
+              <button 
+                onClick={() => setFilterRole('all')}
+                className={cn(
+                  "px-4 py-1.5 text-[10px] font-bold rounded-lg transition-all",
+                  filterRole === 'all' ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" : "text-neutral-500 hover:bg-neutral-50"
+                )}
+              >
+                Tous
+              </button>
+              <button 
+                onClick={() => setFilterRole('student')}
+                className={cn(
+                  "px-4 py-1.5 text-[10px] font-bold rounded-lg transition-all",
+                  filterRole === 'student' ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" : "text-neutral-500 hover:bg-neutral-50"
+                )}
+              >
+                Élèves
+              </button>
+              <button 
+                onClick={() => setFilterRole('teacher')}
+                className={cn(
+                  "px-4 py-1.5 text-[10px] font-bold rounded-lg transition-all",
+                  filterRole === 'teacher' ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" : "text-neutral-500 hover:bg-neutral-50"
+                )}
+              >
+                Profs
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Communiques List */}
@@ -306,7 +356,7 @@ export default function CommuniqueManagement() {
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-dia-red/20 border-t-dia-red"></div>
             <p className="text-neutral-500 animate-pulse font-medium">Chargement des annonces...</p>
           </div>
-        ) : filteredCommuniques.length === 0 ? (
+        ) : sortedCommuniques.length === 0 ? (
           <div className="card py-20 flex flex-col items-center justify-center text-center opacity-60">
             <div className="w-20 h-20 rounded-full bg-neutral-100 flex items-center justify-center mb-6">
               <Bell size={40} className="text-neutral-400" />
@@ -315,7 +365,7 @@ export default function CommuniqueManagement() {
             <p className="text-neutral-500 max-w-xs">Aucune annonce n'a été publiée pour le moment.</p>
           </div>
         ) : (
-          filteredCommuniques.map((c) => (
+          sortedCommuniques.map((c) => (
             <div 
               key={c.id} 
               className={cn(

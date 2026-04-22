@@ -10,7 +10,10 @@ import {
   UserPlus,
   GraduationCap,
   DollarSign,
-  Clock
+  Clock,
+  ChevronUp,
+  ChevronDown,
+  SortAsc
 } from 'lucide-react';
 import { cn, formatCurrency, generateMatricule } from '../utils';
 import { Teacher, ClassRoom } from '../types';
@@ -26,6 +29,7 @@ export default function TeacherManagement() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>({ key: 'lastName', direction: 'asc' });
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -159,6 +163,34 @@ export default function TeacherManagement() {
     `${t.firstName} ${t.lastName} ${t.matricule}`.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const sortedTeachers = [...filteredTeachers].sort((a, b) => {
+    if (!sortConfig) return 0;
+    const { key, direction } = sortConfig;
+    
+    let aValue: any = (a as any)[key];
+    let bValue: any = (b as any)[key];
+
+    if (key === 'name') {
+      aValue = `${a.lastName} ${a.firstName}`.toLowerCase();
+      bValue = `${b.lastName} ${b.firstName}`.toLowerCase();
+    } else if (typeof aValue === 'string') {
+      aValue = aValue.toLowerCase();
+      bValue = bValue.toLowerCase();
+    }
+
+    if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+    if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -172,8 +204,8 @@ export default function TeacherManagement() {
         </button>
       </div>
 
-      <div className="card p-4">
-        <div className="relative group">
+      <div className="card p-4 flex flex-col sm:flex-row gap-4 items-center">
+        <div className="relative group flex-1">
           <input 
             type="text" 
             value={searchQuery}
@@ -183,11 +215,29 @@ export default function TeacherManagement() {
           />
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none z-10" size={18} />
         </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-neutral-400 uppercase">Trier par:</span>
+          <select 
+            value={sortConfig?.key || ''} 
+            onChange={(e) => handleSort(e.target.value)}
+            className="bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-dia-red outline-none"
+          >
+            <option value="lastName">Nom</option>
+            <option value="hourlyRate">Taux Horaire</option>
+            <option value="totalHoursWorked">Heures Travaillées</option>
+          </select>
+          <button 
+            onClick={() => handleSort(sortConfig?.key || 'lastName')}
+            className="p-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg hover:bg-neutral-200 transition-colors"
+          >
+            {sortConfig?.direction === 'asc' ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </button>
+        </div>
       </div>
 
       {/* Teachers Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredTeachers.map((teacher) => (
+        {sortedTeachers.map((teacher) => (
           <div key={teacher.id} className="card p-6 hover:shadow-lg transition-shadow">
             <div className="flex justify-between items-start mb-4">
               <div className="w-12 h-12 rounded-2xl bg-dia-red/10 text-dia-red flex items-center justify-center text-xl font-bold">

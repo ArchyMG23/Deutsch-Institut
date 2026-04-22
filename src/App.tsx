@@ -18,6 +18,8 @@ const FinanceManagement = lazy(() => import('./pages/FinanceManagement'));
 const LibraryManagement = lazy(() => import('./pages/LibraryManagement'));
 const LevelManagement = lazy(() => import('./pages/LevelManagement'));
 const CommuniqueManagement = lazy(() => import('./pages/CommuniqueManagement'));
+const AdminManagement = lazy(() => import('./pages/AdminManagement'));
+const AdminProfile = lazy(() => import('./pages/AdminProfile'));
 const StudentDashboard = lazy(() => import('./pages/StudentDashboard'));
 const StudentCalendar = lazy(() => import('./pages/StudentCalendar'));
 const StudentProfile = lazy(() => import('./pages/StudentProfile'));
@@ -110,6 +112,20 @@ function AnimatedRoutes() {
           <RoleGuard allowedRoles={['admin']}>
             <DashboardLayout>
               <PageWrapper><CommuniqueManagement /></PageWrapper>
+            </DashboardLayout>
+          </RoleGuard>
+        } />,
+        <Route path="/admin/admins" element={
+          <RoleGuard allowedRoles={['admin']}>
+            <DashboardLayout>
+              <PageWrapper><AdminManagement /></PageWrapper>
+            </DashboardLayout>
+          </RoleGuard>
+        } />,
+        <Route path="/admin/profile" element={
+          <RoleGuard allowedRoles={['admin']}>
+            <DashboardLayout>
+              <PageWrapper><AdminProfile /></PageWrapper>
             </DashboardLayout>
           </RoleGuard>
         } />,
