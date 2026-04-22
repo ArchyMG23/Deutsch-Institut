@@ -1326,35 +1326,74 @@ async function startServer() {
     }
   });
 
+  // System Logs API
+  app.get('/api/system/logs', authenticate, async (req: any, res) => {
+    if ((req.user as any)?.role !== 'admin') {
+      return res.status(403).json({ message: 'Accès réservé aux administrateurs' });
+    }
+    res.json(serverLogs);
+  });
+
+  // Serve static uploads
+  app.use('/uploads', express.static(UPLOADS_DIR));
+
   // Profile Upload API
   app.post('/api/profile/upload-photo', authenticate, upload.single('photo'), async (req: any, res) => {
-    if (!req.file) return res.status(400).json({ message: 'Aucun fichier téléchargé' });
+    if (!fs.existsSync(UPLOADS_DIR)) {
+      try { fs.mkdirSync(UPLOADS_DIR, { recursive: true }); } catch(err) {}
+    }
+    
+    if (!req.file) {
+      addLog('ERROR', 'Tentative d\'upload sans fichier');
+      return res.status(400).json({ message: 'Aucun fichier téléchargé' });
+    }
     
     try {
       const photoURL = `/uploads/${req.file.filename}`;
+      const targetUserId = req.body.userId || req.user.id; // Allow admin to specify a user ID
       
-      // Update Auth User
-      await authAdmin.updateUser(req.user.id, { photoURL });
-      
+      // Security check: Only admins can update other people's photos
+      if (targetUserId !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ message: 'Permission refusée' });
+      }
+
+      if (!isFirebaseAdminInitialized) {
+        addLog('ERROR', 'Tentative d\'upload photo sans Firebase Admin');
+        return res.status(503).json({ message: 'Le service Firebase n\'est pas initialisé.' });
+      }
+
       // Update Firestore Profile
-      await dbAdmin.collection('users').doc(req.user.id).update({ photoURL });
+      await dbAdmin.collection('users').doc(targetUserId).update({ photoURL });
       
       // Update Role-specific profile
-      const userDoc = await dbAdmin.collection('users').doc(req.user.id).get();
+      const userDoc = await dbAdmin.collection('users').doc(targetUserId).get();
       const userData = userDoc.data();
       
       if (userData?.role === 'student') {
-        await dbAdmin.collection('students').doc(req.user.id).update({ photoURL });
+        await dbAdmin.collection('students').doc(targetUserId).update({ photoURL });
       } else if (userData?.role === 'teacher') {
-        await dbAdmin.collection('teachers').doc(req.user.id).update({ photoURL });
+        await dbAdmin.collection('teachers').doc(targetUserId).update({ photoURL });
       }
       
+      // Also update Auth User photo if it's the current user
+      if (targetUserId === req.user.id) {
+        try {
+          await authAdmin.updateUser(targetUserId, { photoURL });
+        } catch (authErr) {
+          addLog('ERROR', 'Erreur mise à jour photo Auth', authErr);
+        }
+      }
+
+      addLog('INFO', `Photo mise à jour pour ${targetUserId}: ${photoURL}`);
       res.json({ photoURL, message: 'Photo de profil mise à jour' });
     } catch (err: any) {
-      console.error("Profile photo upload error:", err);
+      addLog('ERROR', 'Profile photo upload error', err.message);
       res.status(500).json({ message: err.message });
     }
   });
+
+  // Serve uploaded files
+  app.use('/uploads', express.static(UPLOADS_DIR));
 
   // Vite Middleware
   if (process.env.NODE_ENV !== 'production') {

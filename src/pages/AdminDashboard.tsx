@@ -10,7 +10,10 @@ import {
   CheckCircle2,
   Settings,
   ShieldAlert,
-  ExternalLink
+  ExternalLink,
+  Laptop,
+  Smartphone,
+  Globe
 } from 'lucide-react';
 import { 
   XAxis, 
@@ -121,6 +124,11 @@ export default function AdminDashboard() {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 5);
 
+  const onlineMembers = [
+    ...students.filter(s => s.status === 'online'),
+    ...teachers.filter(t => t.status === 'online')
+  ];
+
   if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-dia-red"></div></div>;
 
   return (
@@ -155,6 +163,46 @@ export default function AdminDashboard() {
           trend="+100%" 
           trendType="down"
         />
+      </div>
+
+      {/* Online Members & Devices */}
+      <div className="card p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            <h3 className="font-bold text-lg">Membres Connectés & Appareils</h3>
+            <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
+            <span className="text-xs font-bold text-green-600">{onlineMembers.length} en ligne</span>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 overflow-y-auto">
+          {onlineMembers.length === 0 ? (
+            <div className="col-span-full py-10 text-center bg-neutral-50 dark:bg-neutral-800/20 rounded-3xl border border-dashed border-neutral-200 dark:border-neutral-700">
+              <p className="text-neutral-500 text-sm font-medium">Aucun membre en ligne pour le moment.</p>
+            </div>
+          ) : (
+            onlineMembers.map((member) => (
+              <div key={member.uid} className="p-4 rounded-2xl bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 flex items-center justify-between group">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-dia-red/10 text-dia-red flex items-center justify-center font-bold text-xs">
+                    {member.firstName[0]}{member.lastName[0]}
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold truncate max-w-[100px]">{member.firstName} {member.lastName}</p>
+                    <p className="text-[10px] text-neutral-400 capitalize">{member.role}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="flex items-center gap-1 justify-end text-dia-red">
+                    {member.lastActiveDevice?.toLowerCase().includes('android') || member.lastActiveDevice?.toLowerCase().includes('ios') ? <Smartphone size={12} /> : <Laptop size={12} />}
+                    <span className="text-[10px] font-bold truncate max-w-[60px]">{member.lastActiveDevice || 'Inconnu'}</span>
+                  </div>
+                  <p className="text-[9px] text-neutral-400">{member.lastLoginAt ? new Date(member.lastLoginAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'récemment'}</p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
       {/* Configuration Assistant */}
@@ -269,96 +317,86 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Server Logs Section */}
-      <div className="card p-6 mb-6">
-        <div className="flex flex-col lg:flex-row gap-6">
-          <div className="lg:w-2/3">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="font-bold text-lg">Journaux du Serveur (Diagnostics)</h3>
-              <button 
-                onClick={fetchLogs}
-                className="text-xs font-bold text-dia-red flex items-center gap-1 hover:underline"
-              >
-                Actualiser les logs ❯
-              </button>
-            </div>
-            <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
-              {logs.length === 0 ? (
-                <p className="text-center text-neutral-500 py-10">Aucun log récent.</p>
-              ) : (
-                [...logs].reverse().map((log, idx) => (
-                  <div key={idx} className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-100 dark:border-neutral-800">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className={cn(
-                        "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase",
-                        log.type === 'ERROR' ? "bg-red-100 text-red-600" : 
-                        log.type === 'EMAIL' ? "bg-blue-100 text-blue-600" :
-                        log.type === 'AUTH' ? "bg-purple-100 text-purple-600" :
-                        "bg-green-100 text-green-600"
-                      )}>
-                        {log.type}
-                      </span>
-                      <span className="text-[10px] text-neutral-400 font-mono">
-                        {new Date(log.timestamp).toLocaleTimeString()}
-                      </span>
-                    </div>
-                    <p className="text-sm font-medium">{log.message}</p>
-                    {log.details && (
-                      <p className="text-[10px] font-mono text-neutral-500 mt-1 break-all bg-neutral-100 dark:bg-neutral-900 p-1 rounded">
-                        {log.details}
-                      </p>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
+      {/* Diagnostics & Logs Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 card p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="font-bold text-lg">Journaux du Serveur</h3>
+            <button 
+              onClick={fetchLogs}
+              className="text-xs font-bold text-dia-red flex items-center gap-1 hover:underline"
+            >
+              Actualiser ❯
+            </button>
           </div>
-          
-          <div className="lg:w-1/3 p-4 rounded-3xl bg-neutral-50 dark:bg-neutral-800/20 border border-dashed border-neutral-200 dark:border-neutral-700">
-            <h4 className="font-bold text-sm mb-4">Vérificateur d'Identifiants</h4>
-            <div className="space-y-4">
-              <div>
-                <label className="text-[10px] font-bold uppercase text-neutral-400 ml-1">Matricule à tester</label>
-                <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    value={diagMatricule}
-                    onChange={(e) => setDiagMatricule(e.target.value)}
-                    placeholder="Ex: S261234"
-                    className="flex-1 px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-dia-red/20"
-                  />
-                  <button 
-                    onClick={handleCheckUser}
-                    disabled={checkingDiag}
-                    className="px-4 py-2 bg-dia-red text-white text-xs font-bold rounded-xl disabled:opacity-50"
-                  >
-                    Vérifier
-                  </button>
+          <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
+            {logs.length === 0 ? (
+              <p className="text-center text-neutral-500 py-10">Aucun log récent.</p>
+            ) : (
+              [...logs].reverse().slice(0, 10).map((log, idx) => (
+                <div key={idx} className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-100 dark:border-neutral-800">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className={cn(
+                      "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase",
+                      log.type === 'ERROR' ? "bg-red-100 text-red-600" : 
+                      log.type === 'EMAIL' ? "bg-blue-100 text-blue-600" :
+                      log.type === 'AUTH' ? "bg-purple-100 text-purple-600" :
+                      "bg-green-100 text-green-600"
+                    )}>
+                      {log.type}
+                    </span>
+                    <span className="text-[10px] text-neutral-400 font-mono">
+                      {new Date(log.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium">{log.message}</p>
                 </div>
-              </div>
+              ))
+            )}
+          </div>
+        </div>
 
-              {diagResult && (
-                <div className="p-3 bg-white dark:bg-neutral-800 rounded-2xl border border-neutral-100 dark:border-neutral-700 animate-in fade-in zoom-in-95">
-                  {diagResult.exists ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-green-500 text-xs font-bold mb-1">
-                        <CheckCircle2 size={14} /> Trouvé
-                      </div>
-                      <p className="text-xs"><strong>Nom :</strong> {diagResult.user.firstName} {diagResult.user.lastName}</p>
-                      <p className="text-xs"><strong>Email exact :</strong> {diagResult.user.email}</p>
-                      <p className="text-xs"><strong>Rôle :</strong> <span className="capitalize">{diagResult.user.role}</span></p>
-                      <p className="text-[10px] text-neutral-400 mt-2 italic leading-tight">
-                        Note : Pour se connecter, cet utilisateur doit utiliser l'email ci-dessus si le matricule échoue.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-dia-red text-xs font-bold">
-                      <AlertTriangle size={14} /> {diagResult.message}
-                    </div>
-                  )}
-                </div>
-              )}
+        <div className="card p-6">
+          <h4 className="font-bold text-sm mb-4">Vérificateur d'Identifiants</h4>
+          <div className="space-y-4">
+            <div>
+              <label className="text-[10px] font-bold uppercase text-neutral-400 ml-1">Matricule à tester</label>
+              <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  value={diagMatricule}
+                  onChange={(e) => setDiagMatricule(e.target.value)}
+                  placeholder="Ex: S261234"
+                  className="flex-1 px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-dia-red/20"
+                />
+                <button 
+                  onClick={handleCheckUser}
+                  disabled={checkingDiag}
+                  className="px-4 py-2 bg-dia-red text-white text-xs font-bold rounded-xl disabled:opacity-50"
+                >
+                  Vérifier
+                </button>
+              </div>
             </div>
+
+            {diagResult && (
+              <div className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-2xl border border-neutral-100 dark:border-neutral-700 animate-in fade-in zoom-in-95">
+                {diagResult.exists ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-green-500 text-xs font-bold mb-1">
+                      <CheckCircle2 size={14} /> Trouvé
+                    </div>
+                    <p className="text-xs"><strong>Nom :</strong> {diagResult.user.firstName} {diagResult.user.lastName}</p>
+                    <p className="text-[10px]"><strong>Email :</strong> {diagResult.user.email}</p>
+                    <p className="text-[10px]"><strong>Rôle :</strong> <span className="capitalize">{diagResult.user.role}</span></p>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-dia-red text-xs font-bold">
+                    <AlertTriangle size={14} /> {diagResult.message}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

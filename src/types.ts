@@ -12,6 +12,8 @@ export interface UserProfile {
   mustChangePassword?: boolean;
   status: 'online' | 'offline';
   fcmToken?: string;
+  lastActiveDevice?: string;
+  lastLoginAt?: string;
   createdAt: string;
   isSuperAdmin?: boolean;
 }

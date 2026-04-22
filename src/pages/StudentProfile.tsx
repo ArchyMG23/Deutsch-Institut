@@ -19,9 +19,10 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { cn, formatCurrency } from '../utils';
 import { Student } from '../types';
+import { toast } from 'sonner';
 
 export default function StudentProfile() {
-  const { profile, updateProfile, changePassword, validatePassword, fetchWithAuth } = useAuth();
+  const { profile, updateProfile, changePassword, validatePassword, fetchWithAuth, logout } = useAuth();
   const student = profile as Student;
   
   const [isEditing, setIsEditing] = useState(false);
@@ -75,10 +76,11 @@ export default function StudentProfile() {
         const updatedStudent = await res.json();
         updateProfile(updatedStudent);
         setIsEditing(false);
+        toast.success('Profil mis à jour');
       }
     } catch (err) {
       console.error("Error updating profile:", err);
-      alert('Erreur lors de la mise à jour');
+      toast.error('Erreur lors de la mise à jour');
     } finally {
       setSaving(false);
     }
@@ -101,9 +103,11 @@ export default function StudentProfile() {
       if (res.ok) {
         const data = await res.json();
         updateProfile({ ...student, photoURL: data.photoURL });
+        toast.success('Photo mise à jour');
       }
     } catch (err) {
       console.error("Upload error:", err);
+      toast.error('Erreur lors de l\'envoi de la photo');
     } finally {
       setUploading(false);
     }
@@ -346,6 +350,23 @@ export default function StudentProfile() {
                 <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">Date de naissance</p>
                 <p className="font-bold">{new Date(student.birthDate).toLocaleDateString('fr-FR')}</p>
               </div>
+            </div>
+          </div>
+
+          {/* Danger Zone */}
+          <div className="card border-red-100 dark:border-red-900/30 overflow-hidden mt-8">
+            <div className="p-6 bg-red-50/50 dark:bg-red-950/10 border-b border-red-100 dark:border-red-900/20">
+              <h4 className="font-bold flex items-center gap-2 text-red-600 dark:text-red-400 text-sm">
+                Danger Zone
+              </h4>
+            </div>
+            <div className="p-6">
+              <button 
+                onClick={logout}
+                className="w-full py-3 border border-red-200 dark:border-red-900/30 text-red-600 rounded-2xl font-bold text-sm hover:bg-red-50 transition-all"
+              >
+                Se déconnecter de tous les appareils
+              </button>
             </div>
           </div>
         </div>

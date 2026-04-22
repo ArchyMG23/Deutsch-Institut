@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { LogIn, ShieldAlert, Loader2, Eye, EyeOff, Wrench } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { downloadProtectedArchive } from '../utils/documentation';
 
@@ -26,9 +27,12 @@ export default function LoginPage() {
     if (code === 'vyombi_dia_2026' || code === 'RESET_FACTORY') {
       try {
         setDownloadingDoc(true);
+        console.log("Starting documentation download archive...");
         await downloadProtectedArchive(code);
-      } catch (err) {
-        alert("Erreur lors de la génération du document.");
+        toast.success("Documentation générée avec succès.");
+      } catch (err: any) {
+        console.error("Documentation generation failed:", err);
+        alert(`Erreur lors de la génération du document: ${err.message || "Erreur inconnue"}`);
       } finally {
         setDownloadingDoc(false);
       }
@@ -171,7 +175,7 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-10 text-center">
+          <div className="mt-10 text-center space-y-4">
             <p className="text-xs text-neutral-400">
               Besoin d'aide ?{' '}
               <button 
@@ -182,6 +186,17 @@ export default function LoginPage() {
                 {downloadingDoc ? "Préparation..." : "Support Technique"}
               </button>
             </p>
+            
+            <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800">
+              <p className="text-[10px] text-neutral-400 uppercase tracking-widest font-bold mb-2">Version Mobile & Desktop</p>
+              <div className="flex flex-col gap-2">
+                <p className="text-[10px] text-neutral-500 leading-relaxed max-w-[280px] mx-auto">
+                  Pour installer l'application sur votre appareil : <br/>
+                  <strong>iOS:</strong> Partager &gt; Sur l'écran d'accueil <br/>
+                  <strong>Android/PC:</strong> Menu &gt; Installer l'application
+                </p>
+              </div>
+            </div>
           </div>
         </div>
         

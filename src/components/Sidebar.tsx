@@ -41,7 +41,7 @@ export function Sidebar() {
     {to: '/admin/library', icon: Library, label: 'Bibliothèque' },
     { to: '/admin/communiques', icon: Bell, label: 'Communiqués' },
     { to: '/admin/admins', icon: Shield, label: 'Gérer Admins' },
-    { to: '/admin/profile', icon: User, label: 'Mon Profil' },
+    { to: '/admin/profile', icon: User, label: 'Profil & Sécurité' },
   ];
 
   const teacherLinks = [
@@ -50,7 +50,7 @@ export function Sidebar() {
     { to: '/teacher/students', icon: Users, label: 'Étudiants' },
     { to: '/teacher/library', icon: Library, label: 'Bibliothèque' },
     { to: '/teacher/communiques', icon: Bell, label: 'Communiqués' },
-    { to: '/teacher/profile', icon: User, label: 'Mon Profil' },
+    { to: '/teacher/profile', icon: User, label: 'Profil & Sécurité' },
   ];
 
   const studentLinks = [
@@ -58,7 +58,7 @@ export function Sidebar() {
     { to: '/student/calendar', icon: Calendar, label: 'Calendrier' },
     { to: '/student/library', icon: Library, label: 'Bibliothèque' },
     { to: '/student/communiques', icon: Bell, label: 'Communiqués' },
-    { to: '/student/profile', icon: User, label: 'Mon Profil' },
+    { to: '/student/profile', icon: User, label: 'Profil & Sécurité' },
   ];
 
   const links = profile?.role === 'admin' ? adminLinks : 

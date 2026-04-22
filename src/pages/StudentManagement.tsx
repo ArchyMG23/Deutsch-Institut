@@ -20,9 +20,13 @@ import {
   Trash2,
   Send,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  Laptop,
+  Smartphone
 } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { cn, formatCurrency, generateMatricule } from '../utils';
 import { Student, ClassRoom, Level, TuitionPayment } from '../types';
 import { NotificationService } from '../services/NotificationService';
@@ -54,6 +58,74 @@ export default function StudentManagement() {
     contentRef: receiptRef,
   });
 
+  const handleDownloadPDFReceipt = async () => {
+    if (!selectedStudent) return;
+    
+    try {
+      setSubmitting(true);
+      const doc = new jsPDF();
+      
+      // Header
+      doc.setFillColor(227, 30, 36);
+      doc.rect(0, 0, 210, 40, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(22);
+      doc.text('DIA_SAAS - REÇU DE PAIEMENT', 20, 25);
+      
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(10);
+      const dateStr = new Date().toLocaleDateString('fr-FR');
+      doc.text(`Date : ${dateStr}`, 160, 50);
+      doc.text(`N° : ${Date.now()}`, 160, 55);
+
+      // Student Info
+      doc.setFont('helvetica', 'bold');
+      doc.text('INFORMATIONS ÉTUDIANT', 20, 60);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Nom : ${selectedStudent.firstName} ${selectedStudent.lastName}`, 20, 70);
+      doc.text(`Matricule : ${selectedStudent.matricule}`, 20, 75);
+      doc.text(`Email : ${selectedStudent.email}`, 20, 80);
+      doc.text(`Niveau : ${levels.find(l => l.id === selectedStudent.levelId)?.name || 'N/A'}`, 20, 85);
+
+      // Payments Table
+      const paidPayments = selectedStudent.payments.filter(p => p.amount > 0);
+      autoTable(doc, {
+        startY: 100,
+        head: [['Désignation', 'Date', 'Montant']],
+        body: paidPayments.map(p => [
+          `Scolarité - Tranche ${p.tranche}`, 
+          p.date ? new Date(p.date).toLocaleDateString('fr-FR') : 'N/A', 
+          formatCurrency(p.amount)
+        ]),
+        theme: 'striped',
+        headStyles: { fillColor: [227, 30, 36] }
+      });
+
+      const finalY = (doc as any).lastAutoTable.finalY + 15;
+      const totalPaid = selectedStudent.payments.reduce((acc, p) => acc + p.amount, 0);
+      
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`TOTAL PAYÉ : ${formatCurrency(totalPaid)}`, 140, finalY);
+
+      // Signatures
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Signature Étudiant', 40, finalY + 30);
+      doc.text('Signature Institut', 140, finalY + 30);
+      doc.line(20, finalY + 60, 80, finalY + 60);
+      doc.line(130, finalY + 60, 190, finalY + 60);
+
+      doc.save(`Recu_${selectedStudent.matricule}.pdf`);
+      toast.success("Reçu PDF téléchargé.");
+    } catch (err) {
+      console.error("Error generating receipt PDF:", err);
+      toast.error("Erreur lors de la génération du PDF.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
@@ -82,6 +154,7 @@ export default function StudentManagement() {
       birthDate: formData.get('birthDate'),
       birthPlace: formData.get('birthPlace'),
       gender: formData.get('gender'),
+      cni: formData.get('cni'),
       parentName: formData.get('parentName'),
       parentPhone: formData.get('parentPhone'),
       parentEmail: formData.get('parentEmail'),
@@ -138,6 +211,7 @@ export default function StudentManagement() {
       birthDate: formData.get('birthDate'),
       birthPlace: formData.get('birthPlace'),
       gender: formData.get('gender'),
+      cni: formData.get('cni'),
       parentName: formData.get('parentName'),
       parentPhone: formData.get('parentPhone'),
       parentEmail: formData.get('parentEmail'),
@@ -597,14 +671,31 @@ export default function StudentManagement() {
                         ) : (
                           <div className="flex gap-2">
                             <button 
-                              onClick={() => handleRestoreStudent(student.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedStudent(student);
+                                setIsEditModalOpen(true);
+                              }}
+                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-blue-600"
+                              title="Modifier"
+                            >
+                              <Edit size={18} />
+                            </button>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRestoreStudent(student.id);
+                              }}
                               className="flex items-center gap-2 px-3 py-1.5 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-lg text-xs font-bold hover:bg-green-200 transition-colors"
                             >
                               <Plus size={14} />
                               Restaurer
                             </button>
                             <button 
-                              onClick={() => handleHardDeleteStudent(student.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleHardDeleteStudent(student.id);
+                              }}
                               className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-red-600"
                               title="Supprimer définitivement"
                             >
@@ -674,6 +765,25 @@ export default function StudentManagement() {
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Paiement Initial (Tranche 3)</label>
                   <input name="tranche3" type="number" placeholder="0" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Genre</label>
+                  <select name="gender" required className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
+                    <option value="M">Masculin</option>
+                    <option value="F">Féminin</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Date de Naissance</label>
+                  <input name="birthDate" required type="date" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Lieu de Naissance</label>
+                  <input name="birthPlace" required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">N° CNI (Optionnel)</label>
+                  <input name="cni" type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Parent / Tuteur</label>
@@ -757,6 +867,25 @@ export default function StudentManagement() {
                   </select>
                 </div>
                 <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Genre</label>
+                  <select name="gender" defaultValue={selectedStudent.gender} required className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
+                    <option value="M">Masculin</option>
+                    <option value="F">Féminin</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Date de Naissance</label>
+                  <input name="birthDate" defaultValue={selectedStudent.birthDate} required type="date" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Lieu de Naissance</label>
+                  <input name="birthPlace" defaultValue={selectedStudent.birthPlace} required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">N° CNI (Optionnel)</label>
+                  <input name="cni" defaultValue={selectedStudent.cni} type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
+                <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Parent / Tuteur</label>
                   <input name="parentName" defaultValue={selectedStudent.parentName} required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
@@ -803,8 +932,52 @@ export default function StudentManagement() {
             </div>
             <div className="p-8 space-y-6">
               <div className="flex items-center gap-6">
-                <div className="w-24 h-24 rounded-3xl bg-dia-red/10 text-dia-red flex items-center justify-center text-3xl font-bold">
-                  {selectedStudent.firstName[0]}{selectedStudent.lastName[0]}
+                <div className="relative group">
+                  <div className="w-24 h-24 rounded-3xl bg-dia-red/10 text-dia-red flex items-center justify-center text-3xl font-bold overflow-hidden">
+                    {selectedStudent.photoURL ? (
+                      <img src={selectedStudent.photoURL} alt="Student" className="w-full h-full object-cover" />
+                    ) : (
+                      <>{selectedStudent.firstName[0]}{selectedStudent.lastName[0]}</>
+                    )}
+                  </div>
+                  <button 
+                    onClick={() => {
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.accept = 'image/*';
+                      input.onchange = async (e: any) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        
+                        const formData = new FormData();
+                        formData.append('photo', file);
+                        formData.append('userId', selectedStudent.uid);
+                        
+                        try {
+                          toast.loading("Chargement de la photo...");
+                          const res = await fetchWithAuth('/api/profile/upload-photo', {
+                            method: 'POST',
+                            body: formData
+                          });
+                          
+                          if (res.ok) {
+                            const data = await res.json();
+                            setSelectedStudent({ ...selectedStudent, photoURL: data.photoURL });
+                            refreshAll();
+                            toast.dismiss();
+                            toast.success("Photo mise à jour");
+                          }
+                        } catch (err) {
+                          toast.dismiss();
+                          toast.error("Erreur lors de l'upload");
+                        }
+                      };
+                      input.click();
+                    }}
+                    className="absolute -bottom-2 -right-2 p-2 bg-dia-red text-white rounded-xl shadow-lg hover:scale-110 transition-transform"
+                  >
+                    <Camera size={14} />
+                  </button>
                 </div>
                 <div>
                   <h4 className="text-2xl font-bold">{selectedStudent.firstName} {selectedStudent.lastName}</h4>
@@ -813,9 +986,23 @@ export default function StudentManagement() {
               </div>
               <div className="grid grid-cols-2 gap-8">
                 <div>
+                  <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">Identité</p>
+                  <p className="text-sm"><strong>Sexe :</strong> {selectedStudent.gender === 'M' ? 'Masculin' : 'Féminin'}</p>
+                  <p className="text-sm"><strong>Naissance :</strong> {selectedStudent.birthDate ? new Date(selectedStudent.birthDate).toLocaleDateString() : 'Non renseigné'} à {selectedStudent.birthPlace || 'N/A'}</p>
+                  {selectedStudent.cni && <p className="text-sm"><strong>CNI :</strong> {selectedStudent.cni}</p>}
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">Dernière Connexion</p>
+                  <div className="flex items-center gap-2 text-dia-red">
+                    {selectedStudent.lastActiveDevice?.toLowerCase().includes('android') || selectedStudent.lastActiveDevice?.toLowerCase().includes('ios') ? <Smartphone size={16} /> : <Laptop size={16} />}
+                    <p className="text-sm font-bold">{selectedStudent.lastActiveDevice || 'Jamais connecté'}</p>
+                  </div>
+                  {selectedStudent.lastLoginAt && <p className="text-[10px] text-neutral-500 mt-1 italic">Dernière activité le {new Date(selectedStudent.lastLoginAt).toLocaleString()}</p>}
+                </div>
+                <div>
                   <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">Contact</p>
-                  <p className="text-sm flex items-center gap-2"><Mail size={14} /> {selectedStudent.email}</p>
-                  <p className="text-sm flex items-center gap-2"><Phone size={14} /> {selectedStudent.phone}</p>
+                  <p className="text-sm flex items-center gap-2 font-medium"><Mail size={14} className="text-dia-red" /> {selectedStudent.email}</p>
+                  <p className="text-sm flex items-center gap-2 font-medium"><Phone size={14} className="text-dia-red" /> {selectedStudent.phone}</p>
                 </div>
                 <div>
                   <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">Académique</p>
@@ -891,6 +1078,14 @@ export default function StudentManagement() {
                   title="Envoyer par Email"
                 >
                   {submitting ? <div className="animate-spin rounded-full h-5 w-5 border-2 border-current border-t-transparent" /> : <Send size={20} />}
+                </button>
+                <button 
+                  onClick={handleDownloadPDFReceipt}
+                  disabled={submitting}
+                  className="p-3 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-xl hover:bg-red-200 transition-colors"
+                  title="Télécharger PDF"
+                >
+                  {submitting ? <div className="animate-spin rounded-full h-5 w-5 border-2 border-current border-t-transparent" /> : <FileText size={20} />}
                 </button>
                 <button onClick={handlePrintReceipt} className="p-3 bg-neutral-100 dark:bg-neutral-800 rounded-xl hover:bg-neutral-200 transition-colors">
                   <Printer size={20} />

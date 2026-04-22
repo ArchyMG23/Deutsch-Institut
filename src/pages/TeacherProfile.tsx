@@ -18,9 +18,10 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { Teacher } from '../types';
 import { cn, formatCurrency } from '../utils';
+import { toast } from 'sonner';
 
 export default function TeacherProfile() {
-  const { profile, updateProfile, changePassword, validatePassword, fetchWithAuth } = useAuth();
+  const { profile, updateProfile, changePassword, validatePassword, fetchWithAuth, logout } = useAuth();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<Partial<Teacher>>({});
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
@@ -71,13 +72,13 @@ export default function TeacherProfile() {
       if (res.ok) {
         const updated = await res.json();
         updateProfile(updated);
-        alert('Profil mis à jour avec succès !');
+        toast.success('Profil mis à jour avec succès !');
       } else {
-        alert('Erreur lors de la mise à jour du profil');
+        toast.error('Erreur lors de la mise à jour du profil');
       }
     } catch (err) {
       console.error("Error updating profile:", err);
-      alert('Erreur lors de la mise à jour du profil');
+      toast.error('Erreur lors de la mise à jour du profil');
     } finally {
       setLoading(false);
     }
@@ -100,9 +101,11 @@ export default function TeacherProfile() {
       if (res.ok) {
         const data = await res.json();
         updateProfile({ ...profile, photoURL: data.photoURL });
+        toast.success('Photo mise à jour');
       }
     } catch (err) {
       console.error("Upload error:", err);
+      toast.error('Erreur lors de l\'envoi de la photo');
     } finally {
       setUploading(false);
     }
@@ -223,6 +226,23 @@ export default function TeacherProfile() {
             >
               Changer le mot de passe
             </button>
+          </div>
+
+          {/* Danger Zone */}
+          <div className="card border-red-100 dark:border-red-900/30 overflow-hidden">
+            <div className="p-6 bg-red-50/50 dark:bg-red-950/10 border-b border-red-100 dark:border-red-900/20">
+              <h4 className="font-bold flex items-center gap-2 text-red-600 dark:text-red-400 text-sm">
+                Zone de Danger
+              </h4>
+            </div>
+            <div className="p-6">
+              <button 
+                onClick={logout}
+                className="w-full py-3 border border-red-200 dark:border-red-900/30 text-red-600 rounded-2xl font-bold text-sm hover:bg-red-50 transition-all"
+              >
+                Se déconnecter
+              </button>
+            </div>
           </div>
         </div>
 

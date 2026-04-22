@@ -44,7 +44,8 @@
     "recharts": "^3.8.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "vite-plugin-pwa": "^1.2.0"
   },
   "overrides": {
     "protobufjs": "^7.5.5",

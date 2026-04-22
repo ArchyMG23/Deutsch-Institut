@@ -325,6 +325,44 @@ export default function AdminProfile() {
               </div>
             </form>
           </div>
+
+          {/* Danger Zone */}
+          <div className="card border-red-100 dark:border-red-900/30 overflow-hidden">
+            <div className="p-6 bg-red-50/50 dark:bg-red-950/10 border-b border-red-100 dark:border-red-900/20">
+              <h4 className="font-bold flex items-center gap-2 text-red-600 dark:text-red-400">
+                <Trash2 size={18} />
+                Zone de Danger
+              </h4>
+              <p className="text-xs text-red-500/80 mt-1">Actions irréversibles pour votre compte et vos données.</p>
+            </div>
+            <div className="p-6 space-y-6">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h5 className="font-bold text-sm">Déconnexion de tous les appareils</h5>
+                  <p className="text-xs text-neutral-500 mt-0.5">Récupérez le contrôle en déconnectant les sessions actives.</p>
+                </div>
+                <button 
+                  onClick={logout}
+                  className="px-4 py-2 text-sm font-bold border border-neutral-200 dark:border-neutral-700 rounded-xl hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all"
+                >
+                  Déconnexion
+                </button>
+              </div>
+
+              <div className="pt-6 border-t border-red-50 dark:border-red-900/20 flex items-center justify-between gap-4">
+                <div>
+                  <h5 className="font-bold text-sm text-red-600">Supprimer mon compte</h5>
+                  <p className="text-xs text-neutral-500 mt-0.5">Cette action entrainera la perte de toutes vos données administratives.</p>
+                </div>
+                <button 
+                  onClick={() => toast.error("Veuillez contacter le super-administrateur pour la suppression de compte.")}
+                  className="px-4 py-2 text-sm font-bold bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all shadow-lg shadow-red-600/20"
+                >
+                  Supprimer
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

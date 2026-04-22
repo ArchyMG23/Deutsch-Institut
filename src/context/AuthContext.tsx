@@ -20,6 +20,7 @@ import { auth, db, messaging } from '../firebase';
 import { UserProfile } from '../types';
 import { toast } from 'sonner';
 import { getToken } from 'firebase/messaging';
+import { getDeviceInfo } from '../utils';
 
 interface AuthContextType {
   user: any | null;
@@ -87,6 +88,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           
           if (docSnap.exists()) {
             const userData = docSnap.data() as UserProfile;
+            const deviceInfo = getDeviceInfo();
+            
+            // Update status and device info if needed
+            if (userData.status !== 'online' || userData.lastActiveDevice !== deviceInfo) {
+              await setDoc(doc(db, 'users', firebaseUser.uid), { 
+                status: 'online',
+                lastActiveDevice: deviceInfo,
+                lastLoginAt: serverTimestamp()
+              }, { merge: true });
+              userData.status = 'online';
+              userData.lastActiveDevice = deviceInfo;
+            }
+
             console.log("AuthProvider: Profile found:", userData.role);
             setUser(firebaseUser);
             setProfile(userData);
@@ -187,6 +201,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
+      if (auth.currentUser) {
+        await setDoc(doc(db, 'users', auth.currentUser.uid), { 
+          status: 'offline',
+          lastActiveDevice: 'Déconnecté' 
+        }, { merge: true });
+      }
       await signOut(auth);
       window.location.href = '/login';
     } catch (err) {

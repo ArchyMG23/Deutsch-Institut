@@ -13,7 +13,9 @@ import {
   Clock,
   ChevronUp,
   ChevronDown,
-  SortAsc
+  SortAsc,
+  Laptop,
+  Smartphone
 } from 'lucide-react';
 import { cn, formatCurrency, generateMatricule } from '../utils';
 import { Teacher, ClassRoom } from '../types';
@@ -240,8 +242,11 @@ export default function TeacherManagement() {
         {sortedTeachers.map((teacher) => (
           <div key={teacher.id} className="card p-6 hover:shadow-lg transition-shadow">
             <div className="flex justify-between items-start mb-4">
-              <div className="w-12 h-12 rounded-2xl bg-dia-red/10 text-dia-red flex items-center justify-center text-xl font-bold">
+              <div className="w-12 h-12 rounded-2xl bg-dia-red/10 text-dia-red flex items-center justify-center text-xl font-bold relative">
                 {teacher.firstName[0]}{teacher.lastName[0]}
+                {teacher.status === 'online' && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 border-4 border-white dark:border-neutral-900 rounded-full"></span>
+                )}
               </div>
               <div className="flex gap-1">
                 <button 
@@ -265,6 +270,12 @@ export default function TeacherManagement() {
             <div className="space-y-1 mb-4">
               <h4 className="font-bold text-lg">{teacher.firstName} {teacher.lastName}</h4>
               <p className="text-xs font-mono text-neutral-500">{teacher.matricule}</p>
+              {teacher.status === 'online' && (
+                <p className="text-[10px] font-bold text-green-600 flex items-center gap-1 mt-2">
+                  {teacher.lastActiveDevice?.toLowerCase().includes('android') || teacher.lastActiveDevice?.toLowerCase().includes('ios') ? <Smartphone size={10} /> : <Laptop size={10} />}
+                  En ligne sur {teacher.lastActiveDevice}
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4 pt-4 border-t border-neutral-100 dark:border-neutral-800">
@@ -381,8 +392,55 @@ export default function TeacherManagement() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-              <h3 className="text-2xl font-bold tracking-tight">Modifier Enseignant</h3>
-              <button onClick={() => setIsEditModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
+              <div className="flex items-center gap-4">
+                <div className="relative group">
+                  <div className="w-16 h-16 rounded-2xl bg-dia-red/10 text-dia-red flex items-center justify-center text-xl font-bold overflow-hidden">
+                    {selectedTeacher.photoURL ? (
+                      <img src={selectedTeacher.photoURL} alt="Teacher" className="w-full h-full object-cover" />
+                    ) : (
+                      <>{selectedTeacher.firstName[0]}{selectedTeacher.lastName[0]}</>
+                    )}
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.accept = 'image/*';
+                      input.onchange = async (e: any) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const formData = new FormData();
+                        formData.append('photo', file);
+                        formData.append('userId', selectedTeacher.uid);
+                        try {
+                          toast.loading("Chargement...");
+                          const res = await fetchWithAuth('/api/profile/upload-photo', {
+                            method: 'POST',
+                            body: formData
+                          });
+                          if (res.ok) {
+                            const data = await res.json();
+                            setSelectedTeacher({ ...selectedTeacher, photoURL: data.photoURL });
+                            refreshTeachers();
+                            toast.dismiss();
+                            toast.success("Photo mise à jour");
+                          }
+                        } catch (err) {
+                          toast.dismiss();
+                          toast.error("Échec de l'upload");
+                        }
+                      };
+                      input.click();
+                    }}
+                    className="absolute -bottom-1 -right-1 p-1.5 bg-dia-red text-white rounded-lg shadow-lg hover:scale-110 transition-transform"
+                  >
+                    <Camera size={12} />
+                  </button>
+                </div>
+                <h3 className="text-2xl font-bold tracking-tight">Modifier Enseignant</h3>
+              </div>
+              <button type="button" onClick={() => setIsEditModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
                 <X size={24} />
               </button>
             </div>
