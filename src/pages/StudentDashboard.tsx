@@ -23,7 +23,7 @@ import { useNavigate } from 'react-router-dom';
 
 export default function StudentDashboard() {
   const { profile, updateProfile, fetchWithAuth } = useAuth();
-  const { classes, levels, library, loading, refreshAll } = useData();
+  const { classes, levels, library, loading, refreshStudents, refreshClasses, refreshLevels, refreshLibrary, refreshEvaluations } = useData();
   const student = profile as Student;
   const navigate = useNavigate();
   
@@ -42,9 +42,13 @@ export default function StudentDashboard() {
       }
     };
 
-    refreshAll();
+    refreshStudents();
+    refreshClasses();
+    refreshLevels();
+    refreshLibrary();
+    refreshEvaluations();
     syncProfile();
-  }, [refreshAll, fetchWithAuth, updateProfile]);
+  }, [refreshStudents, refreshClasses, refreshLevels, refreshLibrary, refreshEvaluations, fetchWithAuth, updateProfile]);
 
   const studentClass = student.classId ? classes.find(c => c.id === student.classId) || null : null;
   const studentLevel = student.levelId ? levels.find(l => l.id === student.levelId) || null : null;

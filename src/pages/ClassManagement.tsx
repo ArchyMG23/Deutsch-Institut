@@ -23,7 +23,7 @@ import { toast } from 'sonner';
 
 export default function ClassManagement() {
   const { fetchWithAuth } = useAuth();
-  const { classes, levels, teachers, students, loading, refreshAll, refreshClasses } = useData();
+  const { classes, levels, teachers, students, loading, refreshClasses, refreshTeachers, refreshLevels, refreshStudents } = useData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedClass, setSelectedClass] = useState<ClassRoom | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -32,8 +32,11 @@ export default function ClassManagement() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    refreshAll();
-  }, [refreshAll]);
+    refreshClasses();
+    refreshTeachers();
+    refreshLevels();
+    refreshStudents();
+  }, [refreshClasses, refreshTeachers, refreshLevels, refreshStudents]);
 
   const handleAddClass = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();

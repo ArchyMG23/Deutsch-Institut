@@ -22,7 +22,8 @@ import {
   ChevronUp,
   ChevronDown,
   Laptop,
-  Smartphone
+  Smartphone,
+  Camera
 } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import { jsPDF } from 'jspdf';
@@ -36,7 +37,7 @@ import { toast } from 'sonner';
 
 export default function StudentManagement() {
   const { fetchWithAuth } = useAuth();
-  const { students, classes, levels, loading, refreshAll, refreshStudents } = useData();
+  const { students, classes, levels, loading, refreshStudents, refreshClasses, refreshLevels } = useData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -127,8 +128,10 @@ export default function StudentManagement() {
   };
 
   useEffect(() => {
-    refreshAll();
-  }, [refreshAll]);
+    refreshStudents();
+    refreshClasses();
+    refreshLevels();
+  }, [refreshStudents, refreshClasses, refreshLevels]);
 
   const handleAddStudent = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -963,7 +966,7 @@ export default function StudentManagement() {
                           if (res.ok) {
                             const data = await res.json();
                             setSelectedStudent({ ...selectedStudent, photoURL: data.photoURL });
-                            refreshAll();
+                            refreshStudents();
                             toast.dismiss();
                             toast.success("Photo mise à jour");
                           }

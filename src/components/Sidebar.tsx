@@ -16,7 +16,8 @@ import {
   Shield,
   Bell,
   Sun,
-  Moon
+  Moon,
+  FileText
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -37,6 +38,7 @@ export function Sidebar() {
     { to: '/admin/teachers', icon: GraduationCap, label: 'Enseignants' },
     { to: '/admin/levels', icon: Layers, label: 'Niveaux' },
     { to: '/admin/classes', icon: LayoutDashboard, label: 'Classes' },
+    { to: '/admin/evaluations', icon: FileText, label: 'Evaluations' },
     { to: '/admin/finances', icon: Wallet, label: 'Finances' },
     {to: '/admin/library', icon: Library, label: 'Bibliothèque' },
     { to: '/admin/communiques', icon: Bell, label: 'Communiqués' },
@@ -48,6 +50,7 @@ export function Sidebar() {
     { to: '/teacher', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/teacher/planning', icon: Calendar, label: 'Planning' },
     { to: '/teacher/students', icon: Users, label: 'Étudiants' },
+    { to: '/teacher/evaluations', icon: FileText, label: 'Evaluations' },
     { to: '/teacher/library', icon: Library, label: 'Bibliothèque' },
     { to: '/teacher/communiques', icon: Bell, label: 'Communiqués' },
     { to: '/teacher/profile', icon: User, label: 'Profil & Sécurité' },
@@ -56,6 +59,7 @@ export function Sidebar() {
   const studentLinks = [
     { to: '/student', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/student/calendar', icon: Calendar, label: 'Calendrier' },
+    { to: '/student/evaluations', icon: FileText, label: 'Mes Notes' },
     { to: '/student/library', icon: Library, label: 'Bibliothèque' },
     { to: '/student/communiques', icon: Bell, label: 'Communiqués' },
     { to: '/student/profile', icon: User, label: 'Profil & Sécurité' },

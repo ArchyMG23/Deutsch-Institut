@@ -16,11 +16,11 @@ import { formatCurrency } from '../utils';
 
 export default function TeacherDashboard() {
   const { profile } = useAuth();
-  const { classes, loading, refreshAll } = useData();
+  const { classes, loading, refreshClasses } = useData();
 
   useEffect(() => {
-    refreshAll();
-  }, [refreshAll]);
+    refreshClasses();
+  }, [refreshClasses]);
 
   const teacher = profile as Teacher;
   const teacherClasses = classes.filter(c => c.teacherId === profile?.id);

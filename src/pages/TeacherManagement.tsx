@@ -15,7 +15,8 @@ import {
   ChevronDown,
   SortAsc,
   Laptop,
-  Smartphone
+  Smartphone,
+  Camera
 } from 'lucide-react';
 import { cn, formatCurrency, generateMatricule } from '../utils';
 import { Teacher, ClassRoom } from '../types';
@@ -35,8 +36,9 @@ export default function TeacherManagement() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    refreshAll();
-  }, [refreshAll]);
+    refreshTeachers();
+    refreshClasses();
+  }, [refreshTeachers, refreshClasses]);
 
   const handleAddTeacher = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();

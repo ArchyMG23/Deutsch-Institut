@@ -194,8 +194,9 @@ export default function FinanceManagement() {
   const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    refreshAll();
-  }, [refreshAll]);
+    refreshFinances();
+    refreshTrash();
+  }, [refreshFinances, refreshTrash]);
 
   // Available Years from data
   const availableYears = Array.from(new Set(allRecords.map(r => new Date(r.date).getFullYear().toString()))) as string[];

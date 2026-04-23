@@ -18,6 +18,7 @@ const __dirname = path.dirname(__filename);
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'dia-secret-key-2026';
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+const APP_NAME = process.env.APP_NAME || 'DIA DEUTSCH INSTITUT';
 
 // Initialize Firebase Admin
 let firebaseConfig: any = {};
@@ -1389,6 +1390,107 @@ async function startServer() {
     } catch (err: any) {
       addLog('ERROR', 'Profile photo upload error', err.message);
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  // --- Evaluation Routes ---
+  app.get('/api/evaluations', authenticate, async (req: any, res) => {
+    try {
+      let queryRef: any = dbAdmin.collection('evaluations');
+      if (req.user.role === 'teacher') {
+        queryRef = queryRef.where('teacherId', '==', req.user.id);
+      } else if (req.user.role === 'student') {
+        queryRef = queryRef.where('studentId', '==', req.user.id).where('status', '==', 'published');
+      }
+      
+      const snapshot = await queryRef.get();
+      const evaluations = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+      res.json(evaluations);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/evaluations', authenticate, async (req: any, res) => {
+    if (req.user.role === 'student') return res.status(403).json({ message: 'Permission refusée' });
+    try {
+      const evaluation = {
+        ...req.body,
+        teacherId: req.user.id,
+        createdAt: new Date().toISOString()
+      };
+      const docRef = await dbAdmin.collection('evaluations').add(evaluation);
+      res.json({ id: docRef.id, ...evaluation });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/evaluations/:id', authenticate, async (req: any, res) => {
+    if (req.user.role === 'student') return res.status(403).json({ message: 'Permission refusée' });
+    try {
+      await dbAdmin.collection('evaluations').doc(req.params.id).update(req.body);
+      res.json({ message: 'Évaluation mise à jour' });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/evaluations/:id', authenticate, async (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Permission refusée' });
+    try {
+      await dbAdmin.collection('evaluations').doc(req.params.id).delete();
+      res.json({ message: 'Évaluation supprimée' });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/evaluations/send-email', authenticate, async (req: any, res) => {
+    if (req.user.role === 'student') return res.status(403).json({ message: 'Permission refusée' });
+    const { evaluation, recipientEmail, studentName } = req.body;
+    
+    try {
+      const mailOptions = {
+        from: `"${APP_NAME}" <${process.env.SMTP_USER}>`,
+        to: recipientEmail,
+        subject: `Résultats d'Évaluation Goethe - ${studentName}`,
+        html: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 12px; overflow: hidden;">
+            <div style="background-color: #e31e24; color: white; padding: 20px; text-align: center;">
+              <h2>Résultats d'Évaluation</h2>
+            </div>
+            <div style="padding: 20px;">
+              <p>Bonjour,</p>
+              <p>Voici les résultats de l'évaluation Goethe pour <strong>${studentName}</strong>.</p>
+              
+              <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr><td style="padding: 5px 0;"><strong>Module Lesen :</strong></td><td style="text-align: right;">${evaluation.modules.lesen}/25</td></tr>
+                  <tr><td style="padding: 5px 0;"><strong>Module Hören :</strong></td><td style="text-align: right;">${evaluation.modules.horen}/25</td></tr>
+                  <tr><td style="padding: 5px 0;"><strong>Module Schreiben :</strong></td><td style="text-align: right;">${evaluation.modules.schreiben}/25</td></tr>
+                  <tr><td style="padding: 5px 0;"><strong>Module Sprechen :</strong></td><td style="text-align: right;">${evaluation.modules.sprechen}/25</td></tr>
+                  <tr style="border-top: 1px solid #ddd;"><td style="padding: 10px 0;"><strong>Total :</strong></td><td style="text-align: right; color: #e31e24; font-weight: bold;">${evaluation.total}/100</td></tr>
+                </table>
+              </div>
+              
+              <p>Moyenne de l'examen : <strong>${evaluation.average}%</strong></p>
+              <p>Statut : <strong>${evaluation.total >= 60 ? 'Réussi' : 'Échec'}</strong></p>
+              
+              ${evaluation.comments ? `<p><strong>Commentaires :</strong><br/>${evaluation.comments}</p>` : ''}
+              
+              <p style="margin-top: 30px; font-size: 12px; color: #888;">Ceci est un message automatique, merci de ne pas y répondre directement.</p>
+            </div>
+          </div>
+        `
+      };
+
+      await transporter.sendMail(mailOptions);
+      addLog('EMAIL', `Bulletin envoyé à ${recipientEmail} pour ${studentName}`);
+      res.json({ message: 'Email envoyé avec succès' });
+    } catch (err: any) {
+      addLog('ERROR', 'Erreur envoi email évaluation', err.message);
+      res.status(500).json({ message: `Erreur d'envoi: ${err.message}` });
     }
   });
 

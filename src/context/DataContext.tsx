@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { Student, Teacher, ClassRoom, Level, FinanceRecord, LibraryItem } from '../types';
+import { Student, Teacher, ClassRoom, Level, FinanceRecord, LibraryItem, Evaluation } from '../types';
 import { useAuth } from './AuthContext';
 
 interface DataContextType {
@@ -10,8 +10,9 @@ interface DataContextType {
   finances: FinanceRecord[];
   trashFinances: FinanceRecord[];
   library: LibraryItem[];
+  evaluations: Evaluation[];
   loading: boolean;
-  refreshAll: () => Promise<void>;
+  refreshAll: (force?: boolean) => Promise<void>;
   refreshStudents: () => Promise<void>;
   refreshTeachers: () => Promise<void>;
   refreshClasses: () => Promise<void>;
@@ -19,6 +20,7 @@ interface DataContextType {
   refreshFinances: () => Promise<void>;
   refreshTrash: () => Promise<void>;
   refreshLibrary: () => Promise<void>;
+  refreshEvaluations: () => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -32,7 +34,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [finances, setFinances] = useState<FinanceRecord[]>([]);
   const [trashFinances, setTrashFinances] = useState<FinanceRecord[]>([]);
   const [library, setLibrary] = useState<LibraryItem[]>([]);
+  const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [loading, setLoading] = useState(false);
+  const [lastFetch, setLastFetch] = useState<number>(0);
 
   const refreshStudents = useCallback(async () => {
     try {
@@ -97,8 +101,25 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchWithAuth]);
 
-  const refreshAll = useCallback(async () => {
+  const refreshEvaluations = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth('/api/evaluations');
+      if (res.ok) setEvaluations(await res.json());
+    } catch (err) {
+      console.error("Error fetching evaluations:", err);
+    }
+  }, [fetchWithAuth]);
+
+  const refreshAll = useCallback(async (force = false) => {
     if (!user) return;
+    
+    // Prevent double fetching within 30 seconds unless forced
+    const now = Date.now();
+    if (!force && lastFetch && now - lastFetch < 30000) {
+      console.log("Skipping refreshAll (last fetch was too recent)");
+      return;
+    }
+    
     setLoading(true);
     try {
       await Promise.all([
@@ -108,12 +129,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         refreshLevels(),
         refreshFinances(),
         refreshTrash(),
-        refreshLibrary()
+        refreshLibrary(),
+        refreshEvaluations()
       ]);
+      setLastFetch(now);
     } finally {
       setLoading(false);
     }
-  }, [user, refreshStudents, refreshTeachers, refreshClasses, refreshLevels, refreshFinances, refreshLibrary]);
+  }, [user, lastFetch, refreshStudents, refreshTeachers, refreshClasses, refreshLevels, refreshFinances, refreshLibrary, refreshEvaluations]);
 
   return (
     <DataContext.Provider value={{
@@ -124,6 +147,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       finances,
       trashFinances,
       library,
+      evaluations,
       loading,
       refreshAll,
       refreshStudents,
@@ -132,7 +156,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       refreshLevels,
       refreshFinances,
       refreshTrash,
-      refreshLibrary
+      refreshLibrary,
+      refreshEvaluations
     }}>
       {children}
     </DataContext.Provider>

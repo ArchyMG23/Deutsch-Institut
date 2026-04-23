@@ -123,3 +123,27 @@ export interface CommuniqueRead {
   userName: string;
   readAt: string;
 }
+
+export type GradeValue = number; // 0-100 (standard) or 0-25 per module
+
+export interface Evaluation {
+  id: string;
+  studentId: string;
+  studentName: string;
+  classId: string;
+  levelId: string;
+  teacherId: string;
+  type: 'sub-level' | 'end-of-level';
+  date: string;
+  modules: {
+    lesen: GradeValue;
+    horen: GradeValue;
+    schreiben: GradeValue;
+    sprechen: GradeValue;
+  };
+  total: number;
+  average: number;
+  comments?: string;
+  status: 'draft' | 'published';
+  createdAt: string;
+}

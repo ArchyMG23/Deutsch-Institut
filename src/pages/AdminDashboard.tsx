@@ -13,8 +13,10 @@ import {
   ExternalLink,
   Laptop,
   Smartphone,
-  Globe
+  Globe,
+  FileText
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { 
   XAxis, 
   YAxis, 
@@ -30,7 +32,7 @@ import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 
 export default function AdminDashboard() {
-  const { students, teachers, finances, loading, refreshAll } = useData();
+  const { students, teachers, finances, evaluations, loading, refreshStudents, refreshTeachers, refreshFinances, refreshEvaluations } = useData();
   const { fetchWithAuth } = useAuth();
   const [configStatus, setConfigStatus] = useState<any>(null);
   const [logs, setLogs] = useState<any[]>([]);
@@ -38,12 +40,15 @@ export default function AdminDashboard() {
   const [diagMatricule, setDiagMatricule] = useState('');
   const [diagResult, setDiagResult] = useState<any>(null);
   const [checkingDiag, setCheckingDiag] = useState(false);
-
+  
   useEffect(() => {
-    refreshAll();
+    refreshStudents();
+    refreshTeachers();
+    refreshFinances();
+    refreshEvaluations();
     checkConfig();
     fetchLogs();
-  }, [refreshAll]);
+  }, [refreshStudents, refreshTeachers, refreshFinances, refreshEvaluations]);
 
   const fetchLogs = async () => {
     try {
@@ -134,7 +139,7 @@ export default function AdminDashboard() {
   return (
     <div className="space-y-6">
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
         <StatCard 
           title="Total Étudiants" 
           value={students.length.toString()} 
@@ -150,14 +155,21 @@ export default function AdminDashboard() {
           trendType="up"
         />
         <StatCard 
-          title="Revenus Totaux" 
+          title="Évaluations" 
+          value={evaluations.length.toString()} 
+          icon={FileText} 
+          trend="Goethe" 
+          trendType="up"
+        />
+        <StatCard 
+          title="Revenus" 
           value={formatCurrency(totalIncome)} 
           icon={TrendingUp} 
           trend="+100%" 
           trendType="up"
         />
         <StatCard 
-          title="Dépenses Totales" 
+          title="Dépenses" 
           value={formatCurrency(totalExpense)} 
           icon={TrendingDown} 
           trend="+100%" 

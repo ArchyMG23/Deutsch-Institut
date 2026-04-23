@@ -20,6 +20,7 @@ const LevelManagement = lazy(() => import('./pages/LevelManagement'));
 const CommuniqueManagement = lazy(() => import('./pages/CommuniqueManagement'));
 const AdminManagement = lazy(() => import('./pages/AdminManagement'));
 const AdminProfile = lazy(() => import('./pages/AdminProfile'));
+const EvaluationManagement = lazy(() => import('./pages/EvaluationManagement'));
 const StudentDashboard = lazy(() => import('./pages/StudentDashboard'));
 const StudentCalendar = lazy(() => import('./pages/StudentCalendar'));
 const StudentProfile = lazy(() => import('./pages/StudentProfile'));
@@ -122,6 +123,13 @@ function AnimatedRoutes() {
             </DashboardLayout>
           </RoleGuard>
         } />,
+        <Route path="/admin/evaluations" element={
+          <RoleGuard allowedRoles={['admin']}>
+            <DashboardLayout>
+              <PageWrapper><EvaluationManagement /></PageWrapper>
+            </DashboardLayout>
+          </RoleGuard>
+        } />,
         <Route path="/admin/profile" element={
           <RoleGuard allowedRoles={['admin']}>
             <DashboardLayout>
@@ -166,6 +174,13 @@ function AnimatedRoutes() {
             </DashboardLayout>
           </RoleGuard>
         } />,
+        <Route path="/teacher/evaluations" element={
+          <RoleGuard allowedRoles={['teacher']}>
+            <DashboardLayout>
+              <PageWrapper><EvaluationManagement /></PageWrapper>
+            </DashboardLayout>
+          </RoleGuard>
+        } />,
         <Route path="/teacher/profile" element={
           <RoleGuard allowedRoles={['teacher']}>
             <DashboardLayout>
@@ -200,6 +215,13 @@ function AnimatedRoutes() {
           <RoleGuard allowedRoles={['student']}>
             <DashboardLayout>
               <PageWrapper><CommuniqueManagement /></PageWrapper>
+            </DashboardLayout>
+          </RoleGuard>
+        } />,
+        <Route path="/student/evaluations" element={
+          <RoleGuard allowedRoles={['student']}>
+            <DashboardLayout>
+              <PageWrapper><EvaluationManagement /></PageWrapper>
             </DashboardLayout>
           </RoleGuard>
         } />,

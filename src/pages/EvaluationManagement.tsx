@@ -1,0 +1,466 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Search, 
+  Plus, 
+  FileText, 
+  Send, 
+  Printer, 
+  Trash2, 
+  X, 
+  CheckCircle2, 
+  AlertTriangle,
+  GraduationCap,
+  Calendar,
+  Layers,
+  Users
+} from 'lucide-react';
+import { useData } from '../context/DataContext';
+import { useAuth } from '../context/AuthContext';
+import { toast } from 'sonner';
+import { cn, formatCurrency } from '../utils';
+import { Evaluation, Student, ClassRoom } from '../types';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+export default function EvaluationManagement() {
+  const { students, classes, levels, evaluations, refreshEvaluations, refreshAll } = useData();
+  const { fetchWithAuth, profile } = useAuth();
+  
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const [selectedClass, setSelectedClass] = useState<ClassRoom | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  
+  const [formData, setFormData] = useState({
+    studentId: '',
+    classId: '',
+    type: 'sub-level' as 'sub-level' | 'end-of-level',
+    date: new Date().toISOString().split('T')[0],
+    modules: {
+      lesen: 0,
+      horen: 0,
+      schreiben: 0,
+      sprechen: 0
+    },
+    comments: '',
+    status: 'draft' as 'draft' | 'published'
+  });
+
+  useEffect(() => {
+    refreshEvaluations();
+  }, [refreshEvaluations]);
+
+  const filteredEvaluations = evaluations.filter(ev => 
+    ev.studentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    ev.studentId.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const handleLevelChange = (classId: string) => {
+    const cls = classes.find(c => c.id === classId);
+    if (cls) {
+      setSelectedClass(cls);
+      setFormData(prev => ({ ...prev, classId }));
+    }
+  };
+
+  const handleStudentSelect = (studentId: string) => {
+    const student = students.find(s => s.uid === studentId);
+    if (student) {
+      setSelectedStudent(student);
+      setFormData(prev => ({ ...prev, studentId }));
+    }
+  };
+
+  const calculateResults = (modules: any) => {
+    const total = Object.values(modules).reduce((a: any, b: any) => Number(a) + Number(b), 0) as number;
+    const average = (total / 100) * 100; // Since total is out of 100
+    return { total, average };
+  };
+
+  const handleAddEvaluation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.studentId || !formData.classId) {
+      toast.error("Veuillez sélectionner un étudiant et une classe");
+      return;
+    }
+
+    setSubmitting(true);
+    const { total, average } = calculateResults(formData.modules);
+    const student = students.find(s => s.uid === formData.studentId);
+    
+    const evaluationData = {
+      ...formData,
+      studentName: student ? `${student.firstName} ${student.lastName}` : 'Inconnu',
+      total,
+      average,
+      levelId: selectedClass?.levelId || 'A1'
+    };
+
+    try {
+      const res = await fetchWithAuth('/api/evaluations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(evaluationData)
+      });
+
+      if (res.ok) {
+        toast.success("Évaluation enregistrée");
+        setIsAddModalOpen(false);
+        refreshEvaluations();
+      }
+    } catch (err) {
+      toast.error("Erreur lors de l'enregistrement");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const getGoetheGrade = (score: number) => {
+    if (score >= 90) return { label: 'Sehr Gut', color: 'text-green-600' };
+    if (score >= 80) return { label: 'Gut', color: 'text-blue-600' };
+    if (score >= 70) return { label: 'Befriedigend', color: 'text-amber-600' };
+    if (score >= 60) return { label: 'Ausreichend', color: 'text-orange-600' };
+    return { label: 'Mangelhaft', color: 'text-red-600' };
+  };
+
+  const deleteEvaluation = async (id: string) => {
+    if (!window.confirm("Supprimer cette évaluation ?")) return;
+    try {
+      const res = await fetchWithAuth(`/api/evaluations/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success("Supprimé");
+        refreshEvaluations();
+      }
+    } catch (err) {
+      toast.error("Erreur");
+    }
+  };
+
+  const sendEmail = async (evaluation: Evaluation) => {
+    const student = students.find(s => s.uid === evaluation.studentId);
+    if (!student || (!student.email && !student.parentEmail)) {
+      toast.error("Aucun email trouvé pour cet étudiant ou son parent");
+      return;
+    }
+
+    const email = student.parentEmail || student.email;
+    
+    try {
+      toast.loading("Envoi de l'email...");
+      const res = await fetchWithAuth('/api/evaluations/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          evaluation,
+          recipientEmail: email,
+          studentName: evaluation.studentName
+        })
+      });
+      toast.dismiss();
+      if (res.ok) {
+        toast.success(`Bulletin envoyé à ${email}`);
+      }
+    } catch (err) {
+      toast.dismiss();
+    }
+  };
+
+  const generatePDF = (evaluation: Evaluation) => {
+    const doc = new jsPDF();
+    const student = students.find(s => s.uid === evaluation.studentId);
+    const level = levels.find(l => l.id === evaluation.levelId);
+    const grade = getGoetheGrade(evaluation.total);
+    const cls = classes.find(c => c.id === evaluation.classId);
+
+    // Header
+    doc.setFillColor(227, 30, 36);
+    doc.rect(0, 0, 210, 40, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(24);
+    doc.text('DEUTSCH INSTITUT', 20, 20);
+    doc.setFontSize(10);
+    doc.text('Rapport d\'Évaluation Goethe-Zertifikat', 20, 30);
+    
+    // Student Info
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Candidat: ${evaluation.studentName}`, 20, 55);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Matricule: ${student?.matricule || 'N/A'}`, 20, 62);
+    doc.text(`Niveau: ${level?.name || 'N/A'}`, 20, 69);
+    doc.text(`Classe: ${cls?.name || 'N/A'}`, 20, 76);
+    doc.text(`Date: ${new Date(evaluation.date).toLocaleDateString()}`, 140, 55);
+    doc.text(`Type: ${evaluation.type === 'end-of-level' ? 'Examen Final' : 'Sous-Niveau'}`, 140, 62);
+
+    // Table
+    autoTable(doc, {
+      startY: 85,
+      head: [['Module', 'Points Max', 'Points Obtenus']],
+      body: [
+        ['Lesen (Lecture)', '25', evaluation.modules.lesen.toString()],
+        ['Hören (Écoute)', '25', evaluation.modules.horen.toString()],
+        ['Schreiben (Écriture)', '25', evaluation.modules.schreiben.toString()],
+        ['Sprechen (Oral)', '25', evaluation.modules.sprechen.toString()],
+      ],
+      theme: 'grid',
+      headStyles: { fillColor: [227, 30, 36] }
+    });
+
+    // Total
+    const finalY = (doc as any).lastAutoTable.finalY + 10;
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Score Total: ${evaluation.total} / 100`, 20, finalY);
+    doc.text(`Résultat: ${grade.label}`, 20, finalY + 7);
+    doc.text(`Décision: ${evaluation.total >= 60 ? 'RÉUSSI (Bestanden)' : 'ÉCHEC (Nicht Bestanden)'}`, 20, finalY + 14);
+
+    if (evaluation.comments) {
+      doc.setFont('helvetica', 'normal');
+      doc.text('Commentaires:', 20, finalY + 25);
+      doc.setFontSize(10);
+      const splitComments = doc.splitTextToSize(evaluation.comments, 170);
+      doc.text(splitComments, 20, finalY + 32);
+    }
+
+    // Footer
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text('Document généré par DIA_SAAS - Système de Gestion Académique', 20, 280);
+    
+    doc.save(`Evaluation_${evaluation.studentName.replace(' ', '_')}.pdf`);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Evaluations Goethe</h2>
+          <p className="text-neutral-500">Gérez les notes et bulletins d'examen par module.</p>
+        </div>
+        <button 
+          onClick={() => setIsAddModalOpen(true)}
+          className="btn-primary flex items-center justify-center gap-2"
+        >
+          <Plus size={20} />
+          <span>Nouvelle Évaluation</span>
+        </button>
+      </div>
+
+      <div className="flex flex-col md:flex-row gap-4">
+        <div className="relative flex-1 group">
+          <input 
+            type="text" 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Rechercher un élève..."
+            className="w-full pl-10 pr-4 py-2 bg-white dark:bg-neutral-800 border-none rounded-lg focus:ring-2 focus:ring-dia-red transition-all"
+          />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none" size={18} />
+        </div>
+      </div>
+
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-neutral-50 dark:bg-neutral-800/50 border-b border-neutral-200 dark:border-neutral-800">
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">Étudiant</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">Type / Date</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">Modules (L/H/Sch/Spr)</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">Score Total</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">Résultat</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+              {filteredEvaluations.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-10 text-center text-neutral-500">Aucune évaluation trouvée.</td>
+                </tr>
+              ) : (
+                filteredEvaluations.map((ev) => {
+                  const grade = getGoetheGrade(ev.total);
+                  return (
+                    <tr key={ev.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-dia-red/10 text-dia-red flex items-center justify-center font-bold text-xs">
+                            {ev.studentName[0]}
+                          </div>
+                          <div>
+                            <p className="font-bold text-sm">{ev.studentName}</p>
+                            <p className="text-[10px] text-neutral-400 uppercase font-bold">{ev.studentId}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="text-xs font-bold">{ev.type === 'end-of-level' ? 'Fin de Niveau' : 'Sous-Niveau'}</p>
+                        <p className="text-[10px] text-neutral-400">{new Date(ev.date).toLocaleDateString()}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2">
+                          <span className="px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 text-[10px] rounded font-bold">{ev.modules.lesen}</span>
+                          <span className="px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 text-[10px] rounded font-bold">{ev.modules.horen}</span>
+                          <span className="px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 text-[10px] rounded font-bold">{ev.modules.schreiben}</span>
+                          <span className="px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 text-[10px] rounded font-bold">{ev.modules.sprechen}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-sm font-bold text-dia-red">{ev.total}/100</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={cn("text-xs font-bold", grade.color)}>{grade.label}</span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button onClick={() => sendEmail(ev)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-500 hover:text-blue-600 transition-colors" title="Envoyer par Email">
+                            <Send size={16} />
+                          </button>
+                          <button onClick={() => generatePDF(ev)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-500 hover:text-dia-red transition-colors" title="Imprimer Bulletin">
+                            <Printer size={16} />
+                          </button>
+                          {profile?.role === 'admin' && (
+                            <button onClick={() => deleteEvaluation(ev.id)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-400 hover:text-red-500 transition-colors">
+                              <Trash2 size={16} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Add Modal */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
+              <h3 className="text-2xl font-bold tracking-tight">Nouvelle Évaluation</h3>
+              <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
+                <X size={24} />
+              </button>
+            </div>
+            <form onSubmit={handleAddEvaluation} className="p-8 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Classe / Niveau</label>
+                  <select 
+                    required
+                    onChange={(e) => handleLevelChange(e.target.value)}
+                    className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 outline-none"
+                  >
+                    <option value="">Sél. Classe</option>
+                    {classes.map(c => <option key={c.id} value={c.id}>{c.name} ({levels.find(l => l.id === c.levelId)?.name})</option>)}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Étudiant</label>
+                  <select 
+                    required
+                    onChange={(e) => handleStudentSelect(e.target.value)}
+                    className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 outline-none"
+                  >
+                    <option value="">Sél. Étudiant</option>
+                    {selectedClass ? (
+                      students
+                        .filter(s => s.classId === selectedClass.id)
+                        .map(s => <option key={s.uid} value={s.uid}>{s.firstName} {s.lastName}</option>)
+                    ) : (
+                      <option disabled>Sélectionnez une classe d'abord</option>
+                    )}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Type d'Évaluation</label>
+                  <select 
+                    value={formData.type}
+                    onChange={(e) => setFormData({...formData, type: e.target.value as any})}
+                    className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 outline-none"
+                  >
+                    <option value="sub-level">Sous-Niveau (A1.1 / A2.1 ...)</option>
+                    <option value="end-of-level">Examen Final de Niveau (A1 / A2 ...)</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Date</label>
+                  <input 
+                    type="date"
+                    value={formData.date}
+                    onChange={(e) => setFormData({...formData, date: e.target.value})}
+                    className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400 border-b pb-2">Modules Goethe (Barème /25)</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold ml-1">LESEN</label>
+                    <input 
+                      type="number" min="0" max="25" 
+                      value={formData.modules.lesen}
+                      onChange={(e) => setFormData({...formData, modules: {...formData.modules, lesen: Number(e.target.value)}})}
+                      className="w-full px-4 py-2 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-xl outline-none" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold ml-1">HÖREN</label>
+                    <input 
+                      type="number" min="0" max="25" 
+                      value={formData.modules.horen}
+                      onChange={(e) => setFormData({...formData, modules: {...formData.modules, horen: Number(e.target.value)}})}
+                      className="w-full px-4 py-2 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-xl outline-none" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold ml-1">SCHREIBEN</label>
+                    <input 
+                      type="number" min="0" max="25" 
+                      value={formData.modules.schreiben}
+                      onChange={(e) => setFormData({...formData, modules: {...formData.modules, schreiben: Number(e.target.value)}})}
+                      className="w-full px-4 py-2 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-xl outline-none" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold ml-1">SPRECHEN</label>
+                    <input 
+                      type="number" min="0" max="25" 
+                      value={formData.modules.sprechen}
+                      onChange={(e) => setFormData({...formData, modules: {...formData.modules, sprechen: Number(e.target.value)}})}
+                      className="w-full px-4 py-2 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-xl outline-none" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Commentaires / Recommandations</label>
+                <textarea 
+                  rows={2}
+                  value={formData.comments}
+                  onChange={(e) => setFormData({...formData, comments: e.target.value})}
+                  className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 outline-none resize-none"
+                  placeholder="Points forts, points à améliorer..."
+                />
+              </div>
+
+              <div className="flex gap-4">
+                <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
+                <button 
+                  type="submit" 
+                  disabled={submitting}
+                  className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
+                >
+                  {submitting ? "Traitement..." : "Valider l'Évaluation"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
