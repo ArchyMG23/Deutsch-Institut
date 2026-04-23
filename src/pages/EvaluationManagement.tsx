@@ -23,7 +23,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 export default function EvaluationManagement() {
-  const { students, classes, levels, evaluations, refreshEvaluations, refreshAll } = useData();
+  const { students, classes, levels, evaluations, refreshEvaluations, refreshStudents, refreshClasses, refreshLevels, refreshAll } = useData();
   const { fetchWithAuth, profile } = useAuth();
   
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -49,7 +49,10 @@ export default function EvaluationManagement() {
 
   useEffect(() => {
     refreshEvaluations();
-  }, [refreshEvaluations]);
+    refreshStudents();
+    refreshClasses();
+    refreshLevels();
+  }, [refreshEvaluations, refreshStudents, refreshClasses, refreshLevels]);
 
   const filteredEvaluations = evaluations.filter(ev => 
     ev.studentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -245,6 +248,53 @@ export default function EvaluationManagement() {
           <Plus size={20} />
           <span>Nouvelle Évaluation</span>
         </button>
+      </div>
+
+      <div className="card p-6 bg-dia-red/5 border-dia-red/10 border">
+        <h4 className="text-sm font-bold uppercase tracking-widest text-dia-red mb-4">Actions Groupées par Classe</h4>
+        <div className="flex flex-wrap gap-4 items-end">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase text-neutral-400 ml-1">Sélectionner Classe</label>
+            <select 
+              className="px-4 py-2 bg-white dark:bg-neutral-800 border-none rounded-xl text-sm font-bold shadow-sm focus:ring-2 focus:ring-dia-red outline-none"
+              onChange={(e) => setSelectedClass(classes.find(c => c.id === e.target.value) || null)}
+            >
+              <option value="">Toutes les classes</option>
+              {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <button 
+            onClick={async () => {
+              if (!selectedClass) return toast.error("Sélectionnez une classe");
+              const classEvals = evaluations.filter(e => e.classId === selectedClass.id);
+              if (classEvals.length === 0) return toast.error("Aucune évaluation pour cette classe");
+              
+              toast.info(`Préparation de ${classEvals.length} bulletins...`);
+              for (const ev of classEvals) {
+                await sendEmail(ev);
+              }
+              toast.success("Envoi groupé terminé");
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-all shadow-md"
+          >
+            <Send size={14} />
+            <span>Envoyer Bulletins Classe</span>
+          </button>
+          <button 
+            onClick={() => {
+              if (!selectedClass) return toast.error("Sélectionnez une classe");
+              const classEvals = evaluations.filter(e => e.classId === selectedClass.id);
+              if (classEvals.length === 0) return toast.error("Aucune évaluation pour cette classe");
+              
+              classEvals.forEach(ev => generatePDF(ev));
+              toast.success(`Génération de ${classEvals.length} PDFs lancée`);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-dia-red text-white rounded-xl text-xs font-bold hover:bg-dia-red/90 transition-all shadow-md"
+          >
+            <Printer size={14} />
+            <span>Imprimer Bulletins Classe</span>
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col md:flex-row gap-4">

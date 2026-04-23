@@ -585,7 +585,13 @@ export default function FinanceManagement() {
         ) : selectedMonth === 'all' ? (
           <div className="space-y-8">
             {[...months].filter(m => m.value !== 'all').reverse().map(month => {
-              const monthRecords = filteredByType.filter(r => new Date(r.date).getMonth().toString() === month.value);
+              const monthRecords = filteredByType
+                .filter(r => new Date(r.date).getMonth().toString() === month.value)
+                .sort((a, b) => {
+                  const dateA = new Date(a.date).getTime();
+                  const dateB = new Date(b.date).getTime();
+                  return sortConfig?.direction === 'asc' ? dateA - dateB : dateB - dateA;
+                });
               if (monthRecords.length === 0) return null;
 
               const monthIncome = monthRecords.filter(r => r.type === 'income').reduce((acc, r) => acc + r.amount, 0);

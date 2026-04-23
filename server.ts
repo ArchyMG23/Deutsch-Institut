@@ -1497,23 +1497,59 @@ async function startServer() {
   // Serve uploaded files
   app.use('/uploads', express.static(UPLOADS_DIR));
 
-  // Vite Middleware
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
+  // Vite Middleware or Static Fallback
+  const distPath = path.join(process.cwd(), 'dist');
+  
+  if (process.env.NODE_ENV === 'production') {
+    console.log("Serving static production build from", distPath);
+    if (!fs.existsSync(distPath)) {
+      console.warn("Production build directory 'dist' not found! Server might fail to serve frontend.");
+    }
     app.use(express.static(distPath));
-    app.get('*all', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    app.get('*all', (req, res, next) => {
+      // If it's an API request that didn't match, don't serve index.html
+      if (req.path.startsWith('/api/') || req.path.startsWith('/health')) {
+        return next();
+      }
+      const indexPath = path.join(distPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).send("Index file not found in production build.");
+      }
     });
+  } else {
+    console.log("Starting Vite in middleware mode...");
+    try {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+    } catch (err) {
+      console.error("Failed to start Vite middleware:", err);
+    }
   }
 
-  app.listen(Number(PORT), "0.0.0.0", () => {
-    console.log(`Server running on port ${PORT} (env: ${process.env.NODE_ENV || 'development'})`);
+  // Global Error Handler
+  app.use((err: any, req: any, res: any, next: any) => {
+    console.error("Unhandled Server Error:", err);
+    if (res.headersSent) {
+      return next(err);
+    }
+    res.status(500).json({ 
+      error: "Internal Server Error", 
+      message: err.message,
+      path: req.path
+    });
+  });
+
+  const server = app.listen(Number(PORT), "0.0.0.0", () => {
+    console.log(`✅ Server running on http://0.0.0.0:${PORT} (env: ${process.env.NODE_ENV || 'development'})`);
+  });
+
+  server.on('error', (err: any) => {
+    console.error("Server listen error:", err);
   });
 }
 

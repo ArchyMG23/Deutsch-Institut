@@ -435,6 +435,9 @@ export default function StudentManagement() {
     } else if (key === 'level') {
       aValue = levels.find(l => l.id === a.levelId)?.name?.toLowerCase() || '';
       bValue = levels.find(l => l.id === b.levelId)?.name?.toLowerCase() || '';
+    } else if (key === 'class') {
+      aValue = classes.find(c => c.id === a.classId)?.name?.toLowerCase() || '';
+      bValue = classes.find(c => c.id === b.classId)?.name?.toLowerCase() || '';
     } else if (key === 'tuition') {
       aValue = a.payments.reduce((acc, p) => acc + p.amount, 0);
       bValue = b.payments.reduce((acc, p) => acc + p.amount, 0);
@@ -554,7 +557,15 @@ export default function StudentManagement() {
                   onClick={() => handleSort('level')}
                 >
                   <div className="flex items-center gap-1">
-                    Niveau / Classe <SortIcon column="level" />
+                    Niveau <SortIcon column="level" />
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 cursor-pointer hover:text-dia-red transition-colors"
+                  onClick={() => handleSort('class')}
+                >
+                  <div className="flex items-center gap-1">
+                    Classe <SortIcon column="class" />
                   </div>
                 </th>
                 <th 
@@ -598,7 +609,9 @@ export default function StudentManagement() {
                     </td>
                     <td className="px-6 py-4 text-sm">
                       <p className="font-medium">{level?.name || 'N/A'}</p>
-                      <p className="text-xs text-neutral-500">{classes.find(c => c.id === student.classId)?.name || 'Non affecté'}</p>
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      <p className="font-medium text-neutral-500">{classes.find(c => c.id === student.classId)?.name || 'Non affecté'}</p>
                     </td>
                     <td className="px-6 py-4">
                       <div className="space-y-1">
