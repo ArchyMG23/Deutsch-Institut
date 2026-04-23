@@ -733,14 +733,15 @@ export default function StudentManagement() {
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-              <h3 className="text-2xl font-bold tracking-tight">Nouvel Étudiant</h3>
-              <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
-                <X size={24} />
-              </button>
-            </div>
-            <form onSubmit={handleAddStudent} className="p-8 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <form onSubmit={handleAddStudent} className="flex flex-col max-h-[90vh]">
+              <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between shrink-0">
+                <h3 className="text-2xl font-bold tracking-tight">Nouvel Étudiant</h3>
+                <button type="button" onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
+                  <X size={24} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-8 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Prénom</label>
                   <input name="firstName" required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
@@ -819,24 +820,25 @@ export default function StudentManagement() {
                   <p className="text-[10px] text-neutral-500 mt-1">L'étudiant pourra le modifier après sa première connexion.</p>
                 </div>
               </div>
-              <div className="pt-4 flex gap-4">
-                <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
-                <button 
-                  type="submit" 
-                  disabled={submitting}
-                  className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
-                >
-                  {submitting ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
-                      Enregistrement...
-                    </>
-                  ) : (
-                    "Enregistrer l'Étudiant"
-                  )}
-                </button>
-              </div>
-            </form>
+            </div>
+            <div className="p-8 border-t border-neutral-100 dark:border-neutral-800 flex gap-4">
+              <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
+              <button 
+                type="submit" 
+                disabled={submitting}
+                className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
+              >
+                {submitting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
+                    Enregistrement...
+                  </>
+                ) : (
+                  "Enregistrer l'Étudiant"
+                )}
+              </button>
+            </div>
+          </form>
           </div>
         </div>
       )}
@@ -845,14 +847,15 @@ export default function StudentManagement() {
       {isEditModalOpen && selectedStudent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-              <h3 className="text-2xl font-bold tracking-tight">Modifier Étudiant</h3>
-              <button onClick={() => setIsEditModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
-                <X size={24} />
-              </button>
-            </div>
-            <form onSubmit={handleEditStudent} className="p-8 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <form onSubmit={handleEditStudent} className="flex flex-col max-h-[90vh]">
+              <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between shrink-0">
+                <h3 className="text-2xl font-bold tracking-tight">Modifier Étudiant</h3>
+                <button type="button" onClick={() => setIsEditModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
+                  <X size={24} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-8 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Prénom</label>
                   <input name="firstName" defaultValue={selectedStudent.firstName} required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
@@ -914,24 +917,25 @@ export default function StudentManagement() {
                   <input name="parentEmail" defaultValue={selectedStudent.parentEmail} type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
               </div>
-              <div className="pt-4 flex gap-4">
-                <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
-                <button 
-                  type="submit" 
-                  disabled={submitting}
-                  className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
-                >
-                  {submitting ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
-                      Mise à jour...
-                    </>
-                  ) : (
-                    "Enregistrer les modifications"
-                  )}
-                </button>
-              </div>
-            </form>
+            </div>
+            <div className="p-8 border-t border-neutral-100 dark:border-neutral-800 flex gap-4">
+              <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
+              <button 
+                type="submit" 
+                disabled={submitting}
+                className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
+              >
+                {submitting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
+                    Mise à jour...
+                  </>
+                ) : (
+                  "Enregistrer les modifications"
+                )}
+              </button>
+            </div>
+          </form>
           </div>
         </div>
       )}

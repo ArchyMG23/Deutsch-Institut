@@ -36,6 +36,9 @@ export default function TeacherProfile() {
     if (profile) {
       setFormData(profile as Teacher);
     }
+  }, [profile]);
+
+  useEffect(() => {
     fetchLatestProfile();
   }, []);
 

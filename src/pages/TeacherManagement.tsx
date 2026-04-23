@@ -320,14 +320,15 @@ export default function TeacherManagement() {
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-              <h3 className="text-2xl font-bold tracking-tight">Nouvel Enseignant</h3>
-              <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
-                <X size={24} />
-              </button>
-            </div>
-            <form onSubmit={handleAddTeacher} className="p-8 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <form onSubmit={handleAddTeacher} className="flex flex-col max-h-[90vh]">
+              <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between shrink-0">
+                <h3 className="text-2xl font-bold tracking-tight">Nouvel Enseignant</h3>
+                <button type="button" onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
+                  <X size={24} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-8 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Prénom</label>
                   <input name="firstName" required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
@@ -367,24 +368,25 @@ export default function TeacherManagement() {
                   <p className="text-[10px] text-neutral-500 mt-1">L'enseignant pourra le modifier par la suite.</p>
                 </div>
               </div>
-              <div className="pt-4 flex gap-4">
-                <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
-                <button 
-                  type="submit" 
-                  disabled={submitting}
-                  className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
-                >
-                  {submitting ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
-                      Enregistrement...
-                    </>
-                  ) : (
-                    "Enregistrer l'Enseignant"
-                  )}
-                </button>
-              </div>
-            </form>
+            </div>
+            <div className="p-8 border-t border-neutral-100 dark:border-neutral-800 flex gap-4">
+              <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
+              <button 
+                type="submit" 
+                disabled={submitting}
+                className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
+              >
+                {submitting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
+                    Enregistrement...
+                  </>
+                ) : (
+                  "Enregistrer l'Enseignant"
+                )}
+              </button>
+            </div>
+          </form>
           </div>
         </div>
       )}
@@ -393,61 +395,62 @@ export default function TeacherManagement() {
       {isEditModalOpen && selectedTeacher && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="relative group">
-                  <div className="w-16 h-16 rounded-2xl bg-dia-red/10 text-dia-red flex items-center justify-center text-xl font-bold overflow-hidden">
-                    {selectedTeacher.photoURL ? (
-                      <img src={selectedTeacher.photoURL} alt="Teacher" className="w-full h-full object-cover" />
-                    ) : (
-                      <>{selectedTeacher.firstName[0]}{selectedTeacher.lastName[0]}</>
-                    )}
-                  </div>
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      const input = document.createElement('input');
-                      input.type = 'file';
-                      input.accept = 'image/*';
-                      input.onchange = async (e: any) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        const formData = new FormData();
-                        formData.append('photo', file);
-                        formData.append('userId', selectedTeacher.uid);
-                        try {
-                          toast.loading("Chargement...");
-                          const res = await fetchWithAuth('/api/profile/upload-photo', {
-                            method: 'POST',
-                            body: formData
-                          });
-                          if (res.ok) {
-                            const data = await res.json();
-                            setSelectedTeacher({ ...selectedTeacher, photoURL: data.photoURL });
-                            refreshTeachers();
+            <form onSubmit={handleEditTeacher} className="flex flex-col max-h-[90vh]">
+              <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-4">
+                  <div className="relative group">
+                    <div className="w-16 h-16 rounded-2xl bg-dia-red/10 text-dia-red flex items-center justify-center text-xl font-bold overflow-hidden">
+                      {selectedTeacher.photoURL ? (
+                        <img src={selectedTeacher.photoURL} alt="Teacher" className="w-full h-full object-cover" />
+                      ) : (
+                        <>{selectedTeacher.firstName[0]}{selectedTeacher.lastName[0]}</>
+                      )}
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.accept = 'image/*';
+                        input.onchange = async (e: any) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const formData = new FormData();
+                          formData.append('photo', file);
+                          formData.append('userId', selectedTeacher.uid);
+                          try {
+                            toast.loading("Chargement...");
+                            const res = await fetchWithAuth('/api/profile/upload-photo', {
+                              method: 'POST',
+                              body: formData
+                            });
+                            if (res.ok) {
+                              const data = await res.json();
+                              setSelectedTeacher({ ...selectedTeacher, photoURL: data.photoURL });
+                              refreshTeachers();
+                              toast.dismiss();
+                              toast.success("Photo mise à jour");
+                            }
+                          } catch (err) {
                             toast.dismiss();
-                            toast.success("Photo mise à jour");
+                            toast.error("Échec de l'upload");
                           }
-                        } catch (err) {
-                          toast.dismiss();
-                          toast.error("Échec de l'upload");
-                        }
-                      };
-                      input.click();
-                    }}
-                    className="absolute -bottom-1 -right-1 p-1.5 bg-dia-red text-white rounded-lg shadow-lg hover:scale-110 transition-transform"
-                  >
-                    <Camera size={12} />
-                  </button>
+                        };
+                        input.click();
+                      }}
+                      className="absolute -bottom-1 -right-1 p-1.5 bg-dia-red text-white rounded-lg shadow-lg hover:scale-110 transition-transform"
+                    >
+                      <Camera size={12} />
+                    </button>
+                  </div>
+                  <h3 className="text-2xl font-bold tracking-tight">Modifier Enseignant</h3>
                 </div>
-                <h3 className="text-2xl font-bold tracking-tight">Modifier Enseignant</h3>
+                <button type="button" onClick={() => setIsEditModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
+                  <X size={24} />
+                </button>
               </div>
-              <button type="button" onClick={() => setIsEditModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
-                <X size={24} />
-              </button>
-            </div>
-            <form onSubmit={handleEditTeacher} className="p-8 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="flex-1 overflow-y-auto p-8 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Prénom</label>
                   <input name="firstName" defaultValue={selectedTeacher.firstName} required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
@@ -482,24 +485,25 @@ export default function TeacherManagement() {
                   </select>
                 </div>
               </div>
-              <div className="pt-4 flex gap-4">
-                <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
-                <button 
-                  type="submit" 
-                  disabled={submitting}
-                  className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
-                >
-                  {submitting ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
-                      Mise à jour...
-                    </>
-                  ) : (
-                    "Enregistrer les modifications"
-                  )}
-                </button>
-              </div>
-            </form>
+            </div>
+            <div className="p-8 border-t border-neutral-100 dark:border-neutral-800 flex gap-4">
+              <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
+              <button 
+                type="submit" 
+                disabled={submitting}
+                className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
+              >
+                {submitting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
+                    Mise à jour...
+                  </>
+                ) : (
+                  "Enregistrer les modifications"
+                )}
+              </button>
+            </div>
+          </form>
           </div>
         </div>
       )}

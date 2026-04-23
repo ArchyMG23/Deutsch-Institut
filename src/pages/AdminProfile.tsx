@@ -23,9 +23,17 @@ export default function AdminProfile() {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   
   // Profile state
-  const [firstName, setFirstName] = useState(user?.firstName || '');
-  const [lastName, setLastName] = useState(user?.lastName || '');
-  const [email, setEmail] = useState(user?.email || '');
+  const [firstName, setFirstName] = useState(profile?.firstName || user?.firstName || '');
+  const [lastName, setLastName] = useState(profile?.lastName || user?.lastName || '');
+  const [email, setEmail] = useState(profile?.email || user?.email || '');
+
+  React.useEffect(() => {
+    if (profile) {
+      setFirstName(profile.firstName || '');
+      setLastName(profile.lastName || '');
+      setEmail(profile.email || '');
+    }
+  }, [profile]);
   
   // Password state
   const [currentPassword, setCurrentPassword] = useState('');

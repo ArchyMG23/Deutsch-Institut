@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { 
   Users, 
   GraduationCap, 
@@ -34,6 +35,7 @@ import { toast } from 'sonner';
 export default function AdminDashboard() {
   const { students, teachers, finances, evaluations, loading, refreshStudents, refreshTeachers, refreshFinances, refreshEvaluations } = useData();
   const { fetchWithAuth } = useAuth();
+  const { t } = useTranslation();
   const [configStatus, setConfigStatus] = useState<any>(null);
   const [logs, setLogs] = useState<any[]>([]);
   const [testingEmail, setTestingEmail] = useState(false);
@@ -141,28 +143,28 @@ export default function AdminDashboard() {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
         <StatCard 
-          title="Total Étudiants" 
+          title={t('dashboard.total_students')}
           value={students.length.toString()} 
           icon={Users} 
           trend="+100%" 
           trendType="up"
         />
         <StatCard 
-          title="Enseignants" 
+          title={t('sidebar.teachers')} 
           value={teachers.length.toString()} 
           icon={GraduationCap} 
           trend="+100%" 
           trendType="up"
         />
         <StatCard 
-          title="Évaluations" 
+          title={t('sidebar.evaluations')} 
           value={evaluations.length.toString()} 
           icon={FileText} 
           trend="Goethe" 
           trendType="up"
         />
         <StatCard 
-          title="Revenus" 
+          title={t('dashboard.revenue')} 
           value={formatCurrency(totalIncome)} 
           icon={TrendingUp} 
           trend="+100%" 

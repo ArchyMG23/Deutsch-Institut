@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { LogIn, ShieldAlert, Loader2, Eye, EyeOff, Wrench } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { downloadProtectedArchive } from '../utils/documentation';
+import { cn } from '../utils';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 
 export default function LoginPage() {
   const [matricule, setMatricule] = useState('');
@@ -15,6 +19,8 @@ export default function LoginPage() {
   const [downloadingDoc, setDownloadingDoc] = useState(false);
   
   const { login, profile } = useAuth();
+  const { theme } = useTheme();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -88,16 +94,43 @@ export default function LoginPage() {
     }
   }, [profile, navigate, location.state]);
 
+  const bgImages = {
+    light: "https://images.unsplash.com/photo-1467269204594-9661b134dd2b?auto=format&fit=crop&q=80&w=2070", // Rothenburg ob der Tauber
+    dark: "https://images.unsplash.com/photo-1560930950-5cc20e80e392?auto=format&fit=crop&q=80&w=2070" // Berlin at night
+  };
+
   return (
-    <div className="min-h-screen bg-[#F8F9FA] flex items-center justify-center p-4 font-sans">
-      <div className="w-full max-w-[440px]">
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-neutral-950 font-sans transition-colors duration-500">
+      {/* Language Switcher Overlay */}
+      <div className="absolute top-6 right-6 z-50">
+        <LanguageSwitcher />
+      </div>
+
+      {/* Background Image with Blur and Overlay */}
+      <div className="absolute inset-0 z-0">
+        <div 
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat scale-105 transition-all duration-1000"
+          style={{ 
+            backgroundImage: `url("${theme === 'dark' ? bgImages.dark : bgImages.light}")`,
+            filter: theme === 'dark' ? 'blur(8px) brightness(0.3)' : 'blur(4px) brightness(0.7)'
+          }}
+        />
+        <div className={cn(
+          "absolute inset-0 transition-opacity duration-1000",
+          theme === 'dark' 
+            ? "bg-gradient-to-br from-black/80 via-black/40 to-dia-red/30 opacity-100" 
+            : "bg-gradient-to-br from-white/40 via-transparent to-dia-red/10 opacity-100"
+        )} />
+      </div>
+
+      <div className="w-full max-w-[440px] relative z-10 animate-in fade-in zoom-in duration-700">
         <div className="text-center mb-10">
           <div className="relative w-20 h-20 mx-auto mb-4">
             {!logoError ? (
               <img 
                 src="/logo.png" 
                 alt="DIA Logo" 
-                className="w-20 h-20 rounded-2xl shadow-xl shadow-dia-red/10 object-contain bg-white" 
+                className="w-20 h-20 rounded-2xl shadow-xl shadow-dia-red/20 object-contain bg-white" 
                 referrerPolicy="no-referrer"
                 onError={() => setLogoError(true)}
                 onLoad={(e) => {
@@ -112,14 +145,20 @@ export default function LoginPage() {
               </div>
             )}
           </div>
-          <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">DIA_SAAS</h1>
-          <p className="text-neutral-500 text-sm mt-1">Système de Gestion Académique</p>
+          <h1 className={cn(
+            "text-2xl font-bold tracking-tight transition-colors duration-500",
+            theme === 'dark' ? "text-white" : "text-neutral-900"
+          )}>{t('login.title')}</h1>
+          <p className={cn(
+            "text-sm mt-1 font-medium transition-colors duration-500",
+            theme === 'dark' ? "text-neutral-400" : "text-neutral-600"
+          )}>{t('login.subtitle')}</p>
         </div>
 
-        <div className="bg-white rounded-[32px] p-10 shadow-[0_20px_50px_rgba(0,0,0,0.04)] border border-neutral-100">
+        <div className="bg-white dark:bg-neutral-900/90 dark:backdrop-blur-xl rounded-[32px] p-10 shadow-2xl border border-white/20 dark:border-neutral-800 transition-all duration-500">
           <div className="mb-8">
-            <h2 className="text-xl font-bold text-neutral-900">Connexion</h2>
-            <p className="text-neutral-500 text-sm">Entrez vos codes d'accès pour continuer.</p>
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-white">{t('login.welcome')}</h2>
+            <p className="text-neutral-500 dark:text-neutral-400 text-sm">{t('login.subtitle')} DIA</p>
           </div>
           
           {error && (
@@ -131,20 +170,20 @@ export default function LoginPage() {
 
           <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-2">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Matricule / Code Admin</label>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('login.matricule')}</label>
               <input 
                 type="text" 
                 required
                 value={matricule}
                 onChange={(e) => setMatricule(e.target.value)}
-                placeholder="Ex: ADMIN ou S261234"
-                className="w-full px-5 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all placeholder:text-neutral-300"
+                placeholder={t('login.placeholder_matricule')}
+                className="w-full px-5 py-3.5 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all placeholder:text-neutral-300 dark:text-white"
               />
             </div>
             
             <div className="space-y-2">
               <div className="flex justify-between items-center ml-1">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">Mot de passe</label>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">{t('login.password')}</label>
               </div>
               <div className="relative">
                 <input 
@@ -152,8 +191,8 @@ export default function LoginPage() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full px-5 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all placeholder:text-neutral-300"
+                  placeholder={t('login.placeholder_password')}
+                  className="w-full px-5 py-3.5 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all placeholder:text-neutral-300 dark:text-white"
                 />
                 <button
                   type="button"
@@ -171,19 +210,19 @@ export default function LoginPage() {
               className="w-full bg-dia-red hover:bg-red-700 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-dia-red/20 disabled:opacity-50 active:scale-[0.98]"
             >
               {loading ? <Loader2 className="animate-spin" size={20} /> : <LogIn size={20} />}
-              <span>Se connecter</span>
+              <span>{t('login.login_btn')}</span>
             </button>
           </form>
 
           <div className="mt-10 text-center space-y-4">
             <p className="text-xs text-neutral-400">
-              Besoin d'aide ?{' '}
+              {t('login.help')}{' '}
               <button 
                 onClick={handleSupportDownload}
                 disabled={downloadingDoc}
                 className="text-dia-red font-bold hover:underline disabled:opacity-50"
               >
-                {downloadingDoc ? "Préparation..." : "Support Technique"}
+                {downloadingDoc ? "Préparation..." : t('login.support')}
               </button>
             </p>
             
@@ -201,6 +240,14 @@ export default function LoginPage() {
         </div>
         
         <div className="mt-8 flex flex-col items-center gap-4">
+          <div className="px-3 py-1 bg-white/10 backdrop-blur-md rounded-full border border-white/20 flex items-center gap-2">
+             <div className="w-3 h-2 flex flex-col">
+               <div className="flex-1 bg-black"></div>
+               <div className="flex-1 bg-red-600"></div>
+               <div className="flex-1 bg-yellow-400"></div>
+             </div>
+             <span className="text-[9px] text-white/80 font-bold uppercase tracking-wider">{t('login.german_std')}</span>
+          </div>
           <p className="text-neutral-300 text-[10px] uppercase tracking-[0.2em] font-medium">
             &copy; 2026 DIA_SAAS
           </p>

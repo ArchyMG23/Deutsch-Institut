@@ -45,19 +45,24 @@ export default function StudentProfile() {
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   React.useEffect(() => {
+    if (profile) {
+      setFormData({
+        firstName: profile.firstName || '',
+        lastName: profile.lastName || '',
+        email: profile.email || '',
+        phone: (profile as Student).phone || '',
+        parentName: (profile as Student).parentName || '',
+        parentPhone: (profile as Student).parentPhone || '',
+      });
+    }
+  }, [profile]);
+
+  React.useEffect(() => {
     const fetchMe = async () => {
       const res = await fetchWithAuth('/api/auth/me');
       if (res.ok) {
         const currentProfile = await res.json();
         updateProfile(currentProfile);
-        setFormData({
-          firstName: currentProfile.firstName,
-          lastName: currentProfile.lastName,
-          email: currentProfile.email,
-          phone: currentProfile.phone || '',
-          parentName: currentProfile.parentName || '',
-          parentPhone: currentProfile.parentPhone || '',
-        });
       }
     };
     fetchMe();

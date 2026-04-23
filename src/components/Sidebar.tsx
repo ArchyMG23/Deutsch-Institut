@@ -1,5 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { 
   LayoutDashboard, 
   Users, 
@@ -27,42 +28,43 @@ import { motion, AnimatePresence } from 'motion/react';
 export function Sidebar() {
   const { profile, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = React.useState(false);
   const [logoError, setLogoError] = React.useState(false);
 
   const isDarkMode = theme === 'dark';
 
   const adminLinks = [
-    { to: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/admin/students', icon: Users, label: 'Étudiants' },
-    { to: '/admin/teachers', icon: GraduationCap, label: 'Enseignants' },
-    { to: '/admin/levels', icon: Layers, label: 'Niveaux' },
-    { to: '/admin/classes', icon: LayoutDashboard, label: 'Classes' },
-    { to: '/admin/evaluations', icon: FileText, label: 'Evaluations' },
-    { to: '/admin/finances', icon: Wallet, label: 'Finances' },
-    {to: '/admin/library', icon: Library, label: 'Bibliothèque' },
-    { to: '/admin/communiques', icon: Bell, label: 'Communiqués' },
-    { to: '/admin/admins', icon: Shield, label: 'Gérer Admins' },
-    { to: '/admin/profile', icon: User, label: 'Profil & Sécurité' },
+    { to: '/admin', icon: LayoutDashboard, label: t('sidebar.dashboard') },
+    { to: '/admin/students', icon: Users, label: t('sidebar.students') },
+    { to: '/admin/teachers', icon: GraduationCap, label: t('sidebar.teachers') },
+    { to: '/admin/levels', icon: Layers, label: t('sidebar.classes') },
+    { to: '/admin/classes', icon: LayoutDashboard, label: t('sidebar.classes') },
+    { to: '/admin/evaluations', icon: FileText, label: t('sidebar.evaluations') },
+    { to: '/admin/finances', icon: Wallet, label: t('sidebar.finances') },
+    {to: '/admin/library', icon: Library, label: t('sidebar.library') },
+    { to: '/admin/communiques', icon: Bell, label: t('sidebar.communiques') },
+    { to: '/admin/admins', icon: Shield, label: t('sidebar.manage_admins') },
+    { to: '/admin/profile', icon: User, label: t('sidebar.profile') },
   ];
 
   const teacherLinks = [
-    { to: '/teacher', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/teacher', icon: LayoutDashboard, label: t('sidebar.dashboard') },
     { to: '/teacher/planning', icon: Calendar, label: 'Planning' },
-    { to: '/teacher/students', icon: Users, label: 'Étudiants' },
-    { to: '/teacher/evaluations', icon: FileText, label: 'Evaluations' },
-    { to: '/teacher/library', icon: Library, label: 'Bibliothèque' },
-    { to: '/teacher/communiques', icon: Bell, label: 'Communiqués' },
-    { to: '/teacher/profile', icon: User, label: 'Profil & Sécurité' },
+    { to: '/teacher/students', icon: Users, label: t('sidebar.students') },
+    { to: '/teacher/evaluations', icon: FileText, label: t('sidebar.evaluations') },
+    { to: '/teacher/library', icon: Library, label: t('sidebar.library') },
+    { to: '/teacher/communiques', icon: Bell, label: t('sidebar.communiques') },
+    { to: '/teacher/profile', icon: User, label: t('sidebar.profile') },
   ];
 
   const studentLinks = [
-    { to: '/student', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/student', icon: LayoutDashboard, label: t('sidebar.dashboard') },
     { to: '/student/calendar', icon: Calendar, label: 'Calendrier' },
     { to: '/student/evaluations', icon: FileText, label: 'Mes Notes' },
-    { to: '/student/library', icon: Library, label: 'Bibliothèque' },
-    { to: '/student/communiques', icon: Bell, label: 'Communiqués' },
-    { to: '/student/profile', icon: User, label: 'Profil & Sécurité' },
+    { to: '/student/library', icon: Library, label: t('sidebar.library') },
+    { to: '/student/communiques', icon: Bell, label: t('sidebar.communiques') },
+    { to: '/student/profile', icon: User, label: t('sidebar.profile') },
   ];
 
   const links = profile?.role === 'admin' ? adminLinks : 
@@ -152,7 +154,7 @@ export function Sidebar() {
               className="flex items-center gap-3 w-full px-4 py-3 mb-2 text-neutral-500 dark:text-neutral-400 hover:text-dia-red hover:bg-dia-red/5 rounded-xl transition-all font-bold text-sm"
             >
               {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
-              <span>Mode {isDarkMode ? 'Clair' : 'Sombre'}</span>
+              <span>{isDarkMode ? 'Light' : 'Dark'} Mode</span>
             </button>
             <div className="flex items-center gap-3 mb-4 p-2 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50">
               <div className="w-9 h-9 shrink-0 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-700 flex items-center justify-center text-xs font-bold text-neutral-700 dark:text-neutral-300 shadow-sm overflow-hidden">
@@ -175,7 +177,7 @@ export function Sidebar() {
               className="flex items-center gap-3 w-full px-4 py-3 text-neutral-500 dark:text-neutral-400 hover:text-dia-red hover:bg-dia-red/5 rounded-xl transition-all font-bold text-sm"
             >
               <LogOut size={18} />
-              <span>Déconnexion</span>
+              <span>{t('common.logout')}</span>
             </button>
           </div>
         </div>
