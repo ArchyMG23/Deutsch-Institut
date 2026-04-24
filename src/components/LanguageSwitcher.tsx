@@ -39,7 +39,7 @@ export default function LanguageSwitcher() {
       >
         <Globe size={18} className="text-neutral-500 group-hover:text-dia-red transition-colors" />
         <span className="text-sm font-bold uppercase tracking-wider">{currentLanguage.code}</span>
-        <ChevronDown size={14} className={cn("text-neutral-400 transition-transform duration-300", isOpen && "rotate-180")} />
+        <ChevronDown size={14} className={cn("text-neutral-400 transition-transform duration-200", isOpen && "rotate-180")} />
       </button>
 
       {isOpen && (

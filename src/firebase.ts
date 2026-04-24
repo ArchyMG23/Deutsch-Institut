@@ -9,6 +9,7 @@ export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
 // Enable offline persistence for better performance on mobile networks (Orange/MTN)
+/*
 if (typeof window !== 'undefined') {
   enableIndexedDbPersistence(db).catch((err) => {
     if (err.code === 'failed-precondition') {
@@ -18,6 +19,7 @@ if (typeof window !== 'undefined') {
     }
   });
 }
+*/
 
 export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 

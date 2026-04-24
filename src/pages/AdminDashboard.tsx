@@ -112,29 +112,27 @@ export default function AdminDashboard() {
     }
   };
 
-  const totalIncome = finances
-    .filter(f => f.type === 'income')
-    .reduce((acc, curr) => acc + curr.amount, 0);
+  const { totalIncome, totalExpense } = React.useMemo(() => {
+    return {
+      totalIncome: finances.filter(f => f.type === 'income').reduce((acc, curr) => acc + curr.amount, 0),
+      totalExpense: finances.filter(f => f.type === 'expense').reduce((acc, curr) => acc + curr.amount, 0)
+    };
+  }, [finances]);
   
-  const totalExpense = finances
-    .filter(f => f.type === 'expense')
-    .reduce((acc, curr) => acc + curr.amount, 0);
-
-  // Simple monthly data for chart (mocking for now based on real total)
-  const chartData = [
+  const chartData = React.useMemo(() => [
     { name: 'Jan', income: 0, expense: 0 },
     { name: 'Fév', income: 0, expense: 0 },
     { name: 'Mar', income: totalIncome, expense: totalExpense },
-  ];
+  ], [totalIncome, totalExpense]);
 
-  const recentTransactions = [...finances]
+  const recentTransactions = React.useMemo(() => [...finances]
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 5);
+    .slice(0, 5), [finances]);
 
-  const onlineMembers = [
+  const onlineMembers = React.useMemo(() => [
     ...students.filter(s => s.status === 'online'),
     ...teachers.filter(t => t.status === 'online')
-  ];
+  ], [students, teachers]);
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-dia-red"></div></div>;
 
@@ -436,8 +434,23 @@ export default function AdminDashboard() {
                 <Tooltip 
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                 />
-                <Area type="monotone" dataKey="income" stroke="#FF0000" fillOpacity={1} fill="url(#colorIncome)" strokeWidth={2} />
-                <Area type="monotone" dataKey="expense" stroke="#FFCE00" fillOpacity={0} strokeWidth={2} />
+                <Area 
+                  type="monotone" 
+                  dataKey="income" 
+                  stroke="#FF0000" 
+                  fillOpacity={1} 
+                  fill="url(#colorIncome)" 
+                  strokeWidth={2} 
+                  animationDuration={600}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="expense" 
+                  stroke="#FFCE00" 
+                  fillOpacity={0} 
+                  strokeWidth={2} 
+                  animationDuration={600}
+                />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -484,7 +497,7 @@ export default function AdminDashboard() {
 
 function StatCard({ title, value, icon: Icon, trend, trendType }: any) {
   return (
-    <div className="card p-6">
+    <div className="card p-6 hover-scale cursor-default">
       <div className="flex items-start justify-between">
         <div className="w-12 h-12 bg-neutral-100 dark:bg-neutral-800 rounded-xl flex items-center justify-center text-dia-red">
           <Icon size={24} />

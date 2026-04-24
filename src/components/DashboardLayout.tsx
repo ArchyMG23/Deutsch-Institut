@@ -13,7 +13,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { t, i18n } = useTranslation();
 
   return (
-    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 transition-colors duration-300">
+    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 transition-colors duration-200">
       <Sidebar />
       <main className="lg:ml-64 min-h-screen p-4 lg:p-8 pt-20 lg:pt-8">
         <header className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">

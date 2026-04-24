@@ -41,10 +41,10 @@ const Placeholder = ({ title }: { title: string }) => (
 
 const PageWrapper = ({ children }: { children: React.ReactNode }) => (
   <motion.div
-    initial={{ opacity: 0, y: 10 }}
+    initial={{ opacity: 0, y: 5 }}
     animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: -10 }}
-    transition={{ duration: 0.3, ease: "easeOut" }}
+    exit={{ opacity: 0, y: -5 }}
+    transition={{ duration: 0.15, ease: "easeOut" }}
     className="h-full"
   >
     {children}
@@ -55,190 +55,189 @@ function AnimatedRoutes() {
   const location = useLocation();
   
   return (
-    <AnimatePresence mode="wait">
-      <Routes location={location}>
-        <Route path="/login" element={<LoginPage />} />
-        
-        {/* Admin Routes */}
-        <Route path="/admin" element={
-          <RoleGuard allowedRoles={['admin']}>
-            <DashboardLayout>
-              <PageWrapper><AdminDashboard /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/admin/students" element={
-          <RoleGuard allowedRoles={['admin']}>
-            <DashboardLayout>
-              <PageWrapper><StudentManagement /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/admin/teachers" element={
-          <RoleGuard allowedRoles={['admin']}>
-            <DashboardLayout>
-              <PageWrapper><TeacherManagement /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/admin/classes" element={
-          <RoleGuard allowedRoles={['admin']}>
-            <DashboardLayout>
-              <PageWrapper><ClassManagement /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/admin/finances" element={
-          <RoleGuard allowedRoles={['admin']}>
-            <DashboardLayout>
-              <PageWrapper><FinanceManagement /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/admin/library" element={
-          <RoleGuard allowedRoles={['admin']}>
-            <DashboardLayout>
-              <PageWrapper><LibraryManagement /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/admin/levels" element={
-          <RoleGuard allowedRoles={['admin']}>
-            <DashboardLayout>
-              <PageWrapper><LevelManagement /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/admin/communiques" element={
-          <RoleGuard allowedRoles={['admin']}>
-            <DashboardLayout>
-              <PageWrapper><CommuniqueManagement /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/admin/admins" element={
-          <RoleGuard allowedRoles={['admin']}>
-            <DashboardLayout>
-              <PageWrapper><AdminManagement /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/admin/evaluations" element={
-          <RoleGuard allowedRoles={['admin']}>
-            <DashboardLayout>
-              <PageWrapper><EvaluationManagement /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/admin/profile" element={
-          <RoleGuard allowedRoles={['admin']}>
-            <DashboardLayout>
-              <PageWrapper><AdminProfile /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
+    <Routes location={location}>
+      <Route path="/login" element={<LoginPage />} />
+      
+      {/* Admin Routes */}
+      <Route path="/admin" element={
+        <RoleGuard allowedRoles={['admin']}>
+          <DashboardLayout>
+            <AdminDashboard />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/admin/students" element={
+        <RoleGuard allowedRoles={['admin']}>
+          <DashboardLayout>
+            <StudentManagement />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/admin/teachers" element={
+        <RoleGuard allowedRoles={['admin']}>
+          <DashboardLayout>
+            <TeacherManagement />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/admin/classes" element={
+        <RoleGuard allowedRoles={['admin']}>
+          <DashboardLayout>
+            <ClassManagement />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/admin/finances" element={
+        <RoleGuard allowedRoles={['admin']}>
+          <DashboardLayout>
+            <FinanceManagement />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/admin/library" element={
+        <RoleGuard allowedRoles={['admin']}>
+          <DashboardLayout>
+            <LibraryManagement />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/admin/levels" element={
+        <RoleGuard allowedRoles={['admin']}>
+          <DashboardLayout>
+            <LevelManagement />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/admin/communiques" element={
+        <RoleGuard allowedRoles={['admin']}>
+          <DashboardLayout>
+            <CommuniqueManagement />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/admin/admins" element={
+        <RoleGuard allowedRoles={['admin']}>
+          <DashboardLayout>
+            <AdminManagement />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/admin/evaluations" element={
+        <RoleGuard allowedRoles={['admin']}>
+          <DashboardLayout>
+            <EvaluationManagement />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/admin/profile" element={
+        <RoleGuard allowedRoles={['admin']}>
+          <DashboardLayout>
+            <AdminProfile />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
 
-        {/* Teacher Routes */}
-        <Route path="/teacher" element={
-          <RoleGuard allowedRoles={['teacher']}>
-            <DashboardLayout>
-              <PageWrapper><TeacherDashboard /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/teacher/planning" element={
-          <RoleGuard allowedRoles={['teacher']}>
-            <DashboardLayout>
-              <PageWrapper><TeacherPlanning /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/teacher/students" element={
-          <RoleGuard allowedRoles={['teacher']}>
-            <DashboardLayout>
-              <PageWrapper><TeacherStudents /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/teacher/library" element={
-          <RoleGuard allowedRoles={['teacher', 'admin']}>
-            <DashboardLayout>
-              <PageWrapper><LibraryManagement /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/teacher/communiques" element={
-          <RoleGuard allowedRoles={['teacher']}>
-            <DashboardLayout>
-              <PageWrapper><CommuniqueManagement /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/teacher/evaluations" element={
-          <RoleGuard allowedRoles={['teacher']}>
-            <DashboardLayout>
-              <PageWrapper><EvaluationManagement /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/teacher/profile" element={
-          <RoleGuard allowedRoles={['teacher']}>
-            <DashboardLayout>
-              <PageWrapper><TeacherProfile /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
+      {/* Teacher Routes */}
+      <Route path="/teacher" element={
+        <RoleGuard allowedRoles={['teacher']}>
+          <DashboardLayout>
+            <TeacherDashboard />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/teacher/planning" element={
+        <RoleGuard allowedRoles={['teacher']}>
+          <DashboardLayout>
+            <TeacherPlanning />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/teacher/students" element={
+        <RoleGuard allowedRoles={['teacher']}>
+          <DashboardLayout>
+            <TeacherStudents />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/teacher/library" element={
+        <RoleGuard allowedRoles={['teacher', 'admin']}>
+          <DashboardLayout>
+            <LibraryManagement />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/teacher/communiques" element={
+        <RoleGuard allowedRoles={['teacher']}>
+          <DashboardLayout>
+            <CommuniqueManagement />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/teacher/evaluations" element={
+        <RoleGuard allowedRoles={['teacher']}>
+          <DashboardLayout>
+            <EvaluationManagement />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/teacher/profile" element={
+        <RoleGuard allowedRoles={['teacher']}>
+          <DashboardLayout>
+            <TeacherProfile />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
 
-        {/* Student Routes */}
-        <Route path="/student" element={
-          <RoleGuard allowedRoles={['student']}>
-            <DashboardLayout>
-              <PageWrapper><StudentDashboard /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/student/calendar" element={
-          <RoleGuard allowedRoles={['student']}>
-            <DashboardLayout>
-              <PageWrapper><StudentCalendar /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/student/library" element={
-          <RoleGuard allowedRoles={['student', 'admin']}>
-            <DashboardLayout>
-              <PageWrapper><LibraryManagement /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/student/communiques" element={
-          <RoleGuard allowedRoles={['student']}>
-            <DashboardLayout>
-              <PageWrapper><CommuniqueManagement /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/student/evaluations" element={
-          <RoleGuard allowedRoles={['student']}>
-            <DashboardLayout>
-              <PageWrapper><EvaluationManagement /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
-        <Route path="/student/profile" element={
-          <RoleGuard allowedRoles={['student']}>
-            <DashboardLayout>
-              <PageWrapper><StudentProfile /></PageWrapper>
-            </DashboardLayout>
-          </RoleGuard>
-        } />
+      {/* Student Routes */}
+      <Route path="/student" element={
+        <RoleGuard allowedRoles={['student']}>
+          <DashboardLayout>
+            <StudentDashboard />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/student/calendar" element={
+        <RoleGuard allowedRoles={['student']}>
+          <DashboardLayout>
+            <StudentCalendar />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/student/library" element={
+        <RoleGuard allowedRoles={['student', 'admin']}>
+          <DashboardLayout>
+            <LibraryManagement />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/student/communiques" element={
+        <RoleGuard allowedRoles={['student']}>
+          <DashboardLayout>
+            <CommuniqueManagement />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/student/evaluations" element={
+        <RoleGuard allowedRoles={['student']}>
+          <DashboardLayout>
+            <EvaluationManagement />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/student/profile" element={
+        <RoleGuard allowedRoles={['student']}>
+          <DashboardLayout>
+            <StudentProfile />
+          </DashboardLayout>
+        </RoleGuard>
+      } />
 
-        {/* Common Routes */}
-        <Route path="/change-password" element={
-          <RoleGuard allowedRoles={['admin', 'teacher', 'student']}>
-            <PageWrapper><Placeholder title="Changer le mot de passe" /></PageWrapper>
-          </RoleGuard>
-        } />
+      {/* Common Routes */}
+      <Route path="/change-password" element={
+        <RoleGuard allowedRoles={['admin', 'teacher', 'student']}>
+          <Placeholder title="Changer le mot de passe" />
+        </RoleGuard>
+      } />
         
         <Route path="/unauthorized" element={
           <div className="flex items-center justify-center min-h-screen p-4">
@@ -254,8 +253,7 @@ function AnimatedRoutes() {
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </AnimatePresence>
-  );
+    );
 }
 
 export default function App() {
@@ -263,7 +261,7 @@ export default function App() {
     <ThemeProvider>
       <AuthProvider>
         <DataProvider>
-          <Toaster position="top-right" richColors />
+          <Toaster position="top-right" richColors visibleToasts={3} expand={true} duration={3000} closeButton />
           <Router>
             <Suspense fallback={
               <div className="flex items-center justify-center min-h-screen">

@@ -415,43 +415,45 @@ export default function StudentManagement() {
     document.body.removeChild(link);
   };
 
-  const filteredStudents = students.filter(s => {
-    const matchesSearch = `${s.firstName} ${s.lastName} ${s.matricule}`.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesTab = activeTab === 'active' ? !s.isFormer : s.isFormer;
-    return matchesSearch && matchesTab;
-  });
+  const sortedStudents = React.useMemo(() => {
+    const filtered = students.filter(s => {
+      const matchesSearch = `${s.firstName} ${s.lastName} ${s.matricule}`.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesTab = activeTab === 'active' ? !s.isFormer : s.isFormer;
+      return matchesSearch && matchesTab;
+    });
 
-  const sortedStudents = [...filteredStudents].sort((a, b) => {
-    if (!sortConfig) return 0;
-    const { key, direction } = sortConfig;
-    
-    let aValue: any;
-    let bValue: any;
+    return [...filtered].sort((a, b) => {
+      if (!sortConfig) return 0;
+      const { key, direction } = sortConfig;
+      
+      let aValue: any;
+      let bValue: any;
 
-    if (key === 'name') {
-      aValue = `${a.lastName} ${a.firstName}`.toLowerCase();
-      bValue = `${b.lastName} ${b.firstName}`.toLowerCase();
-    } else if (key === 'matricule') {
-      aValue = a.matricule.toLowerCase();
-      bValue = b.matricule.toLowerCase();
-    } else if (key === 'level') {
-      aValue = levels.find(l => l.id === a.levelId)?.name?.toLowerCase() || '';
-      bValue = levels.find(l => l.id === b.levelId)?.name?.toLowerCase() || '';
-    } else if (key === 'class') {
-      aValue = classes.find(c => c.id === a.classId)?.name?.toLowerCase() || '';
-      bValue = classes.find(c => c.id === b.classId)?.name?.toLowerCase() || '';
-    } else if (key === 'tuition') {
-      aValue = a.payments.reduce((acc, p) => acc + p.amount, 0);
-      bValue = b.payments.reduce((acc, p) => acc + p.amount, 0);
-    } else {
-      aValue = (a as any)[key];
-      bValue = (b as any)[key];
-    }
+      if (key === 'name') {
+        aValue = `${a.lastName} ${a.firstName}`.toLowerCase();
+        bValue = `${b.lastName} ${b.firstName}`.toLowerCase();
+      } else if (key === 'matricule') {
+        aValue = a.matricule.toLowerCase();
+        bValue = b.matricule.toLowerCase();
+      } else if (key === 'level') {
+        aValue = levels.find(l => l.id === a.levelId)?.name?.toLowerCase() || '';
+        bValue = levels.find(l => l.id === b.levelId)?.name?.toLowerCase() || '';
+      } else if (key === 'class') {
+        aValue = classes.find(c => c.id === a.classId)?.name?.toLowerCase() || '';
+        bValue = classes.find(c => c.id === b.classId)?.name?.toLowerCase() || '';
+      } else if (key === 'tuition') {
+        aValue = a.payments.reduce((acc, p) => acc + p.amount, 0);
+        bValue = b.payments.reduce((acc, p) => acc + p.amount, 0);
+      } else {
+        aValue = (a as any)[key];
+        bValue = (b as any)[key];
+      }
 
-    if (aValue < bValue) return direction === 'asc' ? -1 : 1;
-    if (aValue > bValue) return direction === 'asc' ? 1 : -1;
-    return 0;
-  });
+      if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [students, searchQuery, activeTab, sortConfig, levels, classes]);
 
   const handleSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc';

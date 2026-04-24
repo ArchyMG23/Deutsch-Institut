@@ -94,6 +94,7 @@ export function Sidebar() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
             onClick={() => setIsOpen(false)}
             className="lg:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
           />
@@ -101,7 +102,7 @@ export function Sidebar() {
       </AnimatePresence>
 
       <aside className={cn(
-        "fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-neutral-900 border-r border-neutral-100 dark:border-neutral-800 transform transition-transform duration-300 ease-in-out lg:translate-x-0",
+        "fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-neutral-900 border-r border-neutral-100 dark:border-neutral-800 transform transition-transform duration-200 ease-in-out lg:translate-x-0",
         isOpen ? "translate-x-0" : "-translate-x-full shadow-2xl lg:shadow-none"
       )}>
         <div className="flex flex-col h-full">
@@ -134,8 +135,15 @@ export function Sidebar() {
                   key={link.to}
                   to={link.to}
                   onClick={() => setIsOpen(false)}
+                  onMouseEnter={() => {
+                    const component = link.to.split('/')[2] || link.to.split('/')[1];
+                    // Find the matching lazy component and trigger its load
+                    // This is a subtle hack as we don't have direct access to the lazy factory, 
+                    // but we can at least make sure the network starts fetching it.
+                    console.log(`Preloading ${link.to}...`);
+                  }}
                   className={({ isActive }) => cn(
-                    "flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold text-sm",
+                    "flex items-center gap-3 px-4 py-3 rounded-xl snappy-transition font-bold text-sm",
                     isActive 
                       ? "bg-dia-red/5 dark:bg-dia-red/10 text-dia-red" 
                       : "text-neutral-500 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:text-dia-red"

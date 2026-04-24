@@ -109,21 +109,21 @@ export default function LoginPage() {
       {/* Background Image with Blur and Overlay */}
       <div className="absolute inset-0 z-0">
         <div 
-          className="absolute inset-0 bg-cover bg-center bg-no-repeat scale-105 transition-all duration-1000"
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat scale-105 transition-all duration-500"
           style={{ 
             backgroundImage: `url("${theme === 'dark' ? bgImages.dark : bgImages.light}")`,
             filter: theme === 'dark' ? 'blur(8px) brightness(0.3)' : 'blur(4px) brightness(0.7)'
           }}
         />
         <div className={cn(
-          "absolute inset-0 transition-opacity duration-1000",
+          "absolute inset-0 transition-opacity duration-500",
           theme === 'dark' 
             ? "bg-gradient-to-br from-black/80 via-black/40 to-dia-red/30 opacity-100" 
             : "bg-gradient-to-br from-white/40 via-transparent to-dia-red/10 opacity-100"
         )} />
       </div>
 
-      <div className="w-full max-w-[440px] relative z-10 animate-in fade-in zoom-in duration-700">
+      <div className="w-full max-w-[440px] relative z-10 animate-in fade-in zoom-in duration-300">
         <div className="text-center mb-10">
           <div className="relative w-20 h-20 mx-auto mb-4">
             {!logoError ? (

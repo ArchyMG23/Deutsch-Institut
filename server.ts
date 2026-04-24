@@ -1,6 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
@@ -266,7 +265,6 @@ async function startServer() {
   }
 
   app.use(cors());
-  app.use(compression());
   app.use(express.json({ limit: '50mb' }));
   app.use(cookieParser());
   

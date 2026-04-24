@@ -76,13 +76,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     console.log("AuthProvider: Initializing Auth listener...");
     
-    // Safety timeout: force loading to false after 8 seconds if Firebase doesn't respond
+    // Safety timeout: force loading to false after 10 seconds if Firebase doesn't respond
     const safetyTimeout = setTimeout(() => {
       if (loading) {
         console.warn("AuthProvider: Firebase auth listener timed out. Forcing loading to false.");
         setLoading(false);
       }
-    }, 8000);
+    }, 10000);
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       console.log("AuthProvider: Auth state changed:", firebaseUser?.email || "No user");

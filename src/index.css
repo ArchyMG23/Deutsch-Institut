@@ -34,6 +34,15 @@
     font-size: 16px !important;
   }
 
+  /* Optimized animations */
+  .snappy-transition {
+    @apply transition-all duration-150 ease-out;
+  }
+
+  .hover-scale {
+    @apply transition-transform duration-100 hover:scale-[1.02] active:scale-[0.98];
+  }
+
   .dark body {
     @apply bg-neutral-950 text-neutral-50;
   }
