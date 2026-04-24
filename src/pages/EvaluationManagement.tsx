@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { 
   Search, 
   Plus, 
@@ -23,6 +24,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 export default function EvaluationManagement() {
+  const { t } = useTranslation();
   const { students, classes, levels, evaluations, refreshEvaluations, refreshStudents, refreshClasses, refreshLevels, refreshAll } = useData();
   const { fetchWithAuth, profile } = useAuth();
   
@@ -84,7 +86,7 @@ export default function EvaluationManagement() {
   const handleAddEvaluation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.studentId || !formData.classId) {
-      toast.error("Veuillez sélectionner un étudiant et une classe");
+      toast.error(t('evaluations.select_student_class'));
       return;
     }
 
@@ -94,7 +96,7 @@ export default function EvaluationManagement() {
     
     const evaluationData = {
       ...formData,
-      studentName: student ? `${student.firstName} ${student.lastName}` : 'Inconnu',
+      studentName: student ? `${student.firstName} ${student.lastName}` : t('common.unknown'),
       total,
       average,
       levelId: selectedClass?.levelId || 'A1'
@@ -108,12 +110,12 @@ export default function EvaluationManagement() {
       });
 
       if (res.ok) {
-        toast.success("Évaluation enregistrée");
+        toast.success(t('evaluations.saved'));
         setIsAddModalOpen(false);
         refreshEvaluations();
       }
     } catch (err) {
-      toast.error("Erreur lors de l'enregistrement");
+      toast.error(t('common.error'));
     } finally {
       setSubmitting(false);
     }
@@ -128,29 +130,29 @@ export default function EvaluationManagement() {
   };
 
   const deleteEvaluation = async (id: string) => {
-    if (!window.confirm("Supprimer cette évaluation ?")) return;
+    if (!window.confirm(t('evaluations.confirm_delete'))) return;
     try {
       const res = await fetchWithAuth(`/api/evaluations/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        toast.success("Supprimé");
+        toast.success(t('common.deleted'));
         refreshEvaluations();
       }
     } catch (err) {
-      toast.error("Erreur");
+      toast.error(t('common.error'));
     }
   };
 
   const sendEmail = async (evaluation: Evaluation) => {
     const student = students.find(s => s.uid === evaluation.studentId);
     if (!student || (!student.email && !student.parentEmail)) {
-      toast.error("Aucun email trouvé pour cet étudiant ou son parent");
+      toast.error(t('evaluations.no_email_found'));
       return;
     }
 
     const email = student.parentEmail || student.email;
     
     try {
-      toast.loading("Envoi de l'email...");
+      toast.loading(t('common.sending'));
       const res = await fetchWithAuth('/api/evaluations/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -162,7 +164,7 @@ export default function EvaluationManagement() {
       });
       toast.dismiss();
       if (res.ok) {
-        toast.success(`Bulletin envoyé à ${email}`);
+        toast.success(`${t('evaluations.report_sent')} ${email}`);
       }
     } catch (err) {
       toast.dismiss();
@@ -238,61 +240,61 @@ export default function EvaluationManagement() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Evaluations Goethe</h2>
-          <p className="text-neutral-500">Gérez les notes et bulletins d'examen par module.</p>
+          <h2 className="text-2xl font-bold tracking-tight">{t('evaluations.title')}</h2>
+          <p className="text-neutral-500">{t('evaluations.subtitle')}</p>
         </div>
         <button 
           onClick={() => setIsAddModalOpen(true)}
           className="btn-primary flex items-center justify-center gap-2"
         >
           <Plus size={20} />
-          <span>Nouvelle Évaluation</span>
+          <span>{t('evaluations.new_evaluation')}</span>
         </button>
       </div>
 
       <div className="card p-6 bg-dia-red/5 border-dia-red/10 border">
-        <h4 className="text-sm font-bold uppercase tracking-widest text-dia-red mb-4">Actions Groupées par Classe</h4>
+        <h4 className="text-sm font-bold uppercase tracking-widest text-dia-red mb-4">{t('evaluations.group_actions')}</h4>
         <div className="flex flex-wrap gap-4 items-end">
           <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase text-neutral-400 ml-1">Sélectionner Classe</label>
+            <label className="text-[10px] font-bold uppercase text-neutral-400 ml-1">{t('evaluations.select_class')}</label>
             <select 
               className="px-4 py-2 bg-white dark:bg-neutral-800 border-none rounded-xl text-sm font-bold shadow-sm focus:ring-2 focus:ring-dia-red outline-none"
               onChange={(e) => setSelectedClass(classes.find(c => c.id === e.target.value) || null)}
             >
-              <option value="">Toutes les classes</option>
+              <option value="">{t('evaluations.all_classes')}</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <button 
             onClick={async () => {
-              if (!selectedClass) return toast.error("Sélectionnez une classe");
+              if (!selectedClass) return toast.error(t('evaluations.error_select_class'));
               const classEvals = evaluations.filter(e => e.classId === selectedClass.id);
-              if (classEvals.length === 0) return toast.error("Aucune évaluation pour cette classe");
+              if (classEvals.length === 0) return toast.error(t('evaluations.no_evaluations'));
               
-              toast.info(`Préparation de ${classEvals.length} bulletins...`);
+              toast.info(`${t('evaluations.preparing_reports')} ${classEvals.length}...`);
               for (const ev of classEvals) {
                 await sendEmail(ev);
               }
-              toast.success("Envoi groupé terminé");
+              toast.success(t('evaluations.group_sent_finished'));
             }}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-all shadow-md"
           >
             <Send size={14} />
-            <span>Envoyer Bulletins Classe</span>
+            <span>{t('evaluations.send_reports_class')}</span>
           </button>
           <button 
             onClick={() => {
-              if (!selectedClass) return toast.error("Sélectionnez une classe");
+              if (!selectedClass) return toast.error(t('evaluations.error_select_class'));
               const classEvals = evaluations.filter(e => e.classId === selectedClass.id);
-              if (classEvals.length === 0) return toast.error("Aucune évaluation pour cette classe");
+              if (classEvals.length === 0) return toast.error(t('evaluations.no_evaluations'));
               
               classEvals.forEach(ev => generatePDF(ev));
-              toast.success(`Génération de ${classEvals.length} PDFs lancée`);
+              toast.success(`${t('evaluations.printing_reports_started')} ${classEvals.length}`);
             }}
             className="flex items-center gap-2 px-4 py-2 bg-dia-red text-white rounded-xl text-xs font-bold hover:bg-dia-red/90 transition-all shadow-md"
           >
             <Printer size={14} />
-            <span>Imprimer Bulletins Classe</span>
+            <span>{t('evaluations.print_reports_class')}</span>
           </button>
         </div>
       </div>
@@ -303,7 +305,7 @@ export default function EvaluationManagement() {
             type="text" 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Rechercher un élève..."
+            placeholder={t('evaluations.search_placeholder')}
             className="w-full pl-10 pr-4 py-2 bg-white dark:bg-neutral-800 border-none rounded-lg focus:ring-2 focus:ring-dia-red transition-all"
           />
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none" size={18} />
@@ -315,18 +317,18 @@ export default function EvaluationManagement() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-neutral-50 dark:bg-neutral-800/50 border-b border-neutral-200 dark:border-neutral-800">
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">Étudiant</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">{t('common.student')}</th>
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">Type / Date</th>
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">Modules (L/H/Sch/Spr)</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">Score Total</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">Résultat</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 text-right">Actions</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">{t('evaluations.total_score')}</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">{t('evaluations.result')}</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 text-right">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
               {filteredEvaluations.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center text-neutral-500">Aucune évaluation trouvée.</td>
+                  <td colSpan={6} className="px-6 py-10 text-center text-neutral-500">{t('common.no_results')}</td>
                 </tr>
               ) : (
                 filteredEvaluations.map((ev) => {
@@ -345,7 +347,7 @@ export default function EvaluationManagement() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-xs font-bold">{ev.type === 'end-of-level' ? 'Fin de Niveau' : 'Sous-Niveau'}</p>
+                        <p className="text-xs font-bold">{ev.type === 'end-of-level' ? t('evaluations.end_level') : t('evaluations.sub_level')}</p>
                         <p className="text-[10px] text-neutral-400">{new Date(ev.date).toLocaleDateString()}</p>
                       </td>
                       <td className="px-6 py-4">
@@ -364,14 +366,14 @@ export default function EvaluationManagement() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <button onClick={() => sendEmail(ev)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-500 hover:text-blue-600 transition-colors" title="Envoyer par Email">
+                          <button onClick={() => sendEmail(ev)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-500 hover:text-blue-600 transition-colors" title={t('common.send_email')}>
                             <Send size={16} />
                           </button>
-                          <button onClick={() => generatePDF(ev)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-500 hover:text-dia-red transition-colors" title="Imprimer Bulletin">
+                          <button onClick={() => generatePDF(ev)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-500 hover:text-dia-red transition-colors" title={t('evaluations.print_report')}>
                             <Printer size={16} />
                           </button>
                           {profile?.role === 'admin' && (
-                            <button onClick={() => deleteEvaluation(ev.id)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-400 hover:text-red-500 transition-colors">
+                            <button onClick={() => deleteEvaluation(ev.id)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-400 hover:text-red-500 transition-colors" title={t('common.delete')}>
                               <Trash2 size={16} />
                             </button>
                           )}
@@ -391,7 +393,7 @@ export default function EvaluationManagement() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-              <h3 className="text-2xl font-bold tracking-tight">Nouvelle Évaluation</h3>
+              <h3 className="text-2xl font-bold tracking-tight">{t('evaluations.new_evaluation')}</h3>
               <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
                 <X size={24} />
               </button>
@@ -399,42 +401,42 @@ export default function EvaluationManagement() {
             <form onSubmit={handleAddEvaluation} className="p-8 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Classe / Niveau</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.class')} / {t('common.level')}</label>
                   <select 
                     required
                     onChange={(e) => handleLevelChange(e.target.value)}
                     className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 outline-none"
                   >
-                    <option value="">Sél. Classe</option>
+                    <option value="">{t('evaluations.select_class_opt')}</option>
                     {classes.map(c => <option key={c.id} value={c.id}>{c.name} ({levels.find(l => l.id === c.levelId)?.name})</option>)}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Étudiant</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.student')}</label>
                   <select 
                     required
                     onChange={(e) => handleStudentSelect(e.target.value)}
                     className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 outline-none"
                   >
-                    <option value="">Sél. Étudiant</option>
+                    <option value="">{t('evaluations.select_student_opt')}</option>
                     {selectedClass ? (
                       students
                         .filter(s => s.classId === selectedClass.id)
                         .map(s => <option key={s.uid} value={s.uid}>{s.firstName} {s.lastName}</option>)
                     ) : (
-                      <option disabled>Sélectionnez une classe d'abord</option>
+                      <option disabled>{t('evaluations.select_class_first')}</option>
                     )}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Type d'Évaluation</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('evaluations.eval_type')}</label>
                   <select 
                     value={formData.type}
                     onChange={(e) => setFormData({...formData, type: e.target.value as any})}
                     className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 outline-none"
                   >
-                    <option value="sub-level">Sous-Niveau (A1.1 / A2.1 ...)</option>
-                    <option value="end-of-level">Examen Final de Niveau (A1 / A2 ...)</option>
+                    <option value="sub-level">{t('evaluations.sub_level_opt')}</option>
+                    <option value="end-of-level">{t('evaluations.end_level_opt')}</option>
                   </select>
                 </div>
                 <div className="space-y-2">
@@ -449,7 +451,7 @@ export default function EvaluationManagement() {
               </div>
 
               <div className="space-y-4">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400 border-b pb-2">Modules Goethe (Barème /25)</h4>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400 border-b pb-2">{t('evaluations.modules_header')}</h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold ml-1">LESEN</label>
@@ -487,24 +489,24 @@ export default function EvaluationManagement() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Commentaires / Recommandations</label>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('evaluations.comments_label')}</label>
                 <textarea 
                   rows={2}
                   value={formData.comments}
                   onChange={(e) => setFormData({...formData, comments: e.target.value})}
                   className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 outline-none resize-none"
-                  placeholder="Points forts, points à améliorer..."
+                  placeholder={t('evaluations.comments_placeholder')}
                 />
               </div>
 
               <div className="flex gap-4">
-                <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
+                <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">{t('common.cancel')}</button>
                 <button 
                   type="submit" 
                   disabled={submitting}
                   className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
                 >
-                  {submitting ? "Traitement..." : "Valider l'Évaluation"}
+                  {submitting ? t('common.processing') : t('evaluations.validate_eval')}
                 </button>
               </div>
             </form>

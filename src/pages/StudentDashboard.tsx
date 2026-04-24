@@ -15,6 +15,7 @@ import {
   Download,
   X
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { cn, formatCurrency } from '../utils';
@@ -22,6 +23,7 @@ import { Student, ClassRoom, Level, LibraryItem } from '../types';
 import { useNavigate } from 'react-router-dom';
 
 export default function StudentDashboard() {
+  const { t, i18n } = useTranslation();
   const { profile, updateProfile, fetchWithAuth } = useAuth();
   const { classes, levels, library, loading, refreshStudents, refreshClasses, refreshLevels, refreshLibrary, refreshEvaluations } = useData();
   const student = profile as Student;
@@ -73,15 +75,15 @@ export default function StudentDashboard() {
       <div className="relative overflow-hidden rounded-[32px] bg-dia-red p-8 text-white shadow-2xl shadow-dia-red/20">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
-            <h2 className="text-3xl font-bold tracking-tight">Ravi de vous revoir, {student.firstName} !</h2>
+            <h2 className="text-3xl font-bold tracking-tight">{t('login.welcome')}, {student.firstName} !</h2>
             <p className="text-white/80 font-medium">
-              {studentClass ? `Classe : ${studentClass.name}` : "Aucune classe assignée pour le moment."}
-              {studentLevel && ` • Niveau : ${studentLevel.name}`}
+              {studentClass ? `${t('students.class')} : ${studentClass.name}` : t('students.not_assigned')}
+              {studentLevel && ` • ${t('students.level')} : ${studentLevel.name}`}
             </p>
           </div>
           <div className="flex gap-4">
             <div className="px-6 py-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-1">Matricule</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-1">{t('login.matricule')}</p>
               <p className="text-lg font-mono font-bold">{student.matricule}</p>
             </div>
           </div>
@@ -109,13 +111,13 @@ export default function StudentDashboard() {
                   "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
                   balance <= 0 ? "bg-emerald-500/10 text-emerald-500" : "bg-dia-yellow/10 text-dia-yellow"
                 )}>
-                  {balance <= 0 ? "Scolarité Payée" : "Paiement en cours"}
+                  {balance <= 0 ? t('students.tuition_paid') : t('students.payment_in_progress')}
                 </span>
               </div>
               
               <div className="space-y-2">
                 <div className="flex justify-between items-end">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">Progression Paiement</p>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">{t('students.payment_progress')}</p>
                   <p className="text-lg font-bold">{Math.round(paymentProgress)}%</p>
                 </div>
                 <div className="h-2 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
@@ -128,11 +130,11 @@ export default function StudentDashboard() {
 
               <div className="grid grid-cols-2 gap-4 pt-4 border-t border-neutral-100 dark:border-neutral-800">
                 <div>
-                  <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">Payé</p>
+                  <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">{t('students.paid_short') || 'Payé'}</p>
                   <p className="text-lg font-bold text-emerald-500">{formatCurrency(totalPaid)}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">Reste</p>
+                  <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">{t('students.balance_short') || 'Reste'}</p>
                   <p className="text-lg font-bold text-dia-red">{formatCurrency(balance)}</p>
                 </div>
               </div>
@@ -145,13 +147,13 @@ export default function StudentDashboard() {
                   <Clock size={24} />
                 </div>
                 <span className="px-3 py-1 rounded-full bg-blue-500/10 text-blue-500 text-[10px] font-bold uppercase tracking-wider">
-                  Assiduité
+                  {t('students.attendance') || 'Assiduité'}
                 </span>
               </div>
               
               <div className="space-y-2">
                 <div className="flex justify-between items-end">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">Heures de cours</p>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">{t('students.course_hours') || 'Heures de cours'}</p>
                   <p className="text-lg font-bold">85%</p>
                 </div>
                 <div className="h-2 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
@@ -161,11 +163,11 @@ export default function StudentDashboard() {
 
               <div className="grid grid-cols-2 gap-4 pt-4 border-t border-neutral-100 dark:border-neutral-800">
                 <div>
-                  <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">Total Heures</p>
+                  <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">{t('students.total_hours') || 'Total Heures'}</p>
                   <p className="text-lg font-bold">{studentLevel?.hours || 0}h</p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">Effectuées</p>
+                  <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">{t('students.completed_hours') || 'Effectuées'}</p>
                   <p className="text-lg font-bold text-blue-500">102h</p>
                 </div>
               </div>
@@ -179,13 +181,13 @@ export default function StudentDashboard() {
                 <div className="w-10 h-10 rounded-xl bg-dia-red/10 text-dia-red flex items-center justify-center">
                   <Calendar size={20} />
                 </div>
-                <h3 className="text-xl font-bold">Emploi du Temps</h3>
+                <h3 className="text-xl font-bold">{t('students.schedule') || 'Emploi du Temps'}</h3>
               </div>
               <button 
                 onClick={() => navigate('/student/calendar')}
                 className="text-sm font-bold text-dia-red hover:underline flex items-center gap-1"
               >
-                Voir tout <ChevronRight size={16} />
+                {t('common.view_all')} <ChevronRight size={16} />
               </button>
             </div>
 
@@ -199,10 +201,10 @@ export default function StudentDashboard() {
                     </div>
                     <div className="flex-1">
                       <h4 className="font-bold text-neutral-900 dark:text-white">{item.subject}</h4>
-                      <p className="text-xs text-neutral-500">Durée : {item.startTime} - {item.endTime}</p>
+                      <p className="text-xs text-neutral-500">{t('common.duration') || 'Durée'} : {item.startTime} - {item.endTime}</p>
                     </div>
                     <div className="px-4 py-2 bg-white dark:bg-neutral-900 rounded-xl shadow-sm border border-neutral-100 dark:border-neutral-800">
-                      <p className="text-[10px] font-bold uppercase text-neutral-400">Salle</p>
+                      <p className="text-[10px] font-bold uppercase text-neutral-400">{t('students.room') || 'Salle'}</p>
                       <p className="text-xs font-bold">S-102</p>
                     </div>
                   </div>
@@ -211,7 +213,7 @@ export default function StudentDashboard() {
             ) : (
               <div className="text-center py-12 bg-neutral-50 dark:bg-neutral-800/50 rounded-[32px] border-2 border-dashed border-neutral-200 dark:border-neutral-700">
                 <Calendar className="mx-auto text-neutral-300 mb-4" size={48} />
-                <p className="text-neutral-500 font-medium">Aucun cours programmé pour le moment.</p>
+                <p className="text-neutral-500 font-medium">{t('students.no_courses') || 'Aucun cours programmé pour le moment.'}</p>
               </div>
             )}
           </div>

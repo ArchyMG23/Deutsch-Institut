@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { 
   Search, 
   Plus, 
@@ -22,6 +23,7 @@ import { useData } from '../context/DataContext';
 import { toast } from 'sonner';
 
 export default function LibraryManagement() {
+  const { t } = useTranslation();
   const { profile, fetchWithAuth } = useAuth();
   const { library: items, loading, refreshLibrary } = useData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -47,7 +49,7 @@ export default function LibraryManagement() {
       if (addMethod === 'file') {
         const file = formData.get('file') as File;
         if (!file || file.size === 0) {
-          toast.error('Veuillez sélectionner un fichier');
+          toast.error(t('library.select_file'));
           setSubmitting(false);
           return;
         }
@@ -66,10 +68,10 @@ export default function LibraryManagement() {
         if (res.ok) {
           setIsAddModalOpen(false);
           refreshLibrary();
-          toast.success('Document ajouté avec succès');
+          toast.success(t('library.item_added'));
         } else {
           const err = await res.json();
-          toast.error(err.message || 'Erreur lors du téléchargement');
+          toast.error(err.message || t('common.error'));
         }
       } else {
         const newItem = {
@@ -89,12 +91,12 @@ export default function LibraryManagement() {
         if (res.ok) {
           setIsAddModalOpen(false);
           refreshLibrary();
-          toast.success('Lien ajouté avec succès');
+          toast.success(t('library.item_added'));
         }
       }
     } catch (err) {
       console.error("Error adding library item:", err);
-      toast.error('Une erreur est survenue lors de l\'ajout');
+      toast.error(t('common.error'));
     } finally {
       setSubmitting(false);
     }
@@ -102,12 +104,12 @@ export default function LibraryManagement() {
 
   const handleDeleteItem = async (id: string) => {
     if (!canManage) return;
-    if (!window.confirm('Supprimer ce document ?')) return;
+    if (!window.confirm(t('library.confirm_delete'))) return;
     try {
       const res = await fetchWithAuth(`/api/library/${id}`, { method: 'DELETE' });
       if (res.ok) {
         refreshLibrary();
-        toast.success('Document supprimé');
+        toast.success(t('library.item_deleted'));
       }
     } catch (err) {
       console.error("Error deleting item:", err);
@@ -150,14 +152,14 @@ export default function LibraryManagement() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h3 className="text-xl font-bold">Bibliothèque Numérique</h3>
+        <h3 className="text-xl font-bold">{t('library.title')}</h3>
         {canManage && (
           <button 
             onClick={() => setIsAddModalOpen(true)}
             className="btn-primary flex items-center gap-2"
           >
             <Upload size={18} />
-            <span>Ajouter un Document</span>
+            <span>{t('library.add_item')}</span>
           </button>
         )}
       </div>
@@ -168,7 +170,7 @@ export default function LibraryManagement() {
             type="text" 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Rechercher un document..."
+            placeholder={t('library.search_placeholder')}
             className="w-full pl-10 pr-4 py-2 bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg focus:ring-2 focus:ring-dia-red transition-all"
           />
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none z-10" size={18} />
@@ -182,7 +184,7 @@ export default function LibraryManagement() {
                 sortConfig.key === 'title' ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" : "text-neutral-500"
               )}
             >
-              Nom {sortConfig.key === 'title' && (sortConfig.direction === 'asc' ? <ChevronUp size={12}/> : <ChevronDown size={12}/>)}
+              {t('common.name')} {sortConfig.key === 'title' && (sortConfig.direction === 'asc' ? <ChevronUp size={12}/> : <ChevronDown size={12}/>)}
             </button>
             <button 
               onClick={() => handleSort('date')}
@@ -204,7 +206,7 @@ export default function LibraryManagement() {
                   filterCategory === cat ? "bg-dia-red text-white" : "bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200"
                 )}
               >
-                {cat === 'all' ? 'Tout' : cat}
+                {cat === 'all' ? t('common.all') : cat}
               </button>
             ))}
           </div>
@@ -237,7 +239,7 @@ export default function LibraryManagement() {
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="p-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg hover:bg-dia-red hover:text-white transition-all"
-                title={item.type === 'video' ? "Regarder" : "Télécharger"}
+                title={item.type === 'video' ? t('common.watch') : t('common.download')}
               >
                 {item.type === 'video' ? <LinkIcon size={16} /> : <Download size={16} />}
               </a>
@@ -245,7 +247,7 @@ export default function LibraryManagement() {
                 <button 
                   onClick={() => handleDeleteItem(item.id)}
                   className="p-2 hover:bg-red-100 hover:text-red-600 rounded-lg transition-all text-neutral-400"
-                  title="Supprimer"
+                  title={t('common.delete')}
                 >
                   <Trash2 size={16} />
                 </button>
@@ -260,7 +262,7 @@ export default function LibraryManagement() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-neutral-900 w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-              <h3 className="text-2xl font-bold tracking-tight">Ajouter au Document</h3>
+              <h3 className="text-2xl font-bold tracking-tight">{t('library.add_item')}</h3>
               <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
                 <X size={24} />
               </button>
@@ -274,7 +276,7 @@ export default function LibraryManagement() {
                     addMethod === 'file' ? "bg-white dark:bg-neutral-700 shadow-sm" : "text-neutral-500"
                   )}
                 >
-                  Fichier Local
+                  {t('library.local_file')}
                 </button>
                 <button 
                   onClick={() => setAddMethod('link')}
@@ -283,18 +285,18 @@ export default function LibraryManagement() {
                     addMethod === 'link' ? "bg-white dark:bg-neutral-700 shadow-sm" : "text-neutral-500"
                   )}
                 >
-                  Lien / Vidéo
+                  {t('library.link_video')}
                 </button>
               </div>
             </div>
             <form onSubmit={handleAddItem} className="p-8 space-y-6">
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Titre du document</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('library.item_title')}</label>
                   <input name="title" required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Catégorie</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('library.category')}</label>
                   <select name="category" required className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
                     <option value="Cours">Cours</option>
                     <option value="Exercices">Exercices</option>
@@ -306,28 +308,28 @@ export default function LibraryManagement() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Type de contenu</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('library.content_type')}</label>
                   <select name="type" required className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
-                    <option value="document">Document (PDF, Word...)</option>
-                    <option value="video">Vidéo (YouTube...)</option>
-                    <option value="archive">Archive (ZIP, RAR...)</option>
+                    <option value="document">{t('library.type_document')}</option>
+                    <option value="video">{t('library.type_video')}</option>
+                    <option value="archive">{t('library.type_archive')}</option>
                   </select>
                 </div>
                 
                 {addMethod === 'file' ? (
                   <div className="space-y-2">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Fichier (Max 1Go)</label>
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('library.file_limit')}</label>
                     <input name="file" type="file" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">URL / Lien</label>
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">URL / {t('library.link_video')}</label>
                     <input name="url" required type="url" placeholder="https://..." className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                   </div>
                 )}
               </div>
               <div className="pt-4 flex gap-4">
-                <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
+                <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">{t('common.cancel')}</button>
                 <button 
                   type="submit" 
                   disabled={submitting}
@@ -336,10 +338,10 @@ export default function LibraryManagement() {
                   {submitting ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Ajout...</span>
+                      <span>{t('common.adding')}</span>
                     </>
                   ) : (
-                    <span>Ajouter</span>
+                    <span>{t('common.add')}</span>
                   )}
                 </button>
               </div>

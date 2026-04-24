@@ -21,6 +21,7 @@ import { UserProfile } from '../types';
 import { toast } from 'sonner';
 import { getToken } from 'firebase/messaging';
 import { getDeviceInfo } from '../utils';
+import i18n from '../i18n/config';
 
 interface AuthContextType {
   user: any | null;
@@ -46,11 +47,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const hasUppercase = /[A-Z]/.test(password);
     const hasDot = /\./.test(password);
     const hasDigit = /\d/.test(password);
+    const { t } = i18n;
 
-    if (password.length < minLength) return { isValid: false, message: "Le mot de passe doit contenir au moins 6 caractères." };
-    if (!hasUppercase) return { isValid: false, message: "Le mot de passe doit contenir au moins une majuscule." };
-    if (!hasDot) return { isValid: false, message: "Le mot de passe doit contenir au moins un point (.)." };
-    if (!hasDigit) return { isValid: false, message: "Le mot de passe doit contenir au moins un chiffre." };
+    if (password.length < minLength) return { isValid: false, message: t('auth.password_too_short') };
+    if (!hasUppercase) return { isValid: false, message: t('auth.password_no_uppercase') };
+    if (!hasDot) return { isValid: false, message: t('auth.password_no_dot') };
+    if (!hasDigit) return { isValid: false, message: t('auth.password_no_digit') };
 
     return { isValid: true, message: "" };
   };
@@ -88,6 +90,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           
           if (docSnap.exists()) {
             const userData = docSnap.data() as UserProfile;
+            let fullProfileData = { ...userData };
+
+            // Fetch additional profile data if it's a student or teacher
+            if (userData.role === 'student' && userData.matricule) {
+              const studentDoc = await getDoc(doc(db, 'students', userData.matricule));
+              if (studentDoc.exists()) {
+                fullProfileData = { ...fullProfileData, ...studentDoc.data() };
+              }
+            } else if (userData.role === 'teacher' && userData.matricule) {
+              const teacherDoc = await getDoc(doc(db, 'teachers', userData.matricule));
+              if (teacherDoc.exists()) {
+                fullProfileData = { ...fullProfileData, ...teacherDoc.data() };
+              }
+            }
+
             const deviceInfo = getDeviceInfo();
             
             // Update status and device info if needed
@@ -97,13 +114,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 lastActiveDevice: deviceInfo,
                 lastLoginAt: serverTimestamp()
               }, { merge: true });
-              userData.status = 'online';
-              userData.lastActiveDevice = deviceInfo;
+              fullProfileData.status = 'online';
+              fullProfileData.lastActiveDevice = deviceInfo;
             }
 
-            console.log("AuthProvider: Profile found:", userData.role);
+            console.log("AuthProvider: Profile found:", fullProfileData.role);
             setUser(firebaseUser);
-            setProfile(userData);
+            setProfile(fullProfileData);
 
             // Register for Push Notifications if supported
             if (messaging && typeof window !== 'undefined') {
@@ -154,6 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (identifier: string, password: string) => {
+    const { t } = i18n;
     let email = identifier.trim();
     
     // If identifier is not an email, assume it's a matricule and look up the email via backend
@@ -168,9 +186,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         if (!response.ok) {
           if (response.status === 401) {
-            throw new Error('Matricule non trouvé. Veuillez vérifier votre code.');
+            throw new Error(t('auth.invalid_matricule'));
           }
-          throw new Error('Erreur lors de la recherche du matricule.');
+          throw new Error(t('auth.matricule_lookup_error'));
         }
         
         const data = await response.json();
@@ -187,15 +205,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err: any) {
       console.error("Firebase login error:", err.code, err.message);
       if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        throw new Error('Identifiants incorrects. Veuillez vérifier email/matricule et mot de passe.');
+        throw new Error(t('auth.invalid_credentials'));
       }
       if (err.code === 'auth/operation-not-allowed') {
-        throw new Error("L'authentification par email/mot de passe n'est pas activée dans votre console Firebase.");
+        throw new Error(t('auth.firebase_not_enabled'));
       }
       if (err.code === 'auth/too-many-requests') {
-        throw new Error("Trop de tentatives infructueuses. Le compte est temporairement bloqué.");
+        throw new Error(t('auth.too_many_requests'));
       }
-      throw new Error(err.message || 'Erreur de connexion au serveur d\'authentification.');
+      throw new Error(err.message || t('auth.login_error'));
     }
   };
 

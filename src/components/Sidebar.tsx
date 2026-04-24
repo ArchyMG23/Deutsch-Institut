@@ -26,7 +26,7 @@ import { cn } from '../utils';
 import { motion, AnimatePresence } from 'motion/react';
 
 export function Sidebar() {
-  const { profile, logout } = useAuth();
+  const { user, profile, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = React.useState(false);
@@ -50,7 +50,7 @@ export function Sidebar() {
 
   const teacherLinks = [
     { to: '/teacher', icon: LayoutDashboard, label: t('sidebar.dashboard') },
-    { to: '/teacher/planning', icon: Calendar, label: 'Planning' },
+    { to: '/teacher/planning', icon: Calendar, label: t('sidebar.planning') },
     { to: '/teacher/students', icon: Users, label: t('sidebar.students') },
     { to: '/teacher/evaluations', icon: FileText, label: t('sidebar.evaluations') },
     { to: '/teacher/library', icon: Library, label: t('sidebar.library') },
@@ -60,8 +60,8 @@ export function Sidebar() {
 
   const studentLinks = [
     { to: '/student', icon: LayoutDashboard, label: t('sidebar.dashboard') },
-    { to: '/student/calendar', icon: Calendar, label: 'Calendrier' },
-    { to: '/student/evaluations', icon: FileText, label: 'Mes Notes' },
+    { to: '/student/calendar', icon: Calendar, label: t('sidebar.calendar') },
+    { to: '/student/evaluations', icon: FileText, label: t('sidebar.evaluations') },
     { to: '/student/library', icon: Library, label: t('sidebar.library') },
     { to: '/student/communiques', icon: Bell, label: t('sidebar.communiques') },
     { to: '/student/profile', icon: User, label: t('sidebar.profile') },
@@ -124,7 +124,7 @@ export function Sidebar() {
               </div>
               <div className="overflow-hidden">
                 <h1 className="font-bold text-neutral-900 dark:text-white leading-tight">DIA_SAAS</h1>
-                <p className="text-[9px] font-bold uppercase tracking-widest text-neutral-400">Deutsch Institut</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-neutral-400">{t('sidebar.institute')}</p>
               </div>
             </div>
 
@@ -154,14 +154,14 @@ export function Sidebar() {
               className="flex items-center gap-3 w-full px-4 py-3 mb-2 text-neutral-500 dark:text-neutral-400 hover:text-dia-red hover:bg-dia-red/5 rounded-xl transition-all font-bold text-sm"
             >
               {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
-              <span>{isDarkMode ? 'Light' : 'Dark'} Mode</span>
+              <span>{isDarkMode ? t('sidebar.light_mode') : t('sidebar.dark_mode')}</span>
             </button>
             <div className="flex items-center gap-3 mb-4 p-2 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50">
               <div className="w-9 h-9 shrink-0 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-700 flex items-center justify-center text-xs font-bold text-neutral-700 dark:text-neutral-300 shadow-sm overflow-hidden">
-                {profile?.photoURL ? (
-                  <img src={profile.photoURL} alt="Ava" className="w-full h-full object-cover" />
+                {(profile?.photoURL || user?.photoURL) ? (
+                  <img src={profile?.photoURL || user?.photoURL} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
-                  <>{profile?.firstName?.[0]}{profile?.lastName?.[0]}</>
+                  <>{profile?.firstName?.[0] || user?.email?.[0]?.toUpperCase()}{profile?.lastName?.[0] || user?.email?.[1]?.toUpperCase()}</>
                 )}
               </div>
               <div className="overflow-hidden">

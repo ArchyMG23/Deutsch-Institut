@@ -87,7 +87,7 @@ export default function AdminDashboard() {
         toast.error(data.message);
       }
     } catch (err) {
-      toast.error("Erreur lors du test de l'email.");
+      toast.error(t('dashboard.email_test_error'));
     } finally {
       setTestingEmail(false);
     }
@@ -106,7 +106,7 @@ export default function AdminDashboard() {
       const data = await res.json();
       setDiagResult(data);
     } catch (err) {
-      toast.error("Erreur lors du diagnostic utilisateur.");
+      toast.error(t('dashboard.diag_error'));
     } finally {
       setCheckingDiag(false);
     }
@@ -171,7 +171,7 @@ export default function AdminDashboard() {
           trendType="up"
         />
         <StatCard 
-          title="Dépenses" 
+          title={t('dashboard.expenses')} 
           value={formatCurrency(totalExpense)} 
           icon={TrendingDown} 
           trend="+100%" 
@@ -183,16 +183,16 @@ export default function AdminDashboard() {
       <div className="card p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
-            <h3 className="font-bold text-lg">Membres Connectés & Appareils</h3>
+            <h3 className="font-bold text-lg">{t('dashboard.online_members')}</h3>
             <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
-            <span className="text-xs font-bold text-green-600">{onlineMembers.length} en ligne</span>
+            <span className="text-xs font-bold text-green-600">{onlineMembers.length} {t('common.online')}</span>
           </div>
         </div>
         
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 overflow-y-auto">
           {onlineMembers.length === 0 ? (
             <div className="col-span-full py-10 text-center bg-neutral-50 dark:bg-neutral-800/20 rounded-3xl border border-dashed border-neutral-200 dark:border-neutral-700">
-              <p className="text-neutral-500 text-sm font-medium">Aucun membre en ligne pour le moment.</p>
+              <p className="text-neutral-500 text-sm font-medium">{t('dashboard.no_members_online')}</p>
             </div>
           ) : (
             onlineMembers.map((member) => (
@@ -209,9 +209,9 @@ export default function AdminDashboard() {
                 <div className="text-right">
                   <div className="flex items-center gap-1 justify-end text-dia-red">
                     {member.lastActiveDevice?.toLowerCase().includes('android') || member.lastActiveDevice?.toLowerCase().includes('ios') ? <Smartphone size={12} /> : <Laptop size={12} />}
-                    <span className="text-[10px] font-bold truncate max-w-[60px]">{member.lastActiveDevice || 'Inconnu'}</span>
+                    <span className="text-[10px] font-bold truncate max-w-[60px]">{member.lastActiveDevice || t('common.unknown')}</span>
                   </div>
-                  <p className="text-[9px] text-neutral-400">{member.lastLoginAt ? new Date(member.lastLoginAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'récemment'}</p>
+                  <p className="text-[9px] text-neutral-400">{member.lastLoginAt ? new Date(member.lastLoginAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : t('common.recently')}</p>
                 </div>
               </div>
             ))
@@ -236,8 +236,8 @@ export default function AdminDashboard() {
                 { (configStatus.firebaseServiceAccountMissing || configStatus.smtpPassMissing) ? <ShieldAlert size={24} /> : <CheckCircle2 size={24} /> }
               </div>
               <div>
-                <h3 className="font-bold text-lg">Assistant de Configuration</h3>
-                <p className="text-sm text-neutral-500">Vérifiez l'état de vos services backend.</p>
+                <h3 className="font-bold text-lg">{t('dashboard.config_assistant')}</h3>
+                <p className="text-sm text-neutral-500">{t('dashboard.check_backend_status')}</p>
               </div>
             </div>
             <a 
@@ -246,30 +246,30 @@ export default function AdminDashboard() {
               rel="noopener noreferrer"
               className="flex items-center gap-2 text-sm font-bold text-dia-red hover:underline"
             >
-              Console Firebase <ExternalLink size={14} />
+              {t('dashboard.firebase_console')} <ExternalLink size={14} />
             </a>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
             <div className="p-4 rounded-2xl bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Automatisation (Firebase Admin)</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">{t('dashboard.automation')} (Firebase Admin)</span>
                 {configStatus.firebaseAdmin ? <CheckCircle2 size={16} className="text-green-500" /> : <AlertTriangle size={16} className="text-amber-500" />}
               </div>
               <p className="text-sm">
                 {configStatus.firebaseAdmin 
-                  ? "Opérationnel. Les comptes sont créés automatiquement." 
-                  : "Désactivé. Ajoutez le secret FIREBASE_SERVICE_ACCOUNT pour automatiser la création des comptes."}
+                  ? t('dashboard.firebase_admin_ok') 
+                  : t('dashboard.firebase_admin_missing')}
               </p>
               {configStatus.firebaseAdmin && (
                 <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-700 space-y-1">
-                  <p className="text-[10px] text-neutral-500 uppercase font-bold">Vérification du Projet</p>
+                  <p className="text-[10px] text-neutral-500 uppercase font-bold">{t('dashboard.project_verification')}</p>
                   <p className="text-xs flex items-center justify-between">
-                    <span>Config Client :</span>
+                    <span>{t('dashboard.client_config')} :</span>
                     <span className="font-mono font-bold text-dia-red">{configStatus.configProjectId}</span>
                   </p>
                   <p className="text-xs flex items-center justify-between">
-                    <span>Admin Secret :</span>
+                    <span>{t('dashboard.admin_secret')} :</span>
                     <span className={cn(
                       "font-mono font-bold",
                       configStatus.configProjectId === configStatus.serviceAccountProjectId ? "text-green-500" : "text-dia-red"
@@ -279,7 +279,7 @@ export default function AdminDashboard() {
                   </p>
                   {configStatus.configProjectId !== configStatus.serviceAccountProjectId && (
                     <p className="text-[10px] text-dia-red font-bold animate-pulse mt-1">
-                      ⚠️ ERREUR : Le secret de service ne correspond pas au projet !
+                      ⚠️ {t('dashboard.mismatch_error')}
                     </p>
                   )}
                 </div>
@@ -287,24 +287,24 @@ export default function AdminDashboard() {
             </div>
             <div className="p-4 rounded-2xl bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Emails (SMTP)</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">{t('dashboard.emails')} (SMTP)</span>
                 {configStatus.smtp ? <CheckCircle2 size={16} className="text-green-500" /> : <AlertTriangle size={16} className="text-amber-500" />}
               </div>
               <p className="text-sm">
                 {configStatus.smtp 
-                  ? "Opérationnel. Les emails sont envoyés aux utilisateurs." 
+                  ? t('dashboard.smtp_ok') 
                   : (configStatus.smtpConfigured 
-                      ? "Erreur de connexion SMTP. Le mot de passe d'application est probablement invalide ou bloqué." 
-                      : "Simulation. Ajoutez SMTP_PASS (Mot de passe d'application Google) pour envoyer de vrais emails.")
+                      ? t('dashboard.smtp_error') 
+                      : t('dashboard.smtp_missing'))
                 }
               </p>
               {configStatus.smtpError && !configStatus.smtp && (
                 <div className="mt-2 p-2 bg-red-50 dark:bg-red-950/20 rounded border border-red-100 dark:border-red-900/30">
-                  <p className="text-[10px] uppercase font-bold text-red-500 mb-1">Détail de l'erreur brute :</p>
+                  <p className="text-[10px] uppercase font-bold text-red-500 mb-1">{t('dashboard.raw_error')} :</p>
                   <p className="text-xs font-mono break-all text-red-600 dark:text-red-400 mb-2">{configStatus.smtpError}</p>
                   {configStatus.smtpError.includes('ENETUNREACH') && (
                     <p className="text-[10px] text-amber-600 font-bold leading-tight">
-                      ℹ️ Note : Cette erreur est liée au réseau (IPv6). J'ai forcé l'IPv4, redéployez pour tester à nouveau.
+                      ℹ️ {t('dashboard.ipv6_note')}
                     </p>
                   )}
                 </div>
@@ -315,7 +315,7 @@ export default function AdminDashboard() {
                   disabled={testingEmail}
                   className="mt-3 text-xs font-bold text-dia-red hover:underline flex items-center gap-1 disabled:opacity-50"
                 >
-                  {testingEmail ? "Envoi du test..." : "Tester l'envoi d'email ❯"}
+                  {testingEmail ? t('dashboard.sending_test') : `${t('dashboard.test_email_btn')} ❯`}
                 </button>
               )}
             </div>
@@ -324,7 +324,7 @@ export default function AdminDashboard() {
           {!configStatus.firebaseAdmin && (
             <div className="mt-4 p-4 bg-dia-red/5 rounded-xl border border-dia-red/10">
               <p className="text-xs text-dia-red leading-relaxed">
-                <strong>Important :</strong> Pour que les élèves se connectent directement, assurez-vous également que la méthode <strong>"Email / Mot de passe"</strong> est bien <strong>activée</strong> dans l'onglet Authentication de votre console Firebase.
+                <strong>{t('common.important')} :</strong> {t('dashboard.auth_note')}
               </p>
             </div>
           )}
@@ -335,17 +335,17 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 card p-6">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="font-bold text-lg">Journaux du Serveur</h3>
+            <h3 className="font-bold text-lg">{t('dashboard.server_logs')}</h3>
             <button 
               onClick={fetchLogs}
               className="text-xs font-bold text-dia-red flex items-center gap-1 hover:underline"
             >
-              Actualiser ❯
+              {t('common.refresh')} ❯
             </button>
           </div>
           <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
             {logs.length === 0 ? (
-              <p className="text-center text-neutral-500 py-10">Aucun log récent.</p>
+              <p className="text-center text-neutral-500 py-10">{t('common.no_results')}</p>
             ) : (
               [...logs].reverse().slice(0, 10).map((log, idx) => (
                 <div key={idx} className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-100 dark:border-neutral-800">
@@ -371,10 +371,10 @@ export default function AdminDashboard() {
         </div>
 
         <div className="card p-6">
-          <h4 className="font-bold text-sm mb-4">Vérificateur d'Identifiants</h4>
+          <h4 className="font-bold text-sm mb-4">{t('dashboard.credentials_checker')}</h4>
           <div className="space-y-4">
             <div>
-              <label className="text-[10px] font-bold uppercase text-neutral-400 ml-1">Matricule à tester</label>
+              <label className="text-[10px] font-bold uppercase text-neutral-400 ml-1">{t('dashboard.matricule_test')}</label>
               <div className="flex gap-2">
                 <input 
                   type="text" 
@@ -388,7 +388,7 @@ export default function AdminDashboard() {
                   disabled={checkingDiag}
                   className="px-4 py-2 bg-dia-red text-white text-xs font-bold rounded-xl disabled:opacity-50"
                 >
-                  Vérifier
+                  {t('dashboard.verify')}
                 </button>
               </div>
             </div>
@@ -398,11 +398,11 @@ export default function AdminDashboard() {
                 {diagResult.exists ? (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-green-500 text-xs font-bold mb-1">
-                      <CheckCircle2 size={14} /> Trouvé
+                      <CheckCircle2 size={14} /> {t('common.found')}
                     </div>
-                    <p className="text-xs"><strong>Nom :</strong> {diagResult.user.firstName} {diagResult.user.lastName}</p>
+                    <p className="text-xs"><strong>{t('common.name')} :</strong> {diagResult.user.firstName} {diagResult.user.lastName}</p>
                     <p className="text-[10px]"><strong>Email :</strong> {diagResult.user.email}</p>
-                    <p className="text-[10px]"><strong>Rôle :</strong> <span className="capitalize">{diagResult.user.role}</span></p>
+                    <p className="text-[10px]"><strong>Role :</strong> <span className="capitalize">{diagResult.user.role}</span></p>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 text-dia-red text-xs font-bold">
@@ -419,7 +419,7 @@ export default function AdminDashboard() {
         {/* Financial Chart */}
         <div className="card p-6">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="font-bold text-lg">Flux Financier</h3>
+            <h3 className="font-bold text-lg">{t('dashboard.financial_flow')}</h3>
           </div>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
@@ -446,11 +446,11 @@ export default function AdminDashboard() {
         {/* Recent Transactions */}
         <div className="card p-6">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="font-bold text-lg">Transactions Récentes</h3>
+            <h3 className="font-bold text-lg">{t('dashboard.recent_transactions')}</h3>
           </div>
           <div className="space-y-4">
             {recentTransactions.length === 0 ? (
-              <p className="text-center text-neutral-500 py-10">Aucune transaction.</p>
+              <p className="text-center text-neutral-500 py-10">{t('common.no_results')}</p>
             ) : (
               recentTransactions.map((item) => (
                 <div key={item.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors">

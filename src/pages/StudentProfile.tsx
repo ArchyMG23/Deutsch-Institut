@@ -16,12 +16,14 @@ import {
   CheckCircle2,
   Clock
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { cn, formatCurrency } from '../utils';
 import { Student } from '../types';
 import { toast } from 'sonner';
 
 export default function StudentProfile() {
+  const { t, i18n } = useTranslation();
   const { profile, updateProfile, changePassword, validatePassword, fetchWithAuth, logout } = useAuth();
   const student = profile as Student;
   
@@ -81,11 +83,11 @@ export default function StudentProfile() {
         const updatedStudent = await res.json();
         updateProfile(updatedStudent);
         setIsEditing(false);
-        toast.success('Profil mis à jour');
+        toast.success(t('profile.save_success'));
       }
     } catch (err) {
       console.error("Error updating profile:", err);
-      toast.error('Erreur lors de la mise à jour');
+      toast.error(t('profile.save_error'));
     } finally {
       setSaving(false);
     }
@@ -108,11 +110,11 @@ export default function StudentProfile() {
       if (res.ok) {
         const data = await res.json();
         updateProfile({ ...student, photoURL: data.photoURL });
-        toast.success('Photo mise à jour');
+        toast.success(t('profile.photo_success'));
       }
     } catch (err) {
       console.error("Upload error:", err);
-      toast.error('Erreur lors de l\'envoi de la photo');
+      toast.error(t('profile.upload_error'));
     } finally {
       setUploading(false);
     }
@@ -124,7 +126,7 @@ export default function StudentProfile() {
     setPasswordSuccess(false);
 
     if (newPassword !== confirmPassword) {
-      setPasswordError("Les mots de passe ne correspondent pas.");
+      setPasswordError(t('profile.password_mismatch'));
       return;
     }
 
@@ -152,8 +154,8 @@ export default function StudentProfile() {
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-2xl font-bold tracking-tight">Mon Profil</h3>
-          <p className="text-neutral-500">Gérez vos informations personnelles et vos contacts.</p>
+          <h3 className="text-2xl font-bold tracking-tight">{t('profile.title')}</h3>
+          <p className="text-neutral-500">{t('profile.subtitle')}</p>
         </div>
         <button 
           onClick={() => isEditing ? handleSave() : setIsEditing(true)}
@@ -166,9 +168,9 @@ export default function StudentProfile() {
           {saving ? (
             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
           ) : isEditing ? (
-            <><Save size={18} /> Enregistrer</>
+            <><Save size={18} /> {t('common.save')}</>
           ) : (
-            <><User size={18} /> Modifier le profil</>
+            <><User size={18} /> {t('profile.edit_profile')}</>
           )}
         </button>
       </div>
@@ -212,34 +214,34 @@ export default function StudentProfile() {
 
             <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800 flex justify-center gap-4">
               <div className="text-center">
-                <p className="text-[10px] font-bold uppercase text-neutral-400">Rôle</p>
-                <p className="text-xs font-bold">Étudiant</p>
+                <p className="text-[10px] font-bold uppercase text-neutral-400">{t('profile.role')}</p>
+                <p className="text-xs font-bold">{t('profile.student')}</p>
               </div>
               <div className="w-px h-8 bg-neutral-100 dark:border-neutral-800" />
               <div className="text-center">
-                <p className="text-[10px] font-bold uppercase text-neutral-400">Statut</p>
+                <p className="text-[10px] font-bold uppercase text-neutral-400">{t('profile.status')}</p>
                 <div className="flex items-center gap-1 justify-center">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <p className="text-xs font-bold text-emerald-500">Actif</p>
+                  <p className="text-xs font-bold text-emerald-500">{t('profile.active')}</p>
                 </div>
               </div>
             </div>
           </div>
 
           <div className="card p-6 space-y-4">
-            <h5 className="font-bold text-sm uppercase tracking-wider text-neutral-400">Accès Rapide</h5>
+            <h5 className="font-bold text-sm uppercase tracking-wider text-neutral-400">{t('profile.quick_access')}</h5>
             <div className="space-y-2">
               <button 
                 onClick={() => setIsSecurityOpen(true)}
                 className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors text-sm font-medium"
               >
-                <Shield size={18} className="text-dia-red" /> Sécurité & Mot de passe
+                <Shield size={18} className="text-dia-red" /> {t('profile.security_password')}
               </button>
               <button 
                 onClick={() => setIsPaymentHistoryOpen(true)}
                 className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors text-sm font-medium"
               >
-                <CreditCard size={18} className="text-blue-500" /> Historique des paiements
+                <CreditCard size={18} className="text-blue-500" /> {t('students.history')}
               </button>
             </div>
           </div>
@@ -253,12 +255,12 @@ export default function StudentProfile() {
               <div className="w-10 h-10 rounded-xl bg-dia-red/10 text-dia-red flex items-center justify-center">
                 <User size={20} />
               </div>
-              <h4 className="text-xl font-bold">Informations Personnelles</h4>
+              <h4 className="text-xl font-bold">{t('profile.personal_info')}</h4>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 px-1">Prénom</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 px-1">{t('students.firstName')}</label>
                 <input 
                   type="text" 
                   value={formData.firstName}
@@ -268,7 +270,7 @@ export default function StudentProfile() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 px-1">Nom</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 px-1">{t('students.lastName')}</label>
                 <input 
                   type="text" 
                   value={formData.lastName}
@@ -278,7 +280,7 @@ export default function StudentProfile() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 px-1">Email</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 px-1">{t('students.email')}</label>
                 <input 
                   type="email" 
                   value={formData.email}
@@ -288,7 +290,7 @@ export default function StudentProfile() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 px-1">Téléphone</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 px-1">{t('students.phone')}</label>
                 <input 
                   type="tel" 
                   value={formData.phone}
@@ -306,12 +308,12 @@ export default function StudentProfile() {
               <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
                 <Users size={20} />
               </div>
-              <h4 className="text-xl font-bold">Parent / Tuteur</h4>
+              <h4 className="text-xl font-bold">{t('students.guardian')}</h4>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 px-1">Nom du Parent</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 px-1">{t('students.guardianName')}</label>
                 <input 
                   type="text" 
                   value={formData.parentName}
@@ -321,7 +323,7 @@ export default function StudentProfile() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 px-1">Téléphone du Parent</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 px-1">{t('students.guardianPhone')}</label>
                 <input 
                   type="tel" 
                   value={formData.parentPhone}
@@ -339,21 +341,21 @@ export default function StudentProfile() {
               <div className="w-10 h-10 rounded-xl bg-dia-yellow/10 text-dia-yellow flex items-center justify-center">
                 <Briefcase size={20} />
               </div>
-              <h4 className="text-xl font-bold">Informations Académiques</h4>
+              <h4 className="text-xl font-bold">{t('profile.academic_info')}</h4>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
-                <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">Date d'inscription</p>
-                <p className="font-bold">{new Date(student.createdAt).toLocaleDateString('fr-FR')}</p>
+                <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">{t('profile.reg_date')}</p>
+                <p className="font-bold">{new Date(student.createdAt).toLocaleDateString(i18n.language === 'de' ? 'de-DE' : 'fr-FR')}</p>
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">Lieu de naissance</p>
+                <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">{t('students.pob')}</p>
                 <p className="font-bold">{student.birthPlace}</p>
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">Date de naissance</p>
-                <p className="font-bold">{new Date(student.birthDate).toLocaleDateString('fr-FR')}</p>
+                <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">{t('students.dob')}</p>
+                <p className="font-bold">{new Date(student.birthDate).toLocaleDateString(i18n.language === 'de' ? 'de-DE' : 'fr-FR')}</p>
               </div>
             </div>
           </div>
@@ -362,7 +364,7 @@ export default function StudentProfile() {
           <div className="card border-red-100 dark:border-red-900/30 overflow-hidden mt-8">
             <div className="p-6 bg-red-50/50 dark:bg-red-950/10 border-b border-red-100 dark:border-red-900/20">
               <h4 className="font-bold flex items-center gap-2 text-red-600 dark:text-red-400 text-sm">
-                Danger Zone
+                {t('profile.danger_zone')}
               </h4>
             </div>
             <div className="p-6">
@@ -370,7 +372,7 @@ export default function StudentProfile() {
                 onClick={logout}
                 className="w-full py-3 border border-red-200 dark:border-red-900/30 text-red-600 rounded-2xl font-bold text-sm hover:bg-red-50 transition-all"
               >
-                Se déconnecter de tous les appareils
+                {t('profile.logout_devices')}
               </button>
             </div>
           </div>
@@ -386,7 +388,7 @@ export default function StudentProfile() {
                 <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
                   <CreditCard size={20} />
                 </div>
-                <h3 className="text-2xl font-bold tracking-tight">Historique des Versements</h3>
+                <h3 className="text-2xl font-bold tracking-tight">{t('students.history')}</h3>
               </div>
               <button onClick={() => setIsPaymentHistoryOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
                 <X size={24} />
@@ -405,16 +407,16 @@ export default function StudentProfile() {
                           {payment.amount > 0 ? <CheckCircle2 size={20} /> : <Clock size={20} />}
                         </div>
                         <div>
-                          <h5 className="font-bold text-sm">Tranche {payment.tranche}</h5>
+                          <h5 className="font-bold text-sm">{t('students.tranche')} {payment.tranche}</h5>
                           <p className="text-[10px] font-bold uppercase text-neutral-400 tracking-wider">
-                            {payment.date ? new Date(payment.date).toLocaleDateString('fr-FR') : 'En attente'}
+                            {payment.date ? new Date(payment.date).toLocaleDateString(i18n.language === 'de' ? 'de-DE' : 'fr-FR') : t('students.pending')}
                           </p>
                         </div>
                       </div>
                       <div className="text-right">
                         <p className="font-bold text-sm">{formatCurrency(payment.amount || 0)}</p>
                         <p className="text-[10px] font-bold uppercase text-neutral-400">
-                          {payment.amount > 0 ? 'Réglé' : 'Non réglé'}
+                          {payment.amount > 0 ? t('students.paid') : t('students.not_paid')}
                         </p>
                       </div>
                     </div>
@@ -422,7 +424,7 @@ export default function StudentProfile() {
                 ) : (
                   <div className="text-center py-12 text-neutral-400">
                     <AlertCircle className="mx-auto mb-2 opacity-20" size={48} />
-                    <p>Aucun historique de paiement trouvé.</p>
+                    <p>{t('students.no_history')}</p>
                   </div>
                 )}
               </div>
@@ -440,7 +442,7 @@ export default function StudentProfile() {
                 <div className="w-10 h-10 rounded-xl bg-dia-red/10 text-dia-red flex items-center justify-center">
                   <Shield size={20} />
                 </div>
-                <h3 className="text-2xl font-bold tracking-tight">Sécurité</h3>
+                <h3 className="text-2xl font-bold tracking-tight">{t('profile.security')}</h3>
               </div>
               <button onClick={() => setIsSecurityOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
                 <X size={24} />
@@ -456,11 +458,11 @@ export default function StudentProfile() {
               {passwordSuccess && (
                 <div className="p-4 bg-green-50 border border-green-100 rounded-2xl flex items-center gap-3 text-green-600 text-sm">
                   <CheckCircle2 size={18} />
-                  <p>Mot de passe mis à jour avec succès !</p>
+                  <p>{t('profile.password_success')}</p>
                 </div>
               )}
               <div className="space-y-2">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Nouveau mot de passe</label>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('profile.new_password')}</label>
                 <input 
                   type="password"
                   required
@@ -468,10 +470,10 @@ export default function StudentProfile() {
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" 
                 />
-                <p className="text-[10px] text-neutral-400 mt-1">Min. 6 caractères, 1 majuscule, 1 chiffre, 1 point.</p>
+                <p className="text-[10px] text-neutral-400 mt-1">{t('profile.password_rules')}</p>
               </div>
               <div className="space-y-2">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Confirmer le mot de passe</label>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('profile.confirm_password')}</label>
                 <input 
                   type="password"
                   required
@@ -486,7 +488,7 @@ export default function StudentProfile() {
                   onClick={() => setIsSecurityOpen(false)} 
                   className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200"
                 >
-                  Annuler
+                  {t('common.cancel')}
                 </button>
                 <button 
                   type="submit" 
@@ -496,7 +498,7 @@ export default function StudentProfile() {
                   {saving ? (
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   ) : (
-                    "Mettre à jour"
+                    t('common.update')
                   )}
                 </button>
               </div>

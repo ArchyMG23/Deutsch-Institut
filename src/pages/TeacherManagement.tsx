@@ -25,7 +25,10 @@ import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { toast } from 'sonner';
 
+import { useTranslation } from 'react-i18next';
+
 export default function TeacherManagement() {
+  const { t } = useTranslation();
   const { fetchWithAuth } = useAuth();
   const { teachers, classes, loading, refreshAll, refreshTeachers, refreshClasses } = useData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -87,14 +90,14 @@ export default function TeacherManagement() {
         setIsAddModalOpen(false);
         refreshTeachers();
         refreshClasses();
-        toast.success('Enseignant ajouté avec succès');
+        toast.success(t('teachers.teacher_added'));
       } else {
         const errorData = await res.json();
-        toast.error(errorData.message || 'Erreur lors de l\'ajout de l\'enseignant');
+        toast.error(errorData.message || t('common.error'));
       }
     } catch (err) {
       console.error("Error adding teacher:", err);
-      toast.error('Erreur lors de l\'ajout de l\'enseignant');
+      toast.error(t('common.error'));
     } finally {
       setSubmitting(false);
     }
@@ -135,21 +138,21 @@ export default function TeacherManagement() {
         setIsEditModalOpen(false);
         refreshTeachers();
         refreshClasses();
-        toast.success('Enseignant mis à jour avec succès');
+        toast.success(t('teachers.teacher_updated'));
       } else {
         const errorData = await res.json();
-        toast.error(errorData.message || 'Erreur lors de la mise à jour');
+        toast.error(errorData.message || t('common.error'));
       }
     } catch (err) {
       console.error("Error updating teacher:", err);
-      toast.error('Erreur lors de la mise à jour');
+      toast.error(t('common.error'));
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleDeleteTeacher = async (id: string) => {
-    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cet enseignant ?')) return;
+    if (!window.confirm(t('teachers.confirm_delete'))) return;
     
     try {
       const res = await fetchWithAuth(`/api/teachers/${id}`, {
@@ -198,13 +201,13 @@ export default function TeacherManagement() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h3 className="text-xl font-bold">Gestion des Enseignants</h3>
+        <h3 className="text-xl font-bold">{t('teachers.title')}</h3>
         <button 
           onClick={() => setIsAddModalOpen(true)}
           className="btn-primary flex items-center gap-2"
         >
           <UserPlus size={18} />
-          <span>Nouvel Enseignant</span>
+          <span>{t('teachers.add_teacher')}</span>
         </button>
       </div>
 
@@ -214,21 +217,21 @@ export default function TeacherManagement() {
             type="text" 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Rechercher un enseignant..."
+            placeholder={t('teachers.search_placeholder')}
             className="w-full pl-10 pr-4 py-2 bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg focus:ring-2 focus:ring-dia-red transition-all"
           />
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none z-10" size={18} />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-neutral-400 uppercase">Trier par:</span>
+          <span className="text-xs font-bold text-neutral-400 uppercase">{t('common.sort_by')}:</span>
           <select 
             value={sortConfig?.key || ''} 
             onChange={(e) => handleSort(e.target.value)}
             className="bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-dia-red outline-none"
           >
-            <option value="lastName">Nom</option>
-            <option value="hourlyRate">Taux Horaire</option>
-            <option value="totalHoursWorked">Heures Travaillées</option>
+            <option value="lastName">{t('common.name')}</option>
+            <option value="hourlyRate">{t('teachers.hourly_rate')}</option>
+            <option value="totalHoursWorked">{t('teachers.total_hours')}</option>
           </select>
           <button 
             onClick={() => handleSort(sortConfig?.key || 'lastName')}
@@ -275,21 +278,21 @@ export default function TeacherManagement() {
               {teacher.status === 'online' && (
                 <p className="text-[10px] font-bold text-green-600 flex items-center gap-1 mt-2">
                   {teacher.lastActiveDevice?.toLowerCase().includes('android') || teacher.lastActiveDevice?.toLowerCase().includes('ios') ? <Smartphone size={10} /> : <Laptop size={10} />}
-                  En ligne sur {teacher.lastActiveDevice}
+                  {t('common.online_on')} {teacher.lastActiveDevice}
                 </p>
               )}
             </div>
 
             <div className="grid grid-cols-2 gap-4 pt-4 border-t border-neutral-100 dark:border-neutral-800">
               <div className="space-y-1">
-                <p className="text-[10px] font-bold uppercase text-neutral-400">Taux Horaire</p>
+                <p className="text-[10px] font-bold uppercase text-neutral-400">{t('teachers.hourly_rate')}</p>
                 <p className="text-sm font-bold flex items-center gap-1">
                   <DollarSign size={14} className="text-dia-red" />
                   {formatCurrency(teacher.hourlyRate)}/h
                 </p>
               </div>
               <div className="space-y-1">
-                <p className="text-[10px] font-bold uppercase text-neutral-400">Heures Totales</p>
+                <p className="text-[10px] font-bold uppercase text-neutral-400">{t('teachers.total_hours')}</p>
                 <p className="text-sm font-bold flex items-center gap-1">
                   <Clock size={14} className="text-dia-red" />
                   {teacher.totalHoursWorked}h
@@ -322,7 +325,7 @@ export default function TeacherManagement() {
           <div className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <form onSubmit={handleAddTeacher} className="flex flex-col max-h-[90vh]">
               <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between shrink-0">
-                <h3 className="text-2xl font-bold tracking-tight">Nouvel Enseignant</h3>
+                <h3 className="text-2xl font-bold tracking-tight">{t('teachers.add_teacher')}</h3>
                 <button type="button" onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
                   <X size={24} />
                 </button>
@@ -330,47 +333,47 @@ export default function TeacherManagement() {
               <div className="flex-1 overflow-y-auto p-8 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Prénom</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.first_name')}</label>
                   <input name="firstName" required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Nom</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.last_name')}</label>
                   <input name="lastName" required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Email</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('login.email') || 'Email'}</label>
                   <input name="email" required type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Téléphone</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.phone')}</label>
                   <input name="phone" required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">CNI</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.cni')}</label>
                   <input name="cni" required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Taux Horaire (FCFA)</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('teachers.hourly_rate')} (FCFA)</label>
                   <input name="hourlyRate" required type="number" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Assigner à une Classe</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('teachers.assign_to_class')}</label>
                   <select name="classId" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
-                    <option value="">Aucune classe</option>
+                    <option value="">{t('teachers.no_class')}</option>
                     {classes.map(c => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Mot de passe temporaire</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('teachers.temporary_password')}</label>
                   <input name="password" type="text" defaultValue="DIA2026." className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
-                  <p className="text-[10px] text-neutral-500 mt-1">L'enseignant pourra le modifier par la suite.</p>
+                  <p className="text-[10px] text-neutral-500 mt-1">{t('teachers.password_hint')}</p>
                 </div>
               </div>
             </div>
             <div className="p-8 border-t border-neutral-100 dark:border-neutral-800 flex gap-4">
-              <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
+              <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">{t('common.cancel')}</button>
               <button 
                 type="submit" 
                 disabled={submitting}
@@ -379,10 +382,10 @@ export default function TeacherManagement() {
                 {submitting ? (
                   <>
                     <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
-                    Enregistrement...
+                    {t('common.saving')}
                   </>
                 ) : (
-                  "Enregistrer l'Enseignant"
+                  t('teachers.add_teacher')
                 )}
               </button>
             </div>
@@ -419,7 +422,7 @@ export default function TeacherManagement() {
                           formData.append('photo', file);
                           formData.append('userId', selectedTeacher.uid);
                           try {
-                            toast.loading("Chargement...");
+                            toast.loading(t('common.loading'));
                             const res = await fetchWithAuth('/api/profile/upload-photo', {
                               method: 'POST',
                               body: formData
@@ -429,11 +432,11 @@ export default function TeacherManagement() {
                               setSelectedTeacher({ ...selectedTeacher, photoURL: data.photoURL });
                               refreshTeachers();
                               toast.dismiss();
-                              toast.success("Photo mise à jour");
+                              toast.success(t('profile.photo_success'));
                             }
                           } catch (err) {
                             toast.dismiss();
-                            toast.error("Échec de l'upload");
+                            toast.error(t('profile.upload_error'));
                           }
                         };
                         input.click();
@@ -443,7 +446,7 @@ export default function TeacherManagement() {
                       <Camera size={12} />
                     </button>
                   </div>
-                  <h3 className="text-2xl font-bold tracking-tight">Modifier Enseignant</h3>
+                  <h3 className="text-2xl font-bold tracking-tight">{t('teachers.edit_teacher')}</h3>
                 </div>
                 <button type="button" onClick={() => setIsEditModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
                   <X size={24} />
@@ -452,33 +455,33 @@ export default function TeacherManagement() {
               <div className="flex-1 overflow-y-auto p-8 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Prénom</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.first_name')}</label>
                   <input name="firstName" defaultValue={selectedTeacher.firstName} required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Nom</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.last_name')}</label>
                   <input name="lastName" defaultValue={selectedTeacher.lastName} required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Email</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('login.email') || 'Email'}</label>
                   <input name="email" defaultValue={selectedTeacher.email} required type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Téléphone</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.phone')}</label>
                   <input name="phone" defaultValue={selectedTeacher.phone} required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">CNI</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.cni')}</label>
                   <input name="cni" defaultValue={selectedTeacher.cni} required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Taux Horaire (FCFA)</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('teachers.hourly_rate')} (FCFA)</label>
                   <input name="hourlyRate" defaultValue={selectedTeacher.hourlyRate} required type="number" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Assigner à une Classe</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('teachers.assign_to_class')}</label>
                   <select name="classId" defaultValue={classes.find(c => c.teacherId === selectedTeacher.id)?.id || ""} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
-                    <option value="">Aucune classe</option>
+                    <option value="">{t('teachers.no_class')}</option>
                     {classes.map(c => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
@@ -487,7 +490,7 @@ export default function TeacherManagement() {
               </div>
             </div>
             <div className="p-8 border-t border-neutral-100 dark:border-neutral-800 flex gap-4">
-              <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
+              <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">{t('common.cancel')}</button>
               <button 
                 type="submit" 
                 disabled={submitting}
@@ -496,10 +499,10 @@ export default function TeacherManagement() {
                 {submitting ? (
                   <>
                     <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
-                    Mise à jour...
+                    {t('common.updating')}
                   </>
                 ) : (
-                  "Enregistrer les modifications"
+                  t('common.save_changes')
                 )}
               </button>
             </div>

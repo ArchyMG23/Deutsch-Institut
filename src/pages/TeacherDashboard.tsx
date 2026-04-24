@@ -9,12 +9,14 @@ import {
   TrendingUp,
   AlertCircle
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { ClassRoom, Teacher } from '../types';
 import { formatCurrency } from '../utils';
 
 export default function TeacherDashboard() {
+  const { t } = useTranslation();
   const { profile } = useAuth();
   const { classes, loading, refreshClasses } = useData();
 
@@ -40,18 +42,18 @@ export default function TeacherDashboard() {
       <div className="relative overflow-hidden rounded-[32px] bg-dia-red p-8 text-white shadow-2xl shadow-dia-red/20">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
-            <h2 className="text-3xl font-bold tracking-tight">Bonjour, {profile?.firstName}! 👋</h2>
+            <h2 className="text-3xl font-bold tracking-tight">{t('login.welcome')}, {profile?.firstName}! 👋</h2>
             <p className="text-white/80 max-w-md">
-              Prêt pour vos cours d'aujourd'hui ? Vous avez {teacherClasses.length} classes actives avec un total de {totalStudents} étudiants.
+              {t('teachers.dashboard_subtitle', { classCount: teacherClasses.length, studentCount: totalStudents }) || `Prêt pour vos cours d'aujourd'hui ? Vous avez ${teacherClasses.length} classes actives avec un total de ${totalStudents} étudiants.`}
             </p>
           </div>
           <div className="flex gap-4">
             <div className="px-6 py-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-1">Total Heures</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-1">{t('teachers.total_hours')}</p>
               <p className="text-2xl font-bold">{teacher.totalHoursWorked || 0}h</p>
             </div>
             <div className="px-6 py-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-1">Taux Horaire</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-1">{t('teachers.hourly_rate')}</p>
               <p className="text-2xl font-bold">{formatCurrency(teacher.hourlyRate || 0)}</p>
             </div>
           </div>
@@ -68,7 +70,7 @@ export default function TeacherDashboard() {
             <Users size={24} />
           </div>
           <div>
-            <p className="text-sm font-medium text-neutral-500">Mes Étudiants</p>
+            <p className="text-sm font-medium text-neutral-500">{t('teachers.my_students') || 'Mes Étudiants'}</p>
             <p className="text-2xl font-bold">{totalStudents}</p>
           </div>
         </div>
@@ -77,7 +79,7 @@ export default function TeacherDashboard() {
             <GraduationCap size={24} />
           </div>
           <div>
-            <p className="text-sm font-medium text-neutral-500">Mes Classes</p>
+            <p className="text-sm font-medium text-neutral-500">{t('teachers.my_classes') || 'Mes Classes'}</p>
             <p className="text-2xl font-bold">{teacherClasses.length}</p>
           </div>
         </div>
@@ -86,7 +88,7 @@ export default function TeacherDashboard() {
             <Clock size={24} />
           </div>
           <div>
-            <p className="text-sm font-medium text-neutral-500">Prochain Cours</p>
+            <p className="text-sm font-medium text-neutral-500">{t('teachers.next_course') || 'Prochain Cours'}</p>
             <p className="text-lg font-bold">Aujourd'hui, 14:00</p>
           </div>
         </div>
@@ -96,8 +98,8 @@ export default function TeacherDashboard() {
         {/* My Classes */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-xl font-bold tracking-tight">Mes Classes</h3>
-            <button className="text-sm font-bold text-dia-red hover:underline">Voir tout</button>
+            <h3 className="text-xl font-bold tracking-tight">{t('teachers.my_classes') || 'Mes Classes'}</h3>
+            <button className="text-sm font-bold text-dia-red hover:underline">{t('common.view_all')}</button>
           </div>
           <div className="space-y-4">
             {teacherClasses.length > 0 ? (
@@ -110,7 +112,7 @@ export default function TeacherDashboard() {
                       </div>
                       <div>
                         <h4 className="font-bold text-neutral-900">{cls.name}</h4>
-                        <p className="text-xs text-neutral-500">{cls.studentIds.length} étudiants • Niveau {cls.levelId}</p>
+                        <p className="text-xs text-neutral-500">{cls.studentIds.length} {t('students.count')} • {t('students.level')} {cls.levelId}</p>
                       </div>
                     </div>
                     <ChevronRight size={20} className="text-neutral-300 group-hover:text-dia-red transition-colors" />
@@ -120,7 +122,7 @@ export default function TeacherDashboard() {
             ) : (
               <div className="card p-8 text-center space-y-2">
                 <AlertCircle className="mx-auto text-neutral-300" size={40} />
-                <p className="text-neutral-500">Aucune classe assignée pour le moment.</p>
+                <p className="text-neutral-500">{t('teachers.no_class')}</p>
               </div>
             )}
           </div>
@@ -128,12 +130,12 @@ export default function TeacherDashboard() {
 
         {/* Upcoming Schedule */}
         <div className="space-y-4">
-          <h3 className="text-xl font-bold tracking-tight">Emploi du Temps</h3>
+          <h3 className="text-xl font-bold tracking-tight">{t('students.schedule')}</h3>
           <div className="card overflow-hidden">
             <div className="p-6 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/50">
               <div className="flex items-center gap-2">
                 <Calendar size={18} className="text-dia-red" />
-                <span className="font-bold text-sm uppercase tracking-wider">Cette Semaine</span>
+                <span className="font-bold text-sm uppercase tracking-wider">{t('common.this_week') || 'Cette Semaine'}</span>
               </div>
             </div>
             <div className="divide-y divide-neutral-100">

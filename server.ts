@@ -1370,10 +1370,10 @@ async function startServer() {
       const userDoc = await dbAdmin.collection('users').doc(targetUserId).get();
       const userData = userDoc.data();
       
-      if (userData?.role === 'student') {
-        await dbAdmin.collection('students').doc(targetUserId).update({ photoURL });
-      } else if (userData?.role === 'teacher') {
-        await dbAdmin.collection('teachers').doc(targetUserId).update({ photoURL });
+      if (userData?.role === 'student' && userData.matricule) {
+        await dbAdmin.collection('students').doc(userData.matricule).update({ photoURL });
+      } else if (userData?.role === 'teacher' && userData.matricule) {
+        await dbAdmin.collection('teachers').doc(userData.matricule).update({ photoURL });
       }
       
       // Also update Auth User photo if it's the current user

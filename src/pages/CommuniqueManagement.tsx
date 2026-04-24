@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { 
   Bell, 
   Plus, 
@@ -24,6 +25,7 @@ import { db } from '../firebase';
 import { CommuniqueRead } from '../types';
 
 export default function CommuniqueManagement() {
+  const { t } = useTranslation();
   const { profile, user, fetchWithAuth } = useAuth();
   const isAdmin = profile?.role === 'admin';
   
@@ -76,8 +78,8 @@ export default function CommuniqueManagement() {
       console.error("Critical error fetching communiques:", err);
       // More detailed error for the user to help debug
       const errorMsg = err.code === 'permission-denied' 
-        ? "Accès refusé (Vérifiez votre connexion)" 
-        : "Erreur de connexion à la base de données";
+        ? t('communiques.access_denied') 
+        : t('communiques.db_error');
       toast.error(errorMsg);
     } finally {
       setLoading(false);
@@ -143,7 +145,7 @@ export default function CommuniqueManagement() {
     if (formData.get('target_admin')) targetRoles.push('admin');
 
     if (targetRoles.length === 0) {
-      toast.error("Veuillez sélectionner au moins un destinataire");
+      toast.error(t('communiques.select_recipient'));
       setSubmitting(false);
       return;
     }
@@ -165,14 +167,14 @@ export default function CommuniqueManagement() {
       if (res.ok) {
         setIsAddModalOpen(false);
         fetchCommuniques();
-        toast.success("Communiqué envoyé et archivé");
+        toast.success(t('communiques.sent_and_archived'));
       } else {
         const error = await res.json();
-        toast.error(error.message || "Erreur lors de l'envoi");
+        toast.error(error.message || t('common.error'));
       }
     } catch (err) {
       console.error("Error adding communique:", err);
-      toast.error("Erreur lors de l'envoi du communiqué");
+      toast.error(t('communiques.error_sending'));
     } finally {
       setSubmitting(false);
     }
@@ -184,10 +186,10 @@ export default function CommuniqueManagement() {
       await updateDoc(doc(db, 'communiques', communique.id), {
         isArchived: !communique.isArchived
       });
-      toast.success(communique.isArchived ? "Désarchivé" : "Archivé");
+      toast.success(communique.isArchived ? t('communiques.unarchived') : t('communiques.archived'));
       fetchCommuniques();
     } catch (err) {
-      toast.error("Erreur lors de l'archivage");
+      toast.error(t('communiques.error_archiving'));
     }
   };
 
@@ -263,11 +265,11 @@ export default function CommuniqueManagement() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h3 className="text-2xl font-bold tracking-tight">Communiqués</h3>
+          <h3 className="text-2xl font-bold tracking-tight">{t('sidebar.communiques')}</h3>
           <p className="text-neutral-500">
             {isAdmin 
-              ? "Gérez et diffusez les annonces officielles." 
-              : "Consultez les dernières annonces de l'administration."}
+              ? t('communiques.subtitle_admin') 
+              : t('communiques.subtitle_user')}
           </p>
         </div>
         
@@ -277,7 +279,7 @@ export default function CommuniqueManagement() {
             className="btn-primary flex items-center justify-center gap-2 py-3 px-6 rounded-2xl shadow-lg shadow-dia-red/20 active:scale-95 transition-all"
           >
             <Plus size={20} />
-            Nouveau Communiqué
+            {t('communiques.new_communique')}
           </button>
         )}
       </div>
@@ -289,7 +291,7 @@ export default function CommuniqueManagement() {
             type="text" 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Rechercher un communiqué..."
+            placeholder={t('communiques.search_placeholder')}
             className="w-full pl-10 pr-4 py-2 bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg focus:ring-2 focus:ring-dia-red transition-all"
           />
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none z-10" size={18} />
@@ -303,7 +305,7 @@ export default function CommuniqueManagement() {
                 sortConfig.key === 'date' ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" : "text-neutral-500"
               )}
             >
-              Date {sortConfig.key === 'date' && (sortConfig.direction === 'asc' ? <ChevronUp size={12}/> : <ChevronDown size={12}/>)}
+              {t('common.date')} {sortConfig.key === 'date' && (sortConfig.direction === 'asc' ? <ChevronUp size={12}/> : <ChevronDown size={12}/>)}
             </button>
             <button 
               onClick={() => handleSort('priority')}
@@ -312,7 +314,7 @@ export default function CommuniqueManagement() {
                 sortConfig.key === 'priority' ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" : "text-neutral-500"
               )}
             >
-              Priorité {sortConfig.key === 'priority' && (sortConfig.direction === 'asc' ? <ChevronUp size={12}/> : <ChevronDown size={12}/>)}
+              {t('communiques.priority')} {sortConfig.key === 'priority' && (sortConfig.direction === 'asc' ? <ChevronUp size={12}/> : <ChevronDown size={12}/>)}
             </button>
           </div>
           {isAdmin && (
@@ -324,7 +326,7 @@ export default function CommuniqueManagement() {
                   filterRole === 'all' ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" : "text-neutral-500 hover:bg-neutral-50"
                 )}
               >
-                Tous
+                {t('common.all')}
               </button>
               <button 
                 onClick={() => setFilterRole('student')}
@@ -333,7 +335,7 @@ export default function CommuniqueManagement() {
                   filterRole === 'student' ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" : "text-neutral-500 hover:bg-neutral-50"
                 )}
               >
-                Élèves
+                {t('sidebar.students')}
               </button>
               <button 
                 onClick={() => setFilterRole('teacher')}
@@ -342,7 +344,7 @@ export default function CommuniqueManagement() {
                   filterRole === 'teacher' ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" : "text-neutral-500 hover:bg-neutral-50"
                 )}
               >
-                Profs
+                {t('sidebar.teachers')}
               </button>
             </div>
           )}
@@ -354,15 +356,15 @@ export default function CommuniqueManagement() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-dia-red/20 border-t-dia-red"></div>
-            <p className="text-neutral-500 animate-pulse font-medium">Chargement des annonces...</p>
+            <p className="text-neutral-500 animate-pulse font-medium">{t('communiques.loading')}</p>
           </div>
         ) : sortedCommuniques.length === 0 ? (
           <div className="card py-20 flex flex-col items-center justify-center text-center opacity-60">
             <div className="w-20 h-20 rounded-full bg-neutral-100 flex items-center justify-center mb-6">
               <Bell size={40} className="text-neutral-400" />
             </div>
-            <h4 className="text-xl font-bold mb-2">Aucun communiqué</h4>
-            <p className="text-neutral-500 max-w-xs">Aucune annonce n'a été publiée pour le moment.</p>
+            <h4 className="text-xl font-bold mb-2">{t('communiques.no_communiques')}</h4>
+            <p className="text-neutral-500 max-w-xs">{t('communiques.no_communiques_desc')}</p>
           </div>
         ) : (
           sortedCommuniques.map((c) => (
@@ -379,23 +381,23 @@ export default function CommuniqueManagement() {
                     <div className="flex items-center gap-2 mb-2">
                       {c.targetRoles.map(role => (
                         <span key={role} className="px-2 py-0.5 rounded-full bg-neutral-100 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
-                          {role === 'student' ? 'Élèves' : role === 'teacher' ? 'Enseignants' : 'Admin'}
+                          {role === 'student' ? t('sidebar.students') : role === 'teacher' ? t('sidebar.teachers') : 'Admin'}
                         </span>
                       ))}
                       {c.isArchived && (
                         <span className="px-2 py-0.5 rounded-full bg-amber-50 text-[10px] font-bold uppercase tracking-wider text-amber-600 flex items-center gap-1">
-                          <Archive size={10} /> Archivé
+                          <Archive size={10} /> {t('communiques.archived_label')}
                         </span>
                       )}
                       {!readStatuses[c.id] && !isAdmin && (
-                        <span className="px-2 py-0.5 rounded-full bg-dia-red text-[10px] font-bold uppercase tracking-wider text-white"> Nouveau </span>
+                        <span className="px-2 py-0.5 rounded-full bg-dia-red text-[10px] font-bold uppercase tracking-wider text-white"> {t('common.new')} </span>
                       )}
                       {isAdmin && (
                         <button 
                           onClick={(e) => { e.stopPropagation(); showReaders(c); }}
                           className="px-2 py-0.5 rounded-full bg-blue-50 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:bg-blue-100 transition-colors"
                         >
-                          Lu par {c.readCount || 0}
+                          {t('communiques.read_by')} {c.readCount || 0}
                         </button>
                       )}
                     </div>
@@ -404,11 +406,11 @@ export default function CommuniqueManagement() {
                   <div className="text-right shrink-0">
                     <div className="flex items-center gap-1.5 text-neutral-400 text-xs font-medium">
                       <Calendar size={12} />
-                      {new Date(c.createdAt).toLocaleDateString('fr-FR')}
+                      {new Date(c.createdAt).toLocaleDateString()}
                     </div>
                     <div className="flex items-center gap-1.5 text-neutral-400 text-[10px] font-medium justify-end mt-1">
                       <Clock size={10} />
-                      {new Date(c.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
                   </div>
                 </div>
@@ -433,7 +435,7 @@ export default function CommuniqueManagement() {
                       <button 
                         onClick={() => toggleArchive(c)}
                         className="p-2 hover:bg-neutral-50 rounded-xl text-neutral-400 hover:text-amber-600 transition-colors tooltip"
-                        title={c.isArchived ? "Désarchiver" : "Archiver"}
+                        title={c.isArchived ? t('communiques.unarchive') : t('communiques.archive')}
                       >
                         <Archive size={18} />
                       </button>
@@ -442,7 +444,7 @@ export default function CommuniqueManagement() {
                       onClick={() => openCommunique(c)}
                       className="flex items-center gap-1.5 px-4 py-2 bg-neutral-50 hover:bg-neutral-100 text-neutral-900 text-xs font-bold rounded-xl transition-all active:scale-95"
                     >
-                      Lire la suite <ChevronRight size={14} />
+                      {t('common.read_more')} <ChevronRight size={14} />
                     </button>
                   </div>
                 </div>
@@ -462,8 +464,8 @@ export default function CommuniqueManagement() {
                   <Bell size={24} />
                 </div>
                 <div>
-                  <h3 className="text-2xl font-bold tracking-tight">Nouveau Communiqué</h3>
-                  <p className="text-neutral-500 text-sm">Diffusez une annonce officielle à l'institut.</p>
+                  <h3 className="text-2xl font-bold tracking-tight">{t('communiques.new_communique')}</h3>
+                  <p className="text-neutral-500 text-sm">{t('communiques.new_communique_desc')}</p>
                 </div>
               </div>
               <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-neutral-100 rounded-xl transition-colors">
@@ -474,18 +476,18 @@ export default function CommuniqueManagement() {
             <form onSubmit={handleAddCommunique} className="p-8 space-y-6 max-h-[70vh] overflow-y-auto">
               <div className="space-y-6">
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Titre de l'annonce</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('communiques.announcement_title')}</label>
                   <input 
                     name="title" 
                     required 
                     type="text" 
-                    placeholder="Ex: Fermeture exceptionnelle, Nouvelles dates d'examen..." 
+                    placeholder={t('communiques.title_placeholder')} 
                     className="w-full px-5 py-4 bg-neutral-50 border border-neutral-200 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all font-medium" 
                   />
                 </div>
 
                 <div className="space-y-4">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Cibles de la diffusion</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('communiques.targets')}</label>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <label className={cn(
                       "flex items-center gap-3 p-4 border rounded-2xl cursor-pointer transition-all hover:bg-neutral-50",
@@ -493,7 +495,7 @@ export default function CommuniqueManagement() {
                     )}>
                       <input type="checkbox" name="target_student" className="accent-dia-red w-4 h-4" defaultChecked />
                       <div className="flex flex-col">
-                        <span className="text-sm font-bold">Élèves</span>
+                        <span className="text-sm font-bold">{t('sidebar.students')}</span>
                         <span className="text-[10px] text-neutral-400 uppercase">Students</span>
                       </div>
                     </label>
@@ -503,7 +505,7 @@ export default function CommuniqueManagement() {
                     )}>
                       <input type="checkbox" name="target_teacher" className="accent-dia-red w-4 h-4" defaultChecked />
                       <div className="flex flex-col">
-                        <span className="text-sm font-bold">Enseignants</span>
+                        <span className="text-sm font-bold">{t('sidebar.teachers')}</span>
                         <span className="text-[10px] text-neutral-400 uppercase">Teachers</span>
                       </div>
                     </label>
@@ -521,12 +523,12 @@ export default function CommuniqueManagement() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Contenu du message</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('communiques.message_content')}</label>
                   <textarea 
                     name="content" 
                     required 
                     rows={8} 
-                    placeholder="Rédigez ici votre communiqué..." 
+                    placeholder={t('communiques.content_placeholder')} 
                     className="w-full px-5 py-4 bg-neutral-50 border border-neutral-200 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all resize-none leading-relaxed" 
                   />
                 </div>
@@ -536,14 +538,14 @@ export default function CommuniqueManagement() {
                     <Send size={16} />
                   </div>
                   <p className="text-[11px] text-amber-800 leading-tight">
-                    En cliquant sur "Diffuser", ce communiqué sera archivé et envoyé par <strong>Email</strong> ainsi que via <strong>Notification Push</strong> à tous les utilisateurs sélectionnés.
+                    {t('communiques.send_note')}
                   </p>
                 </div>
               </div>
 
               <div className="pt-6 flex gap-4">
                 <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 rounded-2xl font-bold transition-all hover:bg-neutral-200 active:scale-95">
-                  Annuler
+                  {t('common.cancel')}
                 </button>
                 <button 
                   type="submit" 
@@ -553,12 +555,12 @@ export default function CommuniqueManagement() {
                   {submitting ? (
                     <>
                       <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
-                      Diffusion en cours...
+                      {t('communiques.sending_progress')}
                     </>
                   ) : (
                     <>
                       <Send size={20} />
-                      Diffuser le Communiqué
+                      {t('communiques.broadcast_btn')}
                     </>
                   )}
                 </button>
@@ -575,7 +577,7 @@ export default function CommuniqueManagement() {
             <div className="p-8 border-b border-neutral-100">
               <div className="flex items-center justify-between mb-4">
                 <span className="px-3 py-1 rounded-full bg-dia-red/5 text-dia-red text-[10px] font-bold uppercase tracking-widest">
-                  Annonce Officielle
+                  {t('communiques.official_announcement')}
                 </span>
                 <button onClick={() => setSelectedCommunique(null)} className="p-2 hover:bg-neutral-100 rounded-xl transition-colors">
                   <X size={24} />
@@ -584,8 +586,8 @@ export default function CommuniqueManagement() {
               <h3 className="text-3xl font-bold tracking-tight text-neutral-900">{selectedCommunique.title}</h3>
               <div className="flex items-center gap-4 mt-4 text-xs text-neutral-500 font-medium">
                 <div className="flex items-center gap-1.5"><User size={14} /> {selectedCommunique.authorName}</div>
-                <div className="flex items-center gap-1.5"><Calendar size={14} /> {new Date(selectedCommunique.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
-                <div className="flex items-center gap-1.5"><Clock size={14} /> {new Date(selectedCommunique.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</div>
+                <div className="flex items-center gap-1.5"><Calendar size={14} /> {new Date(selectedCommunique.createdAt).toLocaleDateString()}</div>
+                <div className="flex items-center gap-1.5"><Clock size={14} /> {new Date(selectedCommunique.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
               </div>
             </div>
             
@@ -600,7 +602,7 @@ export default function CommuniqueManagement() {
                 onClick={() => setSelectedCommunique(null)}
                 className="px-8 py-3 bg-white border border-neutral-200 rounded-xl font-bold text-sm hover:bg-neutral-100 transition-all active:scale-95"
               >
-                Fermer
+                {t('common.close')}
               </button>
             </div>
           </div>
@@ -613,7 +615,7 @@ export default function CommuniqueManagement() {
           <div className="bg-white w-full max-w-lg rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-6 border-b border-neutral-100 flex items-center justify-between">
               <div>
-                <h3 className="text-xl font-bold tracking-tight">Lectures</h3>
+                <h3 className="text-xl font-bold tracking-tight">{t('communiques.reads')}</h3>
                 <p className="text-xs text-neutral-500 line-clamp-1">{currentReadersList.title}</p>
               </div>
               <button onClick={() => setIsReadersModalOpen(false)} className="p-2 hover:bg-neutral-100 rounded-xl transition-colors">
@@ -625,7 +627,7 @@ export default function CommuniqueManagement() {
               {currentReadersList.readers.length === 0 ? (
                 <div className="text-center py-10 text-neutral-400">
                   <Clock size={32} className="mx-auto mb-2 opacity-20" />
-                  <p className="text-sm">Aucune lecture enregistrée</p>
+                  <p className="text-sm">{t('communiques.no_reads')}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -652,7 +654,7 @@ export default function CommuniqueManagement() {
                 onClick={() => setIsReadersModalOpen(false)}
                 className="px-6 py-2 bg-white border border-neutral-200 rounded-xl font-bold text-xs hover:bg-neutral-100 transition-all"
               >
-                Fermer
+                {t('common.close')}
               </button>
             </div>
           </div>

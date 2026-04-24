@@ -25,6 +25,8 @@ import { toast } from 'sonner';
 import { NotificationService } from '../services/NotificationService';
 import { motion } from 'motion/react';
 
+import { useTranslation } from 'react-i18next';
+
 const TransactionTable = ({ 
   records, 
   onSort, 
@@ -38,6 +40,7 @@ const TransactionTable = ({
   onDelete?: (id: string) => void,
   isTrash?: boolean
 }) => {
+  const { t } = useTranslation();
   const SortIcon = ({ column }: { column: string }) => {
     if (!sortConfig || sortConfig.key !== column) return null;
     return sortConfig.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />;
@@ -56,7 +59,7 @@ const TransactionTable = ({
               onClick={() => onSort?.('date')}
             >
               <div className="flex items-center gap-1">
-                {isTrash ? 'Date Suppression' : 'Date'} <SortIcon column="date" />
+                {isTrash ? t('finances.deletion_date') : t('common.date')} <SortIcon column="date" />
               </div>
             </th>
             <th 
@@ -67,7 +70,7 @@ const TransactionTable = ({
               onClick={() => onSort?.('description')}
             >
               <div className="flex items-center gap-1">
-                Description <SortIcon column="description" />
+                {t('common.description')} <SortIcon column="description" />
               </div>
             </th>
             <th 
@@ -78,12 +81,12 @@ const TransactionTable = ({
               onClick={() => onSort?.('category')}
             >
               <div className="flex items-center gap-1">
-                Catégorie <SortIcon column="category" />
+                {t('common.category')} <SortIcon column="category" />
               </div>
             </th>
             {isTrash && (
               <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">
-                Raison / Par
+                {t('finances.reason_by')}
               </th>
             )}
             <th 
@@ -94,12 +97,12 @@ const TransactionTable = ({
               onClick={() => onSort?.('amount')}
             >
               <div className="flex items-center justify-end gap-1">
-                Montant <SortIcon column="amount" />
+                {t('common.amount')} <SortIcon column="amount" />
               </div>
             </th>
             {!isTrash && (
               <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 text-right print:hidden">
-                Actions
+                {t('teachers.actions') || 'Actions'}
               </th>
             )}
           </tr>
@@ -121,19 +124,19 @@ const TransactionTable = ({
                     </div>
                     <div>
                       <p className="text-sm font-bold text-neutral-700 dark:text-neutral-300 group-hover:text-dia-red transition-colors">{record.description}</p>
-                      {isTrash && <p className="text-[10px] text-neutral-400">Date trans: {new Date(record.date).toLocaleDateString()}</p>}
+                      {isTrash && <p className="text-[10px] text-neutral-400">{t('finances.trans_date')}: {new Date(record.date).toLocaleDateString()}</p>}
                     </div>
                   </div>
                 </td>
                 <td className="px-6 py-4 print:px-2">
                   <span className="text-[10px] font-bold uppercase px-2 py-1 bg-neutral-100 dark:bg-neutral-800 rounded-full text-neutral-500 border border-neutral-200 dark:border-neutral-700">
-                    {record.category}
+                    {t(`finances.categories.${record.category.toLowerCase()}`) || record.category}
                   </span>
                 </td>
                 {isTrash && (
                   <td className="px-6 py-4">
                     <p className="text-xs font-bold text-red-500">{record.deletionReason}</p>
-                    <p className="text-[9px] text-neutral-400 uppercase tracking-tighter">Supprimé par: {record.deletedBy}</p>
+                    <p className="text-[9px] text-neutral-400 uppercase tracking-tighter">{t('finances.deleted_by')}: {record.deletedBy}</p>
                   </td>
                 )}
                 <td className={cn(
@@ -147,7 +150,7 @@ const TransactionTable = ({
                     <button 
                       onClick={() => onDelete?.(record.id)}
                       className="p-2 text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-all"
-                      title="Supprimer cette transaction"
+                      title={t('finances.delete_tooltip')}
                     >
                       <Trash2 size={16} />
                     </button>
@@ -158,7 +161,7 @@ const TransactionTable = ({
           ) : (
             <tr>
               <td colSpan={isTrash ? 5 : 4} className="px-6 py-20 text-center text-neutral-400 font-medium">
-                Aucune transaction trouvée.
+                {t('finances.no_transactions')}
               </td>
             </tr>
           )}
@@ -169,6 +172,7 @@ const TransactionTable = ({
 };
 
 export default function FinanceManagement() {
+  const { t } = useTranslation();
   const { 
     finances: allRecords, 
     trashFinances, 
@@ -207,19 +211,19 @@ export default function FinanceManagement() {
   }
 
   const months = [
-    { value: 'all', label: 'Toute l\'année' },
-    { value: '0', label: 'Janvier' },
-    { value: '1', label: 'Février' },
-    { value: '2', label: 'Mars' },
-    { value: '3', label: 'Avril' },
-    { value: '4', label: 'Mai' },
-    { value: '5', label: 'Juin' },
-    { value: '6', label: 'Juillet' },
-    { value: '7', label: 'Août' },
-    { value: '8', label: 'Septembre' },
-    { value: '9', label: 'Octobre' },
-    { value: '10', label: 'Novembre' },
-    { value: '11', label: 'Décembre' },
+    { value: 'all', label: t('finances.all_year') },
+    { value: '0', label: t('months.january') },
+    { value: '1', label: t('months.february') },
+    { value: '2', label: t('months.march') },
+    { value: '3', label: t('months.april') },
+    { value: '4', label: t('months.may') },
+    { value: '5', label: t('months.june') },
+    { value: '6', label: t('months.july') },
+    { value: '7', label: t('months.august') },
+    { value: '8', label: t('months.september') },
+    { value: '9', label: t('months.october') },
+    { value: '10', label: t('months.november') },
+    { value: '11', label: t('months.december') },
   ];
 
   const handleAddRecord = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -245,11 +249,11 @@ export default function FinanceManagement() {
       if (res.ok) {
         setIsAddModalOpen(false);
         refreshFinances();
-        toast.success('Transaction enregistrée avec succès');
+        toast.success(t('finances.transaction_added'));
       }
     } catch (err) {
       console.error("Error adding finance record:", err);
-      toast.error('Erreur lors de l\'enregistrement de la transaction');
+      toast.error(t('common.error'));
     } finally {
       setSubmitting(false);
     }
@@ -272,18 +276,18 @@ export default function FinanceManagement() {
         body: JSON.stringify({ reason: deletionReason })
       });
       if (res.ok) {
-        toast.success("Transaction déplacée vers la corbeille");
+        toast.success(t('finances.transaction_archived'));
         setIsDeleteModalOpen(false);
         setDeletionReason('');
         setRecordToDelete(null);
         refreshFinances();
         refreshTrash();
       } else {
-        toast.error("Erreur lors de l'archivage");
+        toast.error(t('common.error'));
       }
     } catch (err) {
       console.error("Error archiving record:", err);
-      toast.error("Erreur réseau");
+      toast.error(t('common.error'));
     } finally {
       setSubmitting(false);
     }
@@ -345,19 +349,19 @@ export default function FinanceManagement() {
 
   const handleEmailReport = async () => {
     if (!user?.email) {
-      toast.error("Votre adresse email est manquante.");
+      toast.error(t('profile.email_missing'));
       return;
     }
 
     try {
       setSubmitting(true);
-      const periodLabel = selectedMonth === 'all' ? `Année ${selectedYear}` : `${months.find(m => m.value === selectedMonth)?.label} ${selectedYear}`;
+      const periodLabel = selectedMonth === 'all' ? `${t('common.year')} ${selectedYear}` : `${months.find(m => m.value === selectedMonth)?.label} ${selectedYear}`;
       
       const recordsHtml = sortedRecords.map(r => `
         <tr style="border-bottom: 1px solid #eee;">
           <td style="padding: 8px;">${new Date(r.date).toLocaleDateString()}</td>
           <td style="padding: 8px;">${r.description}</td>
-          <td style="padding: 8px;">${r.category}</td>
+          <td style="padding: 8px;">${t(`finances.categories.${r.category.toLowerCase()}`) || r.category}</td>
           <td style="padding: 8px; text-align: right; font-weight: bold; color: ${r.type === 'income' ? '#2f855a' : '#c53030'};">
             ${r.type === 'income' ? '+' : '-'}${formatCurrency(r.amount)}
           </td>
@@ -368,13 +372,13 @@ export default function FinanceManagement() {
       const success = await NotificationService.sendFinanceReport(fetchWithAuth, user.email, periodLabel, stats, recordsHtml);
       
       if (success) {
-        toast.success(`Rapport envoyé à ${user.email}`);
+        toast.success(`${t('profile.report_sent')} ${user.email}`);
       } else {
-        toast.error("Échec de l'envoi du rapport.");
+        toast.error(t('common.error'));
       }
     } catch (err) {
       console.error("Error mailing report:", err);
-      toast.error("Erreur lors de l'envoi du rapport.");
+      toast.error(t('common.error'));
     } finally {
       setSubmitting(false);
     }
@@ -384,8 +388,8 @@ export default function FinanceManagement() {
     <div className="space-y-6 print:p-0 print:m-0">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden">
         <div>
-          <h3 className="text-2xl font-black text-dia-red uppercase tracking-tight">Gestion Financière</h3>
-          <p className="text-sm text-neutral-500 font-medium">Suivi précis des revenus et dépenses</p>
+          <h3 className="text-2xl font-black text-dia-red uppercase tracking-tight">{t('finances.title')}</h3>
+          <p className="text-sm text-neutral-500 font-medium">{t('finances.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center p-1 bg-neutral-100 dark:bg-neutral-800 rounded-2xl mr-2">
@@ -396,7 +400,7 @@ export default function FinanceManagement() {
                 viewMode === 'active' ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" : "text-neutral-500"
               )}
             >
-              Actives
+              {t('finances.active')}
             </button>
             <button 
               onClick={() => setViewMode('trash')}
@@ -406,7 +410,7 @@ export default function FinanceManagement() {
               )}
             >
               <Trash2 size={14} />
-              Corbeille
+              {t('finances.trash')}
             </button>
           </div>
           <button 
@@ -414,7 +418,7 @@ export default function FinanceManagement() {
             className="btn-primary flex items-center gap-2 px-6 shadow-lg shadow-dia-red/20"
           >
             <Plus size={18} />
-            <span>Nouvelle Transaction</span>
+            <span>{t('finances.new_transaction') || t('finances.transaction')}</span>
           </button>
         </div>
       </div>
@@ -427,7 +431,7 @@ export default function FinanceManagement() {
           className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded-2xl flex items-center gap-3 text-red-600 dark:text-red-400"
         >
           <Trash2 size={20} />
-          <p className="text-sm font-medium">Vous consultez la corbeille. Ces transactions ont été archivées pour des raisons d'audit et de lutte contre la fraude.</p>
+          <p className="text-sm font-medium">{t('finances.trash_warning')}</p>
         </motion.div>
       )}
 
@@ -436,7 +440,7 @@ export default function FinanceManagement() {
         <div className="card p-3 flex items-center gap-3">
           <Calendar className="text-dia-red" size={20} />
           <div className="flex-1">
-            <p className="text-[10px] font-bold text-neutral-400 uppercase">Année</p>
+            <p className="text-[10px] font-bold text-neutral-400 uppercase">{t('common.year')}</p>
             <select 
               value={selectedYear}
               onChange={(e) => setSelectedYear(e.target.value)}
@@ -452,7 +456,7 @@ export default function FinanceManagement() {
         <div className="card p-3 flex items-center gap-3">
           <Layers className="text-dia-red" size={20} />
           <div className="flex-1">
-            <p className="text-[10px] font-bold text-neutral-400 uppercase">Période</p>
+            <p className="text-[10px] font-bold text-neutral-400 uppercase">{t('common.period')}</p>
             <select 
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
@@ -468,22 +472,22 @@ export default function FinanceManagement() {
         <div className="card p-3 flex items-center gap-3">
           <ArrowUpDown className="text-dia-red" size={20} />
           <div className="flex-1">
-            <p className="text-[10px] font-bold text-neutral-400 uppercase">Trier par</p>
+            <p className="text-[10px] font-bold text-neutral-400 uppercase">{t('common.sort_by')}</p>
             <div className="flex items-center gap-2">
               <select 
                 value={sortConfig?.key || ''} 
                 onChange={(e) => handleSort(e.target.value)}
                 className="bg-transparent font-bold outline-none cursor-pointer text-sm"
               >
-                <option value="date">Date</option>
-                <option value="amount">Montant</option>
-                <option value="description">Description</option>
-                <option value="category">Catégorie</option>
+                <option value="date">{t('common.date')}</option>
+                <option value="amount">{t('common.amount')}</option>
+                <option value="description">{t('common.description')}</option>
+                <option value="category">{t('common.category')}</option>
               </select>
               <button 
                 onClick={() => handleSort(sortConfig?.key || 'date')}
                 className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors"
-                title={sortConfig?.direction === 'asc' ? "Ascendant" : "Descendant"}
+                title={sortConfig?.direction === 'asc' ? t('common.ascending') : t('common.descending')}
               >
                 {sortConfig?.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               </button>
@@ -497,7 +501,7 @@ export default function FinanceManagement() {
               type="text" 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Rechercher une transaction..."
+              placeholder={t('finances.search_placeholder')}
               className="w-full pl-10 pr-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl font-bold focus:ring-2 focus:ring-dia-red outline-none transition-all"
             />
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors" size={18} />
@@ -505,14 +509,14 @@ export default function FinanceManagement() {
           <button 
             onClick={handlePrint}
             className="flex items-center justify-center p-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl font-bold hover:bg-neutral-50 transition-all shadow-sm"
-            title="Imprimer"
+            title={t('common.print')}
           >
             <Printer size={18} />
           </button>
           <button 
             onClick={handleEmailReport}
             className="flex items-center justify-center p-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl font-bold hover:bg-neutral-50 transition-all shadow-sm"
-            title="Envoyer par Mail"
+            title={t('common.send_by_mail')}
           >
             <Mail size={18} />
           </button>
@@ -522,11 +526,11 @@ export default function FinanceManagement() {
       <div id="report-section" ref={reportRef} className="space-y-6">
         {/* Printable Header */}
         <div className="hidden print:flex flex-col items-center mb-10 text-center">
-          <h1 className="text-3xl font-black text-dia-red mb-2">RAPPORT FINANCIER DIA_SAAS</h1>
+          <h1 className="text-3xl font-black text-dia-red mb-2">{t('finances.report_title')}</h1>
           <p className="text-xl font-bold bg-neutral-100 px-6 py-2 rounded-full uppercase">
-            {selectedMonth === 'all' ? `Année ${selectedYear}` : `${months.find(m => m.value === selectedMonth)?.label} ${selectedYear}`}
+            {selectedMonth === 'all' ? `${t('common.year')} ${selectedYear}` : `${months.find(m => m.value === selectedMonth)?.label} ${selectedYear}`}
           </p>
-          <p className="text-sm text-neutral-400 mt-4">Généré le {new Date().toLocaleString('fr-FR')}</p>
+          <p className="text-sm text-neutral-400 mt-4">{t('common.generated_on')} {new Date().toLocaleString(t('common.locale_date') || 'fr-FR')}</p>
         </div>
 
         {/* Stats Cards */}
@@ -539,7 +543,7 @@ export default function FinanceManagement() {
               <div className="w-10 h-10 rounded-xl bg-green-50 dark:bg-green-400/10 text-green-600 flex items-center justify-center">
                 <TrendingUp size={20} />
               </div>
-              <span className="text-[10px] font-bold text-green-600 uppercase tracking-wider">Revenus</span>
+              <span className="text-[10px] font-bold text-green-600 uppercase tracking-wider">{t('finances.income')}</span>
             </div>
             <h4 className="text-3xl font-black text-neutral-900 dark:text-white">{formatCurrency(totalIncome)}</h4>
           </div>
@@ -552,7 +556,7 @@ export default function FinanceManagement() {
               <div className="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-400/10 text-red-600 flex items-center justify-center">
                 <TrendingDown size={20} />
               </div>
-              <span className="text-[10px] font-bold text-red-600 uppercase tracking-wider">Dépenses</span>
+              <span className="text-[10px] font-bold text-red-600 uppercase tracking-wider">{t('finances.expense')}</span>
             </div>
             <h4 className="text-3xl font-black text-neutral-900 dark:text-white">{formatCurrency(totalExpense)}</h4>
           </div>
@@ -565,7 +569,7 @@ export default function FinanceManagement() {
               <div className="w-10 h-10 rounded-xl bg-dia-red/5 text-dia-red flex items-center justify-center">
                 <Wallet size={20} />
               </div>
-              <span className="text-[10px] font-bold text-dia-red uppercase tracking-wider">Solde</span>
+              <span className="text-[10px] font-bold text-dia-red uppercase tracking-wider">{t('finances.balance')}</span>
             </div>
             <h4 className="text-3xl font-black text-neutral-900 dark:text-white">{formatCurrency(balance)}</h4>
           </div>
@@ -577,7 +581,7 @@ export default function FinanceManagement() {
             <div className="p-6 border-b border-neutral-100 dark:border-neutral-800">
               <h5 className="font-bold flex items-center gap-2 text-red-600">
                 <Trash2 size={20} />
-                Archives de Suppression (Audit)
+                {t('finances.audit_archives')}
               </h5>
             </div>
             <TransactionTable records={trashFinances} isTrash={true} />
@@ -602,9 +606,9 @@ export default function FinanceManagement() {
                   <div className="flex items-center justify-between p-6 bg-neutral-50 dark:bg-neutral-800/50 border-b border-neutral-100 dark:border-neutral-800">
                     <h5 className="text-lg font-black uppercase tracking-tight">{month.label} {selectedYear}</h5>
                     <div className="flex gap-4 text-xs font-bold">
-                      <span className="text-green-600">Revenus: {formatCurrency(monthIncome)}</span>
-                      <span className="text-red-600">Dépenses: {formatCurrency(monthExpense)}</span>
-                      <span className="text-dia-red">Solde: {formatCurrency(monthIncome - monthExpense)}</span>
+                      <span className="text-green-600">{t('finances.income')}: {formatCurrency(monthIncome)}</span>
+                      <span className="text-red-600">{t('finances.expense')}: {formatCurrency(monthExpense)}</span>
+                      <span className="text-dia-red">{t('finances.balance')}: {formatCurrency(monthIncome - monthExpense)}</span>
                     </div>
                   </div>
                   <TransactionTable records={monthRecords} onDelete={handleDeleteRecord} />
@@ -617,7 +621,7 @@ export default function FinanceManagement() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between p-6 border-b border-neutral-100 dark:border-neutral-800 gap-4 print:hidden">
               <h5 className="font-bold flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-dia-red animate-pulse" />
-                Historique des Transactions
+                {t('finances.transaction_history')}
               </h5>
               <div className="flex items-center gap-1 p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl">
                 {(['all', 'income', 'expense'] as const).map((type) => (
@@ -631,7 +635,7 @@ export default function FinanceManagement() {
                         : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
                     )}
                   >
-                    {type === 'all' ? 'Tout' : type === 'income' ? 'Revenus' : 'Dépenses'}
+                    {type === 'all' ? t('common.all') : type === 'income' ? t('finances.income') : t('finances.expense')}
                   </button>
                 ))}
               </div>
@@ -648,7 +652,7 @@ export default function FinanceManagement() {
             <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between bg-red-50/50 dark:bg-red-900/10">
               <h3 className="text-2xl font-black tracking-tight text-red-600 flex items-center gap-2">
                 <Trash2 size={24} />
-                Justification
+                {t('finances.justification')}
               </h3>
               <button onClick={() => setIsDeleteModalOpen(false)} className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-800 rounded-2xl transition-colors">
                 <X size={24} />
@@ -657,16 +661,16 @@ export default function FinanceManagement() {
             <form onSubmit={confirmDelete} className="p-8 space-y-6">
               <div className="space-y-4">
                 <p className="text-sm font-medium text-neutral-500">
-                  Pour éviter toute fraude, vous devez obligatoirement préciser la raison de la suppression de cette transaction.
+                  {t('finances.justification_desc')}
                 </p>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Raison de la suppression</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('finances.justification_label')}</label>
                   <textarea 
                     name="reason" 
                     required 
                     value={deletionReason}
                     onChange={(e) => setDeletionReason(e.target.value)}
-                    placeholder="Ex: Erreur de saisie en doublon lors de la promotion de classe" 
+                    placeholder={t('finances.justification_placeholder')} 
                     className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-900 border-2 border-neutral-100 dark:border-neutral-800 rounded-3xl focus:ring-4 focus:ring-red-500/10 focus:border-red-500 outline-none transition-all font-medium h-32 resize-none"
                   />
                 </div>
@@ -681,10 +685,10 @@ export default function FinanceManagement() {
                   {submitting ? (
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   ) : (
-                    "Confirmer l'Archivage"
+                    t('finances.confirm_archive')
                   )}
                 </button>
-                <button type="button" onClick={() => setIsDeleteModalOpen(false)} className="w-full py-4 text-sm font-bold text-neutral-400 hover:text-neutral-600 transition-colors uppercase tracking-widest">Annuler</button>
+                <button type="button" onClick={() => setIsDeleteModalOpen(false)} className="w-full py-4 text-sm font-bold text-neutral-400 hover:text-neutral-600 transition-colors uppercase tracking-widest">{t('common.cancel')}</button>
               </div>
             </form>
           </div>
@@ -695,7 +699,7 @@ export default function FinanceManagement() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white dark:bg-neutral-950 w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in slide-in-from-bottom-4 duration-300 border border-neutral-100 dark:border-neutral-800">
             <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between bg-neutral-50/50 dark:bg-neutral-900/50">
-              <h3 className="text-3xl font-black tracking-tight text-dia-red">Transaction</h3>
+              <h3 className="text-3xl font-black tracking-tight text-dia-red">{t('finances.transaction')}</h3>
               <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-800 rounded-2xl transition-colors">
                 <X size={24} />
               </button>
@@ -712,7 +716,7 @@ export default function FinanceManagement() {
                     <div className="w-10 h-10 rounded-full bg-green-100 text-green-600 flex items-center justify-center">
                       <TrendingUp size={20} />
                     </div>
-                    <span className="text-xs font-bold uppercase">Revenu</span>
+                    <span className="text-xs font-bold uppercase">{t('finances.income')}</span>
                   </label>
                   <label className={cn(
                     "flex-1 p-4 rounded-3xl border-2 cursor-pointer transition-all flex flex-col items-center gap-2",
@@ -723,29 +727,29 @@ export default function FinanceManagement() {
                     <div className="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center">
                       <TrendingDown size={20} />
                     </div>
-                    <span className="text-xs font-bold uppercase">Dépense</span>
+                    <span className="text-xs font-bold uppercase">{t('finances.expense')}</span>
                   </label>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Montant (FCFA)</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.amount')} (FCFA)</label>
                   <input name="amount" required type="number" placeholder="0" className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-900 border-2 border-neutral-100 dark:border-neutral-800 rounded-3xl focus:ring-4 focus:ring-dia-red/10 focus:border-dia-red outline-none transition-all text-xl font-black" />
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Description</label>
-                  <input name="description" required type="text" placeholder="Ex: Paiement Scolarité Tranche 1" className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-900 border-2 border-neutral-100 dark:border-neutral-800 rounded-3xl focus:ring-4 focus:ring-dia-red/10 focus:border-dia-red outline-none transition-all font-bold" />
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.description')}</label>
+                  <input name="description" required type="text" placeholder={t('finances.description_placeholder')} className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-900 border-2 border-neutral-100 dark:border-neutral-800 rounded-3xl focus:ring-4 focus:ring-dia-red/10 focus:border-dia-red outline-none transition-all font-bold" />
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Catégorie</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.category')}</label>
                   <select name="category" required className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-900 border-2 border-neutral-100 dark:border-neutral-800 rounded-3xl focus:ring-4 focus:ring-dia-red/10 focus:border-dia-red outline-none transition-all font-bold appearance-none">
-                    <option value="Tuition">Scolarité</option>
-                    <option value="Salary">Salaire</option>
-                    <option value="Rent">Loyer</option>
-                    <option value="Equipment">Équipement</option>
-                    <option value="Taxes">Taxes / Frais</option>
-                    <option value="Other">Autre</option>
+                    <option value="Tuition">{t('finances.categories.tuition')}</option>
+                    <option value="Salary">{t('finances.categories.salary')}</option>
+                    <option value="Rent">{t('finances.categories.rent')}</option>
+                    <option value="Equipment">{t('finances.categories.equipment')}</option>
+                    <option value="Taxes">{t('finances.categories.taxes')}</option>
+                    <option value="Other">{t('finances.categories.other')}</option>
                   </select>
                 </div>
               </div>
@@ -759,16 +763,16 @@ export default function FinanceManagement() {
                   {submitting ? (
                     <>
                       <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Traitement...</span>
+                      <span>{t('common.processing')}</span>
                     </>
                   ) : (
                     <>
                       <Plus size={22} />
-                      <span>Valider la Transaction</span>
+                      <span>{t('finances.new_transaction') || t('finances.transaction')}</span>
                     </>
                   )}
                 </button>
-                <button type="button" onClick={() => setIsAddModalOpen(false)} className="w-full py-4 text-sm font-bold text-neutral-400 hover:text-neutral-600 transition-colors uppercase tracking-widest">Annuler</button>
+                <button type="button" onClick={() => setIsAddModalOpen(false)} className="w-full py-4 text-sm font-bold text-neutral-400 hover:text-neutral-600 transition-colors uppercase tracking-widest">{t('common.cancel')}</button>
               </div>
             </form>
           </div>

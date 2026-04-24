@@ -26,6 +26,7 @@ import {
   Camera
 } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
+import { useTranslation } from 'react-i18next';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { cn, formatCurrency, generateMatricule } from '../utils';
@@ -36,6 +37,7 @@ import { useData } from '../context/DataContext';
 import { toast } from 'sonner';
 
 export default function StudentManagement() {
+  const { t } = useTranslation();
   const { fetchWithAuth } = useAuth();
   const { students, classes, levels, loading, refreshStudents, refreshClasses, refreshLevels } = useData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -71,31 +73,31 @@ export default function StudentManagement() {
       doc.rect(0, 0, 210, 40, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(22);
-      doc.text('DIA_SAAS - REÇU DE PAIEMENT', 20, 25);
+      doc.text(`${t('login.title')} - ${t('students.receipt_header')}`, 20, 25);
       
       doc.setTextColor(0, 0, 0);
       doc.setFontSize(10);
-      const dateStr = new Date().toLocaleDateString('fr-FR');
-      doc.text(`Date : ${dateStr}`, 160, 50);
+      const dateStr = new Date().toLocaleDateString();
+      doc.text(`${t('students.date')} : ${dateStr}`, 160, 50);
       doc.text(`N° : ${Date.now()}`, 160, 55);
 
       // Student Info
       doc.setFont('helvetica', 'bold');
-      doc.text('INFORMATIONS ÉTUDIANT', 20, 60);
+      doc.text(t('students.student_info'), 20, 60);
       doc.setFont('helvetica', 'normal');
-      doc.text(`Nom : ${selectedStudent.firstName} ${selectedStudent.lastName}`, 20, 70);
-      doc.text(`Matricule : ${selectedStudent.matricule}`, 20, 75);
-      doc.text(`Email : ${selectedStudent.email}`, 20, 80);
-      doc.text(`Niveau : ${levels.find(l => l.id === selectedStudent.levelId)?.name || 'N/A'}`, 20, 85);
+      doc.text(`${t('students.lastName')} : ${selectedStudent.firstName} ${selectedStudent.lastName}`, 20, 70);
+      doc.text(`${t('students.matricule')} : ${selectedStudent.matricule}`, 20, 75);
+      doc.text(`${t('students.email')} : ${selectedStudent.email}`, 20, 80);
+      doc.text(`${t('students.level')} : ${levels.find(l => l.id === selectedStudent.levelId)?.name || 'N/A'}`, 20, 85);
 
       // Payments Table
       const paidPayments = selectedStudent.payments.filter(p => p.amount > 0);
       autoTable(doc, {
         startY: 100,
-        head: [['Désignation', 'Date', 'Montant']],
+        head: [[t('students.designation'), t('students.date'), t('students.amount')]],
         body: paidPayments.map(p => [
           `Scolarité - Tranche ${p.tranche}`, 
-          p.date ? new Date(p.date).toLocaleDateString('fr-FR') : 'N/A', 
+          p.date ? new Date(p.date).toLocaleDateString() : 'N/A', 
           formatCurrency(p.amount)
         ]),
         theme: 'striped',
@@ -107,7 +109,7 @@ export default function StudentManagement() {
       
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
-      doc.text(`TOTAL PAYÉ : ${formatCurrency(totalPaid)}`, 140, finalY);
+      doc.text(`${t('students.total_paid').toUpperCase()} : ${formatCurrency(totalPaid)}`, 140, finalY);
 
       // Signatures
       doc.setFontSize(9);
@@ -118,10 +120,10 @@ export default function StudentManagement() {
       doc.line(130, finalY + 60, 190, finalY + 60);
 
       doc.save(`Recu_${selectedStudent.matricule}.pdf`);
-      toast.success("Reçu PDF téléchargé.");
+      toast.success(t('students.receipt_downloaded'));
     } catch (err) {
       console.error("Error generating receipt PDF:", err);
-      toast.error("Erreur lors de la génération du PDF.");
+      toast.error(t('common.error'));
     } finally {
       setSubmitting(false);
     }
@@ -187,14 +189,14 @@ export default function StudentManagement() {
 
         setIsAddModalOpen(false);
         refreshStudents();
-        toast.success('Étudiant ajouté avec succès');
+        toast.success(t('students.student_added'));
       } else {
         const errorData = await res.json();
-        toast.error(errorData.message || 'Erreur lors de l\'ajout de l\'étudiant');
+        toast.error(errorData.message || t('common.error'));
       }
     } catch (err) {
       console.error("Error adding student:", err);
-      toast.error('Erreur lors de l\'ajout de l\'étudiant');
+      toast.error(t('common.error'));
     } finally {
       setSubmitting(false);
     }
@@ -238,7 +240,7 @@ export default function StudentManagement() {
   };
 
   const handleArchiveStudent = async (id: string) => {
-    if (!window.confirm('Voulez-vous vraiment déplacer cet étudiant vers les archives (Anciens Élèves) ?')) return;
+    if (!window.confirm(t('students.confirm_archive'))) return;
     
     try {
       const res = await fetchWithAuth(`/api/students/${id}`, {
@@ -247,17 +249,17 @@ export default function StudentManagement() {
         body: JSON.stringify({ isFormer: true, classId: null })
       });
       if (res.ok) {
-        toast.success('Étudiant archivé avec succès');
+        toast.success(t('students.student_updated'));
         refreshStudents();
       }
     } catch (err) {
       console.error("Error archiving student:", err);
-      toast.error('Erreur lors de l\'archivage');
+      toast.error(t('common.error'));
     }
   };
 
   const handleHardDeleteStudent = async (id: string) => {
-    if (!window.confirm('ÊTES-VOUS SÛR ? Cette action supprimera définitivement l\'étudiant et son compte utilisateur. Cette opération est irréversible.')) return;
+    if (!window.confirm(t('students.confirm_delete'))) return;
     
     try {
       setSubmitting(true);
@@ -265,12 +267,12 @@ export default function StudentManagement() {
         method: 'DELETE'
       });
       if (res.ok) {
-        toast.success('Étudiant supprimé définitivement');
+        toast.success(t('students.student_deleted'));
         refreshStudents();
       }
     } catch (err) {
       console.error("Error deleting student:", err);
-      toast.error('Erreur lors de la suppression');
+      toast.error(t('common.error'));
     } finally {
       setSubmitting(false);
     }
@@ -279,7 +281,7 @@ export default function StudentManagement() {
   const handleResetCredentials = async (id: string) => {
     const student = students.find(s => s.id === id);
     if (!student) return;
-    if (!window.confirm(`Voulez-vous réinitialiser les identifiants de ${student.firstName} et lui envoyer un email ?`)) return;
+    if (!window.confirm(`${t('students.reset_credentials_confirm')} ${student.firstName}?`)) return;
     
     try {
       setSubmitting(true);
@@ -294,11 +296,11 @@ export default function StudentManagement() {
         const scheduleStr = cls?.schedule?.map(s => `${s.day} (${s.startTime}-${s.endTime})`).join(', ');
         await NotificationService.sendCredentials(fetchWithAuth, student, password, cls?.name, scheduleStr);
 
-        toast.success('Nouveaux identifiants envoyés par email');
+        toast.success(t('students.credentials_sent'));
       }
     } catch (err) {
       console.error("Error resetting credentials:", err);
-      toast.error('Erreur lors de la réinitialisation');
+      toast.error(t('common.error'));
     } finally {
       setSubmitting(false);
     }
@@ -316,11 +318,11 @@ export default function StudentManagement() {
         body: JSON.stringify({ studentId: selectedStudent.id, html })
       });
       if (res.ok) {
-        toast.success('Reçu envoyé par email');
+        toast.success(t('students.receipt_sent'));
       }
     } catch (err) {
       console.error("Error sending receipt email:", err);
-      toast.error('Erreur lors de l\'envoi');
+      toast.error(t('common.error'));
     } finally {
       setSubmitting(false);
     }
@@ -334,12 +336,12 @@ export default function StudentManagement() {
         body: JSON.stringify({ isFormer: false })
       });
       if (res.ok) {
-        toast.success('Étudiant restauré avec succès');
+        toast.success(t('students.student_restored'));
         refreshStudents();
       }
     } catch (err) {
       console.error("Error restoring student:", err);
-      toast.error('Erreur lors de la restauration');
+      toast.error(t('common.error'));
     }
   };
 
@@ -372,17 +374,17 @@ export default function StudentManagement() {
     
     const level = levels.find(l => l.id === studentToRemind.levelId);
     if (!level) {
-      toast.error("Niveau non trouvé pour cet étudiant");
+      toast.error(t('students.level_not_found'));
       return;
     }
 
     try {
       setSubmitting(true);
       await NotificationService.sendPaymentReminder(fetchWithAuth, studentToRemind, level.tuition);
-      toast.success("Rappel de paiement envoyé");
+      toast.success(t('students.reminder_sent'));
     } catch (err) {
       console.error("Error sending reminder:", err);
-      toast.error("Erreur lors de l'envoi du rappel");
+      toast.error(t('common.error'));
     } finally {
       setSubmitting(false);
     }
@@ -406,7 +408,7 @@ export default function StudentManagement() {
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", "liste_etudiants_dia.csv");
+    link.setAttribute("download", `liste_etudiants_dia_${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -467,14 +469,14 @@ export default function StudentManagement() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h3 className="text-xl font-bold">Gestion des Étudiants</h3>
+        <h3 className="text-xl font-bold">{t('students.title')}</h3>
         <div className="flex items-center gap-2">
           <button 
             onClick={() => setIsAddModalOpen(true)}
             className="btn-primary flex items-center gap-2"
           >
             <UserPlus size={18} />
-            <span>Nouvel Étudiant</span>
+            <span>{t('students.add_student')}</span>
           </button>
           <button 
             onClick={handlePrint}
@@ -495,7 +497,7 @@ export default function StudentManagement() {
               activeTab === 'active' ? "border-dia-red text-dia-red" : "border-transparent text-neutral-400 hover:text-neutral-600"
             )}
           >
-            Étudiants Actifs
+            {t('students.active_students')}
           </button>
           <button 
             onClick={() => setActiveTab('former')}
@@ -504,7 +506,7 @@ export default function StudentManagement() {
               activeTab === 'former' ? "border-dia-red text-dia-red" : "border-transparent text-neutral-400 hover:text-neutral-600"
             )}
           >
-            Anciens Élèves
+            {t('students.former_students')}
           </button>
         </div>
         <div className="flex flex-col md:flex-row gap-4">
@@ -513,7 +515,7 @@ export default function StudentManagement() {
               type="text" 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Rechercher un étudiant (Nom, Matricule...)"
+              placeholder={t('common.search')}
               className="w-full pl-10 pr-4 py-2 bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg focus:ring-2 focus:ring-dia-red transition-all"
             />
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none z-10" size={18} />
@@ -524,7 +526,7 @@ export default function StudentManagement() {
               className="flex items-center gap-2 px-4 py-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg text-sm font-medium hover:bg-neutral-200 transition-colors"
             >
               <Download size={16} />
-              <span>Exporter</span>
+              <span>{t('common.export') || 'Exporter'}</span>
             </button>
           </div>
         </div>
@@ -541,7 +543,7 @@ export default function StudentManagement() {
                   onClick={() => handleSort('name')}
                 >
                   <div className="flex items-center gap-1">
-                    Étudiant <SortIcon column="name" />
+                    {t('students.student_label') || 'Étudiant'} <SortIcon column="name" />
                   </div>
                 </th>
                 <th 
@@ -549,7 +551,7 @@ export default function StudentManagement() {
                   onClick={() => handleSort('matricule')}
                 >
                   <div className="flex items-center gap-1">
-                    Matricule <SortIcon column="matricule" />
+                    {t('students.matricule')} <SortIcon column="matricule" />
                   </div>
                 </th>
                 <th 
@@ -557,7 +559,7 @@ export default function StudentManagement() {
                   onClick={() => handleSort('level')}
                 >
                   <div className="flex items-center gap-1">
-                    Niveau <SortIcon column="level" />
+                    {t('students.level')} <SortIcon column="level" />
                   </div>
                 </th>
                 <th 
@@ -565,7 +567,7 @@ export default function StudentManagement() {
                   onClick={() => handleSort('class')}
                 >
                   <div className="flex items-center gap-1">
-                    Classe <SortIcon column="class" />
+                    {t('students.class')} <SortIcon column="class" />
                   </div>
                 </th>
                 <th 
@@ -573,10 +575,10 @@ export default function StudentManagement() {
                   onClick={() => handleSort('tuition')}
                 >
                   <div className="flex items-center gap-1">
-                    Scolarité <SortIcon column="tuition" />
+                    {t('sidebar.finances')} <SortIcon column="tuition" />
                   </div>
                 </th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 text-right">Actions</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 text-right">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
@@ -611,7 +613,7 @@ export default function StudentManagement() {
                       <p className="font-medium">{level?.name || 'N/A'}</p>
                     </td>
                     <td className="px-6 py-4 text-sm">
-                      <p className="font-medium text-neutral-500">{classes.find(c => c.id === student.classId)?.name || 'Non affecté'}</p>
+                      <p className="font-medium text-neutral-500">{classes.find(c => c.id === student.classId)?.name || t('students.not_assigned') }</p>
                     </td>
                     <td className="px-6 py-4">
                       <div className="space-y-1">
@@ -634,7 +636,7 @@ export default function StudentManagement() {
                             <button 
                               onClick={() => handleResetCredentials(student.id)}
                               className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-dia-yellow"
-                              title="Renvoyer identifiants"
+                              title={t('students.resend_credentials')}
                             >
                               <RefreshCw size={18} />
                             </button>
@@ -645,7 +647,7 @@ export default function StudentManagement() {
                               }}
                               disabled={submitting || isFullyPaid}
                               className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-dia-red disabled:opacity-30 disabled:grayscale"
-                              title={isFullyPaid ? "Scolarité réglée" : "Envoyer rappel"}
+                              title={isFullyPaid ? t('students.tuition_paid') : t('students.send_reminder')}
                             >
                               <Bell size={18} />
                             </button>
@@ -655,7 +657,7 @@ export default function StudentManagement() {
                                 setIsReceiptModalOpen(true);
                               }}
                               className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-dia-red"
-                              title="Gérer les paiements"
+                              title={t('students.manage_payments')}
                             >
                               <CreditCard size={18} />
                             </button>
@@ -665,21 +667,21 @@ export default function StudentManagement() {
                                 setIsEditModalOpen(true);
                               }}
                               className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-blue-600"
-                              title="Modifier"
+                              title={t('common.edit')}
                             >
                               <Edit size={18} />
                             </button>
                             <button 
                               onClick={() => handleArchiveStudent(student.id)}
                               className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-orange-600"
-                              title="Archiver"
+                              title={t('common.archive')}
                             >
                               <X size={18} />
                             </button>
                             <button 
                               onClick={() => handleHardDeleteStudent(student.id)}
                               className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-red-600 font-bold"
-                              title="Supprimer définitivement"
+                              title={t('common.delete_forever')}
                             >
                               <Trash2 size={18} />
                             </button>
@@ -693,7 +695,7 @@ export default function StudentManagement() {
                                 setIsEditModalOpen(true);
                               }}
                               className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-blue-600"
-                              title="Modifier"
+                              title={t('common.edit')}
                             >
                               <Edit size={18} />
                             </button>
@@ -705,7 +707,7 @@ export default function StudentManagement() {
                               className="flex items-center gap-2 px-3 py-1.5 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-lg text-xs font-bold hover:bg-green-200 transition-colors"
                             >
                               <Plus size={14} />
-                              Restaurer
+                              {t('common.restore')}
                             </button>
                             <button 
                               onClick={(e) => {
@@ -713,7 +715,7 @@ export default function StudentManagement() {
                                 handleHardDeleteStudent(student.id);
                               }}
                               className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-red-600"
-                              title="Supprimer définitivement"
+                              title={t('common.delete_forever')}
                             >
                               <Trash2 size={18} />
                             </button>
@@ -735,7 +737,7 @@ export default function StudentManagement() {
           <div className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <form onSubmit={handleAddStudent} className="flex flex-col max-h-[90vh]">
               <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between shrink-0">
-                <h3 className="text-2xl font-bold tracking-tight">Nouvel Étudiant</h3>
+                <h3 className="text-2xl font-bold tracking-tight">{t('students.add_student')}</h3>
                 <button type="button" onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
                   <X size={24} />
                 </button>
@@ -743,86 +745,86 @@ export default function StudentManagement() {
               <div className="flex-1 overflow-y-auto p-8 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Prénom</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.firstName')}</label>
                   <input name="firstName" required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Nom</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.lastName')}</label>
                   <input name="lastName" required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Email</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.email')}</label>
                   <input name="email" required type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Téléphone</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.phone')}</label>
                   <input name="phone" required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Niveau</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.level')}</label>
                   <select name="levelId" required className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
                     {levels.map(l => <option key={l.id} value={l.id}>{l.name} ({formatCurrency(l.tuition)})</option>)}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Classe</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.class')}</label>
                   <select name="classId" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
-                    <option value="">Non affecté</option>
+                    <option value="">{t('students.not_assigned')}</option>
                     {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Paiement Initial (Tranche 1)</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.initial_payment')} (Tranche 1)</label>
                   <input name="tranche1" type="number" placeholder="0" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Paiement Initial (Tranche 2)</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.initial_payment')} (Tranche 2)</label>
                   <input name="tranche2" type="number" placeholder="0" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Paiement Initial (Tranche 3)</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.initial_payment')} (Tranche 3)</label>
                   <input name="tranche3" type="number" placeholder="0" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Genre</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.gender') || 'Genre'}</label>
                   <select name="gender" required className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
-                    <option value="M">Masculin</option>
-                    <option value="F">Féminin</option>
+                    <option value="M">{t('students.male') || 'Masculin'}</option>
+                    <option value="F">{t('students.female') || 'Féminin'}</option>
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Date de Naissance</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.dob')}</label>
                   <input name="birthDate" required type="date" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Lieu de Naissance</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.pob')}</label>
                   <input name="birthPlace" required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">N° CNI (Optionnel)</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.cni')} ({t('common.optional') || 'Optionnel'})</label>
                   <input name="cni" type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Parent / Tuteur</label>
-                  <input name="parentName" required type="text" placeholder="Nom complet" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.guardianName')}</label>
+                  <input name="parentName" required type="text" placeholder={t('students.fullName') || 'Nom complet'} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Téléphone Parent</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.guardianPhone')}</label>
                   <input name="parentPhone" required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Email Parent</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.parent_email')}</label>
                   <input name="parentEmail" type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Mot de passe par défaut</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('login.password')}</label>
                   <input name="password" type="text" defaultValue="DIA2026." className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
-                  <p className="text-[10px] text-neutral-500 mt-1">L'étudiant pourra le modifier après sa première connexion.</p>
+                  <p className="text-[10px] text-neutral-500 mt-1">{t('students.password_hint') || "L'étudiant pourra le modifier après sa première connexion."}</p>
                 </div>
               </div>
             </div>
             <div className="p-8 border-t border-neutral-100 dark:border-neutral-800 flex gap-4">
-              <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
+              <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">{t('common.cancel')}</button>
               <button 
                 type="submit" 
                 disabled={submitting}
@@ -831,10 +833,10 @@ export default function StudentManagement() {
                 {submitting ? (
                   <>
                     <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
-                    Enregistrement...
+                    {t('common.saving')}
                   </>
                 ) : (
-                  "Enregistrer l'Étudiant"
+                  t('students.add_student')
                 )}
               </button>
             </div>
@@ -849,7 +851,7 @@ export default function StudentManagement() {
           <div className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <form onSubmit={handleEditStudent} className="flex flex-col max-h-[90vh]">
               <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between shrink-0">
-                <h3 className="text-2xl font-bold tracking-tight">Modifier Étudiant</h3>
+                <h3 className="text-2xl font-bold tracking-tight">{t('students.edit_student')}</h3>
                 <button type="button" onClick={() => setIsEditModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
                   <X size={24} />
                 </button>
@@ -857,69 +859,69 @@ export default function StudentManagement() {
               <div className="flex-1 overflow-y-auto p-8 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Prénom</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.firstName')}</label>
                   <input name="firstName" defaultValue={selectedStudent.firstName} required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Nom</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.lastName')}</label>
                   <input name="lastName" defaultValue={selectedStudent.lastName} required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Email</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.email')}</label>
                   <input name="email" defaultValue={selectedStudent.email} required type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Téléphone</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.phone')}</label>
                   <input name="phone" defaultValue={selectedStudent.phone} required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Niveau</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.level')}</label>
                   <select name="levelId" defaultValue={selectedStudent.levelId} required className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
                     {levels.map(l => <option key={l.id} value={l.id}>{l.name} ({formatCurrency(l.tuition)})</option>)}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Classe</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.class')}</label>
                   <select name="classId" defaultValue={selectedStudent.classId} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
-                    <option value="">Non affecté</option>
+                    <option value="">{t('students.not_assigned')}</option>
                     {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Genre</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.gender')}</label>
                   <select name="gender" defaultValue={selectedStudent.gender} required className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
-                    <option value="M">Masculin</option>
-                    <option value="F">Féminin</option>
+                    <option value="M">{t('students.male')}</option>
+                    <option value="F">{t('students.female')}</option>
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Date de Naissance</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.dob')}</label>
                   <input name="birthDate" defaultValue={selectedStudent.birthDate} required type="date" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Lieu de Naissance</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.pob')}</label>
                   <input name="birthPlace" defaultValue={selectedStudent.birthPlace} required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">N° CNI (Optionnel)</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.cni')} ({t('common.optional')})</label>
                   <input name="cni" defaultValue={selectedStudent.cni} type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Parent / Tuteur</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.guardianName')}</label>
                   <input name="parentName" defaultValue={selectedStudent.parentName} required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Téléphone Parent</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.guardianPhone')}</label>
                   <input name="parentPhone" defaultValue={selectedStudent.parentPhone} required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Email Parent</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.parent_email')}</label>
                   <input name="parentEmail" defaultValue={selectedStudent.parentEmail} type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
               </div>
             </div>
             <div className="p-8 border-t border-neutral-100 dark:border-neutral-800 flex gap-4">
-              <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
+              <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">{t('common.cancel')}</button>
               <button 
                 type="submit" 
                 disabled={submitting}
@@ -928,10 +930,10 @@ export default function StudentManagement() {
                 {submitting ? (
                   <>
                     <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
-                    Mise à jour...
+                    {t('common.updating')}
                   </>
                 ) : (
-                  "Enregistrer les modifications"
+                  t('common.save_changes')
                 )}
               </button>
             </div>
@@ -945,7 +947,7 @@ export default function StudentManagement() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-              <h3 className="text-2xl font-bold tracking-tight">Détails de l'Étudiant</h3>
+              <h3 className="text-2xl font-bold tracking-tight">{t('students.student_details')}</h3>
               <button onClick={() => setIsDetailModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
                 <X size={24} />
               </button>
@@ -974,7 +976,7 @@ export default function StudentManagement() {
                         formData.append('userId', selectedStudent.uid);
                         
                         try {
-                          toast.loading("Chargement de la photo...");
+                          toast.loading(t('profile.uploading'));
                           const res = await fetchWithAuth('/api/profile/upload-photo', {
                             method: 'POST',
                             body: formData
@@ -985,11 +987,11 @@ export default function StudentManagement() {
                             setSelectedStudent({ ...selectedStudent, photoURL: data.photoURL });
                             refreshStudents();
                             toast.dismiss();
-                            toast.success("Photo mise à jour");
+                            toast.success(t('profile.photo_success'));
                           }
                         } catch (err) {
                           toast.dismiss();
-                          toast.error("Erreur lors de l'upload");
+                          toast.error(t('profile.upload_error'));
                         }
                       };
                       input.click();
@@ -1006,37 +1008,37 @@ export default function StudentManagement() {
               </div>
               <div className="grid grid-cols-2 gap-8">
                 <div>
-                  <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">Identité</p>
-                  <p className="text-sm"><strong>Sexe :</strong> {selectedStudent.gender === 'M' ? 'Masculin' : 'Féminin'}</p>
-                  <p className="text-sm"><strong>Naissance :</strong> {selectedStudent.birthDate ? new Date(selectedStudent.birthDate).toLocaleDateString() : 'Non renseigné'} à {selectedStudent.birthPlace || 'N/A'}</p>
-                  {selectedStudent.cni && <p className="text-sm"><strong>CNI :</strong> {selectedStudent.cni}</p>}
+                  <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">{t('profile.personal_info')}</p>
+                  <p className="text-sm"><strong>{t('students.gender') || 'Sexe'} :</strong> {selectedStudent.gender === 'M' ? (t('students.male') || 'Masculin') : (t('students.female') || 'Féminin')}</p>
+                  <p className="text-sm"><strong>{t('students.dob')} :</strong> {selectedStudent.birthDate ? new Date(selectedStudent.birthDate).toLocaleDateString() : 'N/A'} {t('common.at') || 'à'} {selectedStudent.birthPlace || 'N/A'}</p>
+                  {selectedStudent.cni && <p className="text-sm"><strong>{t('students.cni')} :</strong> {selectedStudent.cni}</p>}
                 </div>
                 <div>
-                  <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">Dernière Connexion</p>
+                  <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">{t('students.last_login') || 'Dernière Connexion'}</p>
                   <div className="flex items-center gap-2 text-dia-red">
                     {selectedStudent.lastActiveDevice?.toLowerCase().includes('android') || selectedStudent.lastActiveDevice?.toLowerCase().includes('ios') ? <Smartphone size={16} /> : <Laptop size={16} />}
-                    <p className="text-sm font-bold">{selectedStudent.lastActiveDevice || 'Jamais connecté'}</p>
+                    <p className="text-sm font-bold">{selectedStudent.lastActiveDevice || t('students.never_connected') || 'Jamais connecté'}</p>
                   </div>
-                  {selectedStudent.lastLoginAt && <p className="text-[10px] text-neutral-500 mt-1 italic">Dernière activité le {new Date(selectedStudent.lastLoginAt).toLocaleString()}</p>}
+                  {selectedStudent.lastLoginAt && <p className="text-[10px] text-neutral-500 mt-1 italic">{t('students.last_activity')} {new Date(selectedStudent.lastLoginAt).toLocaleString()}</p>}
                 </div>
                 <div>
-                  <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">Contact</p>
+                  <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">{t('students.contact') || 'Contact'}</p>
                   <p className="text-sm flex items-center gap-2 font-medium"><Mail size={14} className="text-dia-red" /> {selectedStudent.email}</p>
                   <p className="text-sm flex items-center gap-2 font-medium"><Phone size={14} className="text-dia-red" /> {selectedStudent.phone}</p>
                 </div>
                 <div>
-                  <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">Académique</p>
+                  <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">{t('students.academic') || 'Académique'}</p>
                   <p className="text-sm font-bold">{levels.find(l => l.id === selectedStudent.levelId)?.name}</p>
-                  <p className="text-sm text-neutral-500">{classes.find(c => c.id === selectedStudent.classId)?.name || 'Non affecté'}</p>
+                  <p className="text-sm text-neutral-500">{classes.find(c => c.id === selectedStudent.classId)?.name || t('students.not_assigned')}</p>
                 </div>
                 <div>
-                  <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">Parent / Tuteur</p>
+                  <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">{t('students.parent_info')}</p>
                   <p className="text-sm font-bold">{selectedStudent.parentName}</p>
                   <p className="text-sm">{selectedStudent.parentPhone}</p>
                   {selectedStudent.parentEmail && <p className="text-sm">{selectedStudent.parentEmail}</p>}
                 </div>
                 <div>
-                  <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">Statut Scolarité</p>
+                  <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">{t('students.tuition_status') || 'Statut Scolarité'}</p>
                   <p className="text-sm font-bold">
                     {formatCurrency(selectedStudent.payments.reduce((acc, p) => acc + p.amount, 0))} / {formatCurrency(levels.find(l => l.id === selectedStudent.levelId)?.tuition || 0)}
                   </p>
@@ -1051,7 +1053,7 @@ export default function StudentManagement() {
                   className="flex-1 min-w-[120px] btn-primary py-3 flex items-center justify-center gap-2 text-sm"
                 >
                   <Edit size={16} />
-                  Modifier
+                  {t('common.edit')}
                 </button>
                 <button 
                   onClick={() => {
@@ -1061,7 +1063,7 @@ export default function StudentManagement() {
                   className="flex-1 min-w-[120px] bg-neutral-100 dark:bg-neutral-800 py-3 rounded-2xl font-bold hover:bg-neutral-200 transition-all flex items-center justify-center gap-2 text-sm"
                 >
                   <CreditCard size={16} />
-                  Paiements
+                  {t('sidebar.finances')}
                 </button>
                 <button 
                   onClick={handleSendReminder}
@@ -1073,7 +1075,7 @@ export default function StudentManagement() {
                   ) : (
                     <Bell size={16} />
                   )}
-                  Rappel
+                  {t('students.reminder') || 'Rappel'}
                 </button>
               </div>
             </div>
@@ -1087,7 +1089,7 @@ export default function StudentManagement() {
           <div className="bg-white dark:bg-neutral-900 w-full max-w-4xl rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
               <div>
-                <h3 className="text-2xl font-bold tracking-tight">Paiements & Reçus</h3>
+                <h3 className="text-2xl font-bold tracking-tight">{t('students.receipt')}</h3>
                 <p className="text-neutral-500 text-sm">{selectedStudent.firstName} {selectedStudent.lastName} ({selectedStudent.matricule})</p>
               </div>
               <div className="flex gap-2">
@@ -1095,7 +1097,7 @@ export default function StudentManagement() {
                   onClick={handleSendReceiptEmail}
                   disabled={submitting}
                   className="p-3 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-xl hover:bg-blue-200 transition-colors"
-                  title="Envoyer par Email"
+                  title={t('students.send_by_email')}
                 >
                   {submitting ? <div className="animate-spin rounded-full h-5 w-5 border-2 border-current border-t-transparent" /> : <Send size={20} />}
                 </button>
@@ -1103,7 +1105,7 @@ export default function StudentManagement() {
                   onClick={handleDownloadPDFReceipt}
                   disabled={submitting}
                   className="p-3 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-xl hover:bg-red-200 transition-colors"
-                  title="Télécharger PDF"
+                  title={t('students.download_pdf')}
                 >
                   {submitting ? <div className="animate-spin rounded-full h-5 w-5 border-2 border-current border-t-transparent" /> : <FileText size={20} />}
                 </button>
@@ -1119,18 +1121,18 @@ export default function StudentManagement() {
             <div className="p-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Payment Forms */}
               <div className="space-y-6">
-                <h4 className="font-bold text-lg">Enregistrer un paiement</h4>
+                <h4 className="font-bold text-lg">{t('students.register_payment') || 'Enregistrer un paiement'}</h4>
                 {selectedStudent.payments.map((p) => (
                   <div key={p.tranche} className="p-5 bg-neutral-50 dark:bg-neutral-800/50 rounded-2xl border border-neutral-100 dark:border-neutral-800">
                     <div className="flex items-center justify-between mb-4">
-                      <span className="text-sm font-bold uppercase tracking-wider text-neutral-400">Tranche {p.tranche}</span>
-                      {p.amount > 0 && <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">Payé le {new Date(p.date!).toLocaleDateString()}</span>}
+                      <span className="text-sm font-bold uppercase tracking-wider text-neutral-400">{t('students.tranche')} {p.tranche}</span>
+                      {p.amount > 0 && <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">{t('students.paid_on')} {new Date(p.date!).toLocaleDateString()}</span>}
                     </div>
                     <div className="flex gap-3">
                       <input 
                         type="number" 
                         defaultValue={p.amount}
-                        placeholder="Montant"
+                        placeholder={t('students.amount')}
                         className="flex-1 px-4 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-dia-red/20"
                         onBlur={(e) => {
                           const val = parseInt(e.target.value);
@@ -1165,22 +1167,22 @@ export default function StudentManagement() {
                       <p className="text-[10px] uppercase font-bold tracking-widest text-neutral-400">DIA_SAAS</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-bold">REÇU DE PAIEMENT</p>
+                      <p className="text-sm font-bold">{t('students.receipt_header')}</p>
                       <p className="text-[10px] text-neutral-500">#{Date.now()}</p>
                     </div>
                   </div>
 
                   <div className="space-y-4 mb-8">
                     <div className="flex justify-between text-sm">
-                      <span className="text-neutral-500">Étudiant:</span>
+                      <span className="text-neutral-500">{t('students.student_label')}:</span>
                       <span className="font-bold">{selectedStudent.firstName} {selectedStudent.lastName}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-neutral-500">Matricule:</span>
+                      <span className="text-neutral-500">{t('students.matricule')}:</span>
                       <span className="font-mono font-bold">{selectedStudent.matricule}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-neutral-500">Niveau:</span>
+                      <span className="text-neutral-500">{t('students.level') || 'Niveau'}:</span>
                       <span className="font-bold">{levels.find(l => l.id === selectedStudent.levelId)?.name}</span>
                     </div>
                   </div>
@@ -1188,37 +1190,37 @@ export default function StudentManagement() {
                   <table className="w-full text-sm mb-8">
                     <thead>
                       <tr className="border-b text-neutral-400 text-[10px] uppercase font-bold">
-                        <th className="text-left py-2">Désignation</th>
-                        <th className="text-right py-2">Montant</th>
+                        <th className="text-left py-2">{t('students.designation') || 'Désignation'}</th>
+                        <th className="text-right py-2">{t('students.amount')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
                       {selectedStudent.payments.filter(p => p.amount > 0).map(p => (
                         <tr key={p.tranche}>
-                          <td className="py-3">Scolarité - Tranche {p.tranche}</td>
+                          <td className="py-3">Scolarité - {t('students.tranche')} {p.tranche}</td>
                           <td className="py-3 text-right font-bold">{formatCurrency(p.amount)}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-neutral-900">
-                        <td className="py-4 font-bold uppercase">Total Payé</td>
+                        <td className="py-4 font-bold uppercase">{t('students.total_paid')}</td>
                         <td className="py-4 text-right font-black text-lg">{formatCurrency(selectedStudent.payments.reduce((acc, p) => acc + p.amount, 0))}</td>
                       </tr>
                     </tfoot>
                   </table>
 
                   <div className="text-[10px] text-neutral-400 text-center italic mb-8">
-                    Merci pour votre confiance. Ce document est un reçu officiel de l'institut DIA.
+                    {t('students.receipt_footer')}
                   </div>
 
                   <div className="grid grid-cols-2 gap-12 pt-8 border-t border-neutral-100">
                     <div className="text-center">
-                      <p className="text-[10px] font-bold uppercase text-neutral-400 mb-12">Signature Étudiant</p>
+                      <p className="text-[10px] font-bold uppercase text-neutral-400 mb-12">{t('students.signature_student')}</p>
                       <div className="border-b border-neutral-300 w-full"></div>
                     </div>
                     <div className="text-center">
-                      <p className="text-[10px] font-bold uppercase text-neutral-400 mb-12">Signature Institut</p>
+                      <p className="text-[10px] font-bold uppercase text-neutral-400 mb-12">{t('students.signature_institute')}</p>
                       <div className="border-b border-neutral-300 w-full"></div>
                     </div>
                   </div>

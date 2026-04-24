@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { 
   Search, 
   Plus, 
@@ -22,6 +23,7 @@ import { useData } from '../context/DataContext';
 import { toast } from 'sonner';
 
 export default function ClassManagement() {
+  const { t } = useTranslation();
   const { fetchWithAuth } = useAuth();
   const { classes, levels, teachers, students, loading, refreshClasses, refreshTeachers, refreshLevels, refreshStudents } = useData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -64,14 +66,14 @@ export default function ClassManagement() {
       if (res.ok) {
         setIsAddModalOpen(false);
         refreshClasses();
-        toast.success('Classe créée avec succès');
+        toast.success(t('classes.class_created'));
       } else {
         const errorData = await res.json();
-        toast.error(errorData.message || 'Erreur lors de la création de la classe');
+        toast.error(errorData.message || t('common.error'));
       }
     } catch (err) {
       console.error("Error adding class:", err);
-      toast.error('Erreur lors de la création de la classe');
+      toast.error(t('common.error'));
     } finally {
       setSubmitting(false);
     }
@@ -83,7 +85,7 @@ export default function ClassManagement() {
     if (!cls) return;
 
     if (cls.currentSubLevel === 1) {
-      if (!window.confirm(`Passer la classe ${cls.name} au Sous-Niveau 2 ? Cela enregistrera la moitié du salaire pour l'enseignant.`)) return;
+      if (!window.confirm(t('classes.promote_sublevel_confirm', { name: cls.name }))) return;
       
       try {
         setSubmitting(true);
@@ -113,31 +115,31 @@ export default function ClassManagement() {
               body: JSON.stringify({
                 type: 'expense',
                 amount: salaryAmount,
-                description: `Salaire Enseignant - ${teacher.firstName} ${teacher.lastName} - ${cls.name} (Sous-Niveau 1 complété)`,
+                description: t('teachers.salary_expense', { teacher: `${teacher.firstName} ${teacher.lastName}`, className: cls.name, sub: 1 }),
                 category: 'Salary',
                 date: new Date().toISOString()
               })
             });
           }
 
-          toast.success("Classe passée au sous-niveau 2");
+          toast.success(t('classes.sublevel_updated'));
           
           // Notify teacher and students
           const classStudents = students.filter(s => cls.studentIds.includes(s.id) && !s.isFormer);
-          const message = `La classe ${cls.name} est officiellement passée au sous-niveau 2. Bonne continuation !`;
+          const message = t('classes.sublevel_notification', { name: cls.name });
           
           if (teacher) {
-             await NotificationService._triggerEmail(fetchWithAuth, teacher.email, `Changement de niveau - ${cls.name}`, message, `<h2>${message}</h2>`);
+             await NotificationService._triggerEmail(fetchWithAuth, teacher.email, t('classes.level_change_subject', { name: cls.name }), message, `<h2>${message}</h2>`);
           }
           for (const student of classStudents) {
-             await NotificationService._triggerEmail(fetchWithAuth, student.email, `Progression : Sous-Niveau 2 - ${cls.name}`, message, `<div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 12px; text-align: center;"><h2 style="color: #E31E24;">Félicitations !</h2><p>${message}</p></div>`, "Progression de Niveau", message, student.parentEmail);
+             await NotificationService._triggerEmail(fetchWithAuth, student.email, t('classes.level_progression_subject', { name: cls.name }), message, `<div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 12px; text-align: center;"><h2 style="color: #E31E24;">${t('common.congratulations')} !</h2><p>${message}</p></div>`, t('classes.level_progression'), message, student.parentEmail);
           }
           
           refreshClasses();
         }
       } catch (err) {
         console.error("Error promoting to sub-level 2:", err);
-        toast.error("Erreur lors de la mise à jour");
+        toast.error(t('common.error'));
       } finally {
         setSubmitting(false);
       }
@@ -149,11 +151,11 @@ export default function ClassManagement() {
       const nextLevel = sortedAllLevels[currentLevelIndex + 1];
       
       if (!nextLevel) {
-        toast.error("Fin du cursus atteinte. Aucun niveau supérieur configuré.");
+        toast.error(t('classes.promote_level_limit'));
         return;
       }
 
-      const confirmPromote = window.confirm(`Félicitations ! Voulez-vous promouvoir la classe ${cls.name} au niveau suivant : ${nextLevel.name} ?\n\nCela mettra à jour le niveau de tous les étudiants actifs de cette classe.`);
+      const confirmPromote = window.confirm(t('classes.promote_level_confirm', { name: cls.name, nextLevel: nextLevel.name }));
       if (!confirmPromote) return;
 
       try {
@@ -185,7 +187,7 @@ export default function ClassManagement() {
               body: JSON.stringify({
                 type: 'expense',
                 amount: salaryAmount,
-                description: `Salaire Enseignant - ${teacher.firstName} ${teacher.lastName} - ${cls.name} (Sous-Niveau 2 complété)`,
+                description: t('teachers.salary_expense', { teacher: `${teacher.firstName} ${teacher.lastName}`, className: cls.name, sub: 2 }),
                 category: 'Salary',
                 date: new Date().toISOString()
               })
@@ -202,32 +204,32 @@ export default function ClassManagement() {
             });
             
             // Notify student & parent
-            const message = `Félicitations ! Vous avez réussi le niveau ${level?.name}. Votre classe ${cls.name} passe maintenant au niveau suivant : ${nextLevel.name}.`;
-            await NotificationService._triggerEmail(fetchWithAuth, student.email, `PROMOTION AU NIVEAU ${nextLevel.name} - ${cls.name}`, message, `
+            const message = t('classes.promotion_notification', { level: level?.name, name: cls.name, nextLevel: nextLevel.name });
+            await NotificationService._triggerEmail(fetchWithAuth, student.email, t('classes.promotion_email_subject', { nextLevel: nextLevel.name, name: cls.name }), message, `
               <div style="font-family: sans-serif; padding: 30px; border: 2px solid #E31E24; border-radius: 20px; text-align: center;">
-                <h1 style="color: #E31E24;">BRAVO !</h1>
-                <p style="font-size: 1.2em;">Vous avez brillamment terminé le niveau <strong>${level?.name}</strong>.</p>
+                <h1 style="color: #E31E24;">${t('common.bravo')} !</h1>
+                <p style="font-size: 1.2em;">${t('classes.promotion_email_body_1', { level: level?.name })}</p>
                 <div style="background: #f9f9f9; padding: 20px; border-radius: 12px; margin: 20px 0;">
-                  <p>Votre classe <strong>${cls.name}</strong> est maintenant au niveau :</p>
+                  <p>${t('classes.promotion_email_body_2', { name: cls.name })} :</p>
                   <p style="font-size: 2em; font-weight: bold; color: #E31E24; margin: 10px 0;">${nextLevel.name}</p>
                 </div>
-                <p>Bonne chance pour cette nouvelle étape !</p>
+                <p>${t('classes.promotion_email_body_3')}</p>
               </div>
-            `, "Promotion de Niveau !", `Niveau ${nextLevel.name} atteint !`, student.parentEmail);
+            `, t('classes.level_promotion'), t('classes.level_reached', { nextLevel: nextLevel.name }), student.parentEmail);
           }
 
           // 3. Notify teacher
           if (teacher) {
-            const message = `Votre classe ${cls.name} a été promue avec succès au niveau ${nextLevel.name}.`;
-            await NotificationService._triggerEmail(fetchWithAuth, teacher.email, `Promotion de Classe - ${cls.name}`, message, `<h2>Promotion de classe</h2><p>${message}</p>`);
+            const message = t('classes.teacher_promotion_notification', { name: cls.name, nextLevel: nextLevel.name });
+            await NotificationService._triggerEmail(fetchWithAuth, teacher.email, t('classes.class_promotion_subject', { name: cls.name }), message, `<h2>${t('classes.class_promotion_title')}</h2><p>${message}</p>`);
           }
 
-          toast.success(`Classe promue au niveau ${nextLevel.name} !`);
+          toast.success(t('classes.level_promoted', { name: nextLevel.name }));
           refreshClasses();
         }
       } catch (err) {
         console.error("Error promoting to next level:", err);
-        toast.error("Erreur lors de la promotion");
+        toast.error(t('common.error'));
       } finally {
         setSubmitting(false);
       }
@@ -275,13 +277,13 @@ export default function ClassManagement() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h3 className="text-xl font-bold">Gestion des Classes</h3>
+        <h3 className="text-xl font-bold">{t('classes.title')}</h3>
         <button 
           onClick={() => setIsAddModalOpen(true)}
           className="btn-primary flex items-center gap-2"
         >
           <Plus size={18} />
-          <span>Nouvelle Classe</span>
+          <span>{t('classes.add_class')}</span>
         </button>
       </div>
 
@@ -291,21 +293,21 @@ export default function ClassManagement() {
             type="text" 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Rechercher une classe..."
+            placeholder={t('classes.search_placeholder')}
             className="w-full pl-10 pr-4 py-2 bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg focus:ring-2 focus:ring-dia-red transition-all"
           />
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none z-10" size={18} />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-neutral-400 uppercase">Trier par:</span>
+          <span className="text-xs font-bold text-neutral-400 uppercase">{t('common.sort_by')}:</span>
           <select 
             value={sortConfig?.key || ''} 
             onChange={(e) => handleSort(e.target.value)}
             className="bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-dia-red outline-none"
           >
-            <option value="name">Nom</option>
-            <option value="level">Niveau</option>
-            <option value="students">Effectif</option>
+            <option value="name">{t('common.name')}</option>
+            <option value="level">{t('classes.level')}</option>
+            <option value="students">{t('classes.students_count')}</option>
           </select>
           <button 
             onClick={() => handleSort(sortConfig?.key || 'name')}
@@ -334,7 +336,7 @@ export default function ClassManagement() {
                     "text-[10px] font-bold px-2 py-1 rounded-full uppercase",
                     cls.currentSubLevel === 1 ? "bg-blue-100 text-blue-600" : "bg-purple-100 text-purple-600"
                   )}>
-                    Sous-Niveau {cls.currentSubLevel}
+                    {t('classes.sub_level')} {cls.currentSubLevel}
                   </span>
                 </div>
               </div>
@@ -343,7 +345,7 @@ export default function ClassManagement() {
                 <h4 className="font-bold text-lg">{cls.name}</h4>
                 <div className="flex items-center gap-2 text-sm text-neutral-500">
                   <GraduationCap size={14} />
-                  <span>Niveau {level?.name}</span>
+                  <span>{t('classes.level')} {level?.name}</span>
                 </div>
               </div>
 
@@ -354,8 +356,8 @@ export default function ClassManagement() {
                       {teacher ? `${teacher.firstName[0]}${teacher.lastName[0]}` : '?'}
                     </div>
                     <div>
-                      <p className="text-xs font-bold">{teacher ? `${teacher.firstName} ${teacher.lastName}` : 'Non assigné'}</p>
-                      <p className="text-[10px] text-neutral-500">Enseignant</p>
+                      <p className="text-xs font-bold">{teacher ? `${teacher.firstName} ${teacher.lastName}` : t('teachers.not_assigned')}</p>
+                      <p className="text-[10px] text-neutral-500">{t('teachers.teacher_label')}</p>
                     </div>
                   </div>
                 </div>
@@ -363,7 +365,7 @@ export default function ClassManagement() {
                 <div className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2 text-neutral-500">
                     <Users size={16} />
-                    <span>{classStudents.length} Étudiants</span>
+                    <span>{classStudents.length} {t('sidebar.students')}</span>
                   </div>
                   <button 
                     onClick={() => {
@@ -372,7 +374,7 @@ export default function ClassManagement() {
                     }}
                     className="text-dia-red font-bold flex items-center gap-1 hover:underline"
                   >
-                    Détails <ChevronRight size={16} />
+                    {t('common.details')} <ChevronRight size={16} />
                   </button>
                 </div>
 
@@ -390,7 +392,7 @@ export default function ClassManagement() {
                     {submitting && (
                       <div className="inline-block w-2 h-2 mr-2 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     )}
-                    {cls.currentSubLevel === 1 ? "Passer au Sous-Niveau 2" : "Passer au Niveau Suivant"}
+                    {cls.currentSubLevel === 1 ? t('classes.next_sub_level') : t('classes.next_level')}
                   </button>
                 </div>
               </div>
@@ -404,7 +406,7 @@ export default function ClassManagement() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-neutral-900 w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-              <h3 className="text-2xl font-bold tracking-tight">Nouvelle Classe</h3>
+              <h3 className="text-2xl font-bold tracking-tight">{t('classes.add_class')}</h3>
               <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
                 <X size={24} />
               </button>
@@ -412,25 +414,25 @@ export default function ClassManagement() {
             <form onSubmit={handleAddClass} className="p-8 space-y-6">
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Nom de la Classe</label>
-                  <input name="name" required type="text" placeholder="Ex: Allemand Intensif A1-1" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('classes.class_name')}</label>
+                  <input name="name" required type="text" placeholder={t('classes.name_placeholder')} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Niveau</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('classes.level')}</label>
                   <select name="levelId" required className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
                     {levels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Enseignant</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('teachers.teacher_label')}</label>
                   <select name="teacherId" required className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
-                    <option value="">Sélectionner un enseignant</option>
+                    <option value="">{t('teachers.search_placeholder')}</option>
                     {teachers.map(t => <option key={t.id} value={t.id}>{t.firstName} {t.lastName}</option>)}
                   </select>
                 </div>
               </div>
               <div className="pt-4 flex gap-4">
-                <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
+                <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">{t('common.cancel')}</button>
                 <button 
                   type="submit" 
                   disabled={submitting}
@@ -439,10 +441,10 @@ export default function ClassManagement() {
                   {submitting ? (
                     <>
                       <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
-                      Création...
+                      {t('classes.creating')}
                     </>
                   ) : (
-                    "Créer la Classe"
+                    t('classes.add_class')
                   )}
                 </button>
               </div>
@@ -458,7 +460,7 @@ export default function ClassManagement() {
             <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
               <div>
                 <h3 className="text-2xl font-bold tracking-tight">{selectedClass.name}</h3>
-                <p className="text-neutral-500 text-sm">Gestion du planning et des évaluations</p>
+                <p className="text-neutral-500 text-sm">{t('classes.detail_subtitle')}</p>
               </div>
               <button onClick={() => setIsDetailModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
                 <X size={24} />
@@ -468,7 +470,7 @@ export default function ClassManagement() {
               {/* Schedule Section */}
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-bold flex items-center gap-2"><Calendar size={18} /> Emploi du Temps</h4>
+                  <h4 className="font-bold flex items-center gap-2"><Calendar size={18} /> {t('classes.schedule')}</h4>
                 </div>
                 <form 
                   onSubmit={async (e) => {
@@ -514,24 +516,24 @@ export default function ClassManagement() {
                   }}
                   className="grid grid-cols-2 gap-2 p-4 bg-neutral-100 dark:bg-neutral-800 rounded-xl"
                 >
-                  <input name="subject" required placeholder="Sujet" className="col-span-2 text-xs p-2 rounded border-none" />
+                  <input name="subject" required placeholder={t('common.subject')} className="col-span-2 text-xs p-2 rounded border-none" />
                   <select name="day" required className="text-xs p-2 rounded border-none">
-                    <option value="Lundi">Lundi</option>
-                    <option value="Mardi">Mardi</option>
-                    <option value="Mercredi">Mercredi</option>
-                    <option value="Jeudi">Jeudi</option>
-                    <option value="Vendredi">Vendredi</option>
-                    <option value="Samedi">Samedi</option>
+                    <option value="Lundi">{t('classes.days.monday')}</option>
+                    <option value="Mardi">{t('classes.days.tuesday')}</option>
+                    <option value="Mercredi">{t('classes.days.wednesday')}</option>
+                    <option value="Jeudi">{t('classes.days.thursday')}</option>
+                    <option value="Vendredi">{t('classes.days.friday')}</option>
+                    <option value="Samedi">{t('classes.days.saturday')}</option>
                   </select>
                   <div className="flex gap-1">
                     <input name="startTime" required type="time" className="text-xs p-2 rounded border-none flex-1" />
                     <input name="endTime" required type="time" className="text-xs p-2 rounded border-none flex-1" />
                   </div>
-                  <button type="submit" className="col-span-2 btn-primary py-1 text-xs">Ajouter au planning</button>
+                  <button type="submit" className="col-span-2 btn-primary py-1 text-xs">{t('classes.add_to_schedule')}</button>
                 </form>
                 <div className="space-y-3">
                   {selectedClass.schedule.length === 0 ? (
-                    <p className="text-sm text-neutral-500 italic">Aucun cours programmé.</p>
+                    <p className="text-sm text-neutral-500 italic">{t('classes.no_course')}</p>
                   ) : (
                     selectedClass.schedule.map((item, idx) => (
                       <div key={idx} className="p-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-100 dark:border-neutral-800 flex justify-between items-center">
@@ -585,7 +587,7 @@ export default function ClassManagement() {
               {/* Exams Section */}
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-bold flex items-center gap-2"><BookOpen size={18} /> Évaluations</h4>
+                  <h4 className="font-bold flex items-center gap-2"><BookOpen size={18} /> {t('classes.exams')}</h4>
                 </div>
                 <form 
                   onSubmit={async (e) => {
@@ -631,17 +633,17 @@ export default function ClassManagement() {
                   }}
                   className="grid grid-cols-2 gap-2 p-4 bg-neutral-100 dark:bg-neutral-800 rounded-xl"
                 >
-                  <input name="title" required placeholder="Titre de l'examen" className="col-span-2 text-xs p-2 rounded border-none" />
+                  <input name="title" required placeholder={t('classes.add_exam')} className="col-span-2 text-xs p-2 rounded border-none" />
                   <input name="date" required type="date" className="text-xs p-2 rounded border-none" />
                   <div className="flex gap-1">
                     <input name="startTime" required type="time" className="text-xs p-2 rounded border-none flex-1" />
                     <input name="endTime" required type="time" className="text-xs p-2 rounded border-none flex-1" />
                   </div>
-                  <button type="submit" className="col-span-2 btn-primary py-1 text-xs">Programmer l'examen</button>
+                  <button type="submit" className="col-span-2 btn-primary py-1 text-xs">{t('classes.add_exam')}</button>
                 </form>
                 <div className="space-y-3">
                   {selectedClass.exams.length === 0 ? (
-                    <p className="text-sm text-neutral-500 italic">Aucune évaluation prévue.</p>
+                    <p className="text-sm text-neutral-500 italic">{t('classes.no_exam')}</p>
                   ) : (
                     selectedClass.exams.map((exam) => (
                       <div key={exam.id} className="p-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-100 dark:border-neutral-800 flex justify-between items-center">
@@ -694,7 +696,7 @@ export default function ClassManagement() {
               {/* Students List */}
               <div className="lg:col-span-2 pt-6 border-t border-neutral-100 dark:border-neutral-800">
                 <div className="flex items-center justify-between mb-4">
-                  <h4 className="font-bold flex items-center gap-2"><Users size={18} /> Étudiants de la classe</h4>
+                  <h4 className="font-bold flex items-center gap-2"><Users size={18} /> {t('classes.class_students')}</h4>
                   <div className="flex gap-2">
                     <select 
                       className="text-xs bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg px-2 py-1"
@@ -722,7 +724,7 @@ export default function ClassManagement() {
                         }
                       }}
                     >
-                      <option value="">+ Ajouter un étudiant</option>
+                      <option value="">+ {t('classes.add_student')}</option>
                       {students.filter(s => !selectedClass.studentIds.includes(s.id)).map(s => (
                         <option key={s.id} value={s.id}>{s.firstName} {s.lastName}</option>
                       ))}

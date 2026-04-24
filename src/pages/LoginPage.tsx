@@ -26,7 +26,7 @@ export default function LoginPage() {
 
   const handleSupportDownload = async (e: React.MouseEvent) => {
     e.preventDefault();
-    const code = window.prompt("Veuillez entrer le code d'accès Super Administrateur pour télécharger la documentation technique :");
+    const code = window.prompt(t('login.support_code_prompt'));
     
     // In a real app, this should be validated against a server
     // For this implementation, we use the known super admin code or initials
@@ -35,15 +35,15 @@ export default function LoginPage() {
         setDownloadingDoc(true);
         console.log("Starting documentation download archive...");
         await downloadProtectedArchive(code);
-        toast.success("Documentation générée avec succès.");
+        toast.success(t('login.support_success'));
       } catch (err: any) {
         console.error("Documentation generation failed:", err);
-        alert(`Erreur lors de la génération du document: ${err.message || "Erreur inconnue"}`);
+        alert(`${t('login.support_error')}: ${err.message || "Erreur inconnue"}`);
       } finally {
         setDownloadingDoc(false);
       }
     } else if (code) {
-      alert("Code incorrect. Accès refusé.");
+      alert(t('login.support_code_error'));
     }
   };
 
@@ -56,12 +56,12 @@ export default function LoginPage() {
       await login(matricule.trim(), password);
     } catch (err: any) {
       console.error("Login error details:", err);
-      let msg = err.message || 'Une erreur est survenue lors de la connexion.';
+      let msg = err.message || t('login.connection_error');
       
       if (err.code === 'auth/operation-not-allowed') {
-        msg = "L'authentification par email/mot de passe n'est pas activée dans votre console Firebase. Veuillez l'activer dans la section Authentication > Sign-in method.";
+        msg = t('auth.firebase_not_enabled');
       } else if (err.name === 'TypeError' && err.message.includes('fetch')) {
-        msg = 'Impossible de contacter le serveur. Veuillez vérifier votre connexion internet ou si le serveur est en ligne.';
+        msg = t('login.server_unreachable');
       }
       
       setError(msg);
@@ -222,17 +222,17 @@ export default function LoginPage() {
                 disabled={downloadingDoc}
                 className="text-dia-red font-bold hover:underline disabled:opacity-50"
               >
-                {downloadingDoc ? "Préparation..." : t('login.support')}
+                {downloadingDoc ? t('login.preparing') : t('login.support')}
               </button>
             </p>
             
             <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800">
-              <p className="text-[10px] text-neutral-400 uppercase tracking-widest font-bold mb-2">Version Mobile & Desktop</p>
+              <p className="text-[10px] text-neutral-400 uppercase tracking-widest font-bold mb-2">{t('login.install_title')}</p>
               <div className="flex flex-col gap-2">
                 <p className="text-[10px] text-neutral-500 leading-relaxed max-w-[280px] mx-auto">
-                  Pour installer l'application sur votre appareil : <br/>
-                  <strong>iOS:</strong> Partager &gt; Sur l'écran d'accueil <br/>
-                  <strong>Android/PC:</strong> Menu &gt; Installer l'application
+                  {t('login.install_instructions')} <br/>
+                  <strong>{t('login.install_ios').split(':')[0]}:</strong> {t('login.install_ios').split(':')[1]} <br/>
+                  <strong>{t('login.install_android_pc').split(':')[0]}:</strong> {t('login.install_android_pc').split(':')[1]}
                 </p>
               </div>
             </div>

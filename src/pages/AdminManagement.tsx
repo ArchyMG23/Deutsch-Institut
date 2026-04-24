@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { 
   Users, 
   UserPlus, 
@@ -20,6 +21,7 @@ import { cn } from '../utils';
 import { toast } from 'sonner';
 
 export default function AdminManagement() {
+  const { t } = useTranslation();
   const { fetchWithAuth, user: currentUser } = useAuth();
   const [admins, setAdmins] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,7 +38,7 @@ export default function AdminManagement() {
       }
     } catch (err) {
       console.error("Error fetching admins:", err);
-      toast.error("Échec de la récupération des administrateurs");
+      toast.error(t('admins.fetch_error'));
     } finally {
       setLoading(false);
     }
@@ -68,16 +70,16 @@ export default function AdminManagement() {
       });
 
       if (res.ok) {
-        toast.success("Administrateur ajouté avec succès");
+        toast.success(t('admins.add_success'));
         setIsAddModalOpen(false);
         fetchAdmins();
       } else {
         const error = await res.json();
-        toast.error(error.message || "Erreur lors de l'ajout");
+        toast.error(error.message || t('common.error'));
       }
     } catch (err) {
       console.error("Error adding admin:", err);
-      toast.error("Erreur réseau");
+      toast.error(t('common.error'));
     } finally {
       setSubmitting(false);
     }
@@ -88,11 +90,11 @@ export default function AdminManagement() {
     if (!adminToDelete) return;
 
     if (adminToDelete.isSuperAdmin) {
-      toast.error("Impossible de supprimer le Super Administrateur");
+      toast.error(t('admins.cannot_delete_superadmin'));
       return;
     }
 
-    if (!window.confirm(`Voulez-vous vraiment supprimer l'administrateur ${adminToDelete.firstName} ${adminToDelete.lastName} ?`)) {
+    if (!window.confirm(`${t('admins.confirm_delete_prefix')} ${adminToDelete.firstName} ${adminToDelete.lastName} ${t('admins.confirm_delete_suffix')}`)) {
       return;
     }
 
@@ -102,15 +104,15 @@ export default function AdminManagement() {
       });
 
       if (res.ok) {
-        toast.success("Administrateur supprimé");
+        toast.success(t('common.deleted'));
         fetchAdmins();
       } else {
         const error = await res.json();
-        toast.error(error.message || "Erreur lors de la suppression");
+        toast.error(error.message || t('common.error'));
       }
     } catch (err) {
       console.error("Error deleting admin:", err);
-      toast.error("Erreur réseau");
+      toast.error(t('common.error'));
     }
   };
 
@@ -119,10 +121,10 @@ export default function AdminManagement() {
   );
 
   const handleResetSystem = async () => {
-    const confirmation = window.prompt("ATTENTION : Cette action va effacer TOUTES les données (élèves, enseignants, finances, classes). Pour confirmer, tapez 'RESET_FACTORY' :");
+    const confirmation = window.prompt(t('admins.reset_prompt'));
     
     if (confirmation !== 'RESET_FACTORY') {
-      if (confirmation) toast.error("Code de confirmation incorrect");
+      if (confirmation) toast.error(t('admins.reset_code_error'));
       return;
     }
 
@@ -135,15 +137,15 @@ export default function AdminManagement() {
       });
 
       if (res.ok) {
-        toast.success("Système réinitialisé avec succès !");
+        toast.success(t('admins.reset_success'));
         window.location.reload(); // Reload to clear all data in context
       } else {
         const error = await res.json();
-        toast.error(error.message || "Échec de la réinitialisation");
+        toast.error(error.message || t('admins.reset_failed'));
       }
     } catch (err) {
       console.error("Error resetting system:", err);
-      toast.error("Erreur réseau");
+      toast.error(t('common.error'));
     } finally {
       setLoading(false);
     }
@@ -157,15 +159,15 @@ export default function AdminManagement() {
     <div className="space-y-6 pb-20">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h3 className="text-xl font-bold">Gestion des Administrateurs</h3>
-          <p className="text-sm text-neutral-500">Gérez les accès administratifs de la plateforme.</p>
+          <h3 className="text-xl font-bold">{t('admins.title')}</h3>
+          <p className="text-sm text-neutral-500">{t('admins.subtitle')}</p>
         </div>
         <button 
           onClick={() => setIsAddModalOpen(true)}
           className="btn-primary flex items-center gap-2"
         >
           <UserPlus size={18} />
-          <span>Nouveau Administrateur</span>
+          <span>{t('admins.new_admin')}</span>
         </button>
       </div>
 
@@ -175,7 +177,7 @@ export default function AdminManagement() {
             type="text" 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Rechercher par nom, matricule ou email..."
+            placeholder={t('admins.search_placeholder')}
             className="w-full pl-10 pr-4 py-2 bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg focus:ring-2 focus:ring-dia-red transition-all"
           />
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none" size={18} />
@@ -219,7 +221,7 @@ export default function AdminManagement() {
                 <button 
                   onClick={() => handleDeleteAdmin(admin.uid)}
                   className="p-2 hover:bg-red-50 dark:hover:bg-red-950/20 text-red-500 rounded-lg transition-colors"
-                  title="Supprimer l'administrateur"
+                  title={t('admins.delete_admin')}
                 >
                   <Trash2 size={18} />
                 </button>
@@ -227,7 +229,7 @@ export default function AdminManagement() {
               {admin.isSuperAdmin && (
                 <div className="p-2 text-dia-red flex items-center gap-2 text-xs font-bold bg-dia-red/5 rounded-lg border border-dia-red/10">
                   <ShieldAlert size={14} />
-                  Protégé
+                  {t('admins.protected')}
                 </div>
               )}
             </div>
@@ -237,7 +239,7 @@ export default function AdminManagement() {
         {filteredAdmins.length === 0 && (
           <div className="col-span-full py-20 text-center card bg-neutral-50/50 dark:bg-neutral-900/30 border-dashed border-2">
             <Users size={48} className="mx-auto text-neutral-300 mb-4" />
-            <p className="text-neutral-500">Aucun administrateur trouvé.</p>
+            <p className="text-neutral-500">{t('common.no_results')}</p>
           </div>
         )}
       </div>
@@ -249,15 +251,14 @@ export default function AdminManagement() {
               <AlertTriangle size={24} />
             </div>
             <div>
-              <h4 className="text-xl font-black text-red-600 uppercase tracking-tight">Zone de Danger Système</h4>
-              <p className="text-sm text-red-500 font-medium">Action irréversible. Toutes les données de l'application seront supprimées.</p>
+              <h4 className="text-xl font-black text-red-600 uppercase tracking-tight">{t('admins.danger_zone')}</h4>
+              <p className="text-sm text-red-500 font-medium">{t('admins.danger_zone_desc')}</p>
             </div>
           </div>
           
           <div className="p-6 bg-white dark:bg-neutral-900/50 rounded-2xl border border-red-200 dark:border-red-900/30">
             <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-6 leading-relaxed">
-              La réinitialisation d'usine supprimera définitivement tous les élèves, enseignants, classes, registres financiers, communiqués et documents de la bibliothèque. 
-              <strong> Vos comptes Super Administrateur seront conservés</strong> pour vous permettre de recommencer une nouvelle configuration.
+              {t('admins.reset_warning')}
             </p>
             
             <button 
@@ -265,7 +266,7 @@ export default function AdminManagement() {
               className="flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-red-600/20 active:scale-95"
             >
               <RotateCcw size={18} />
-              <span>Réinitialiser toute l'école</span>
+              <span>{t('admins.reset_btn')}</span>
             </button>
           </div>
         </div>
@@ -276,7 +277,7 @@ export default function AdminManagement() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-neutral-900 w-full max-w-lg rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-              <h3 className="text-2xl font-bold tracking-tight">Nouvel Administrateur</h3>
+              <h3 className="text-2xl font-bold tracking-tight">{t('admins.new_admin')}</h3>
               <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
                 <X size={24} />
               </button>
@@ -284,14 +285,14 @@ export default function AdminManagement() {
             <form onSubmit={handleAddAdmin} className="p-8 space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Prénom</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.firstName')}</label>
                   <div className="relative">
                     <User className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
                     <input name="firstName" required type="text" className="w-full pl-12 pr-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Nom</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.lastName')}</label>
                   <div className="relative">
                     <User className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
                     <input name="lastName" required type="text" className="w-full pl-12 pr-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
@@ -299,7 +300,7 @@ export default function AdminManagement() {
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Matricule</label>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.matricule')}</label>
                 <div className="relative">
                   <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
                   <input name="matricule" required type="text" placeholder="ADMIN_EXAM" className="w-full pl-12 pr-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
@@ -313,18 +314,18 @@ export default function AdminManagement() {
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Mot de passe provisoire</label>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('admins.temp_password')}</label>
                 <input name="password" required type="text" defaultValue="Admin.1234" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
               </div>
 
               <div className="pt-4 flex gap-4">
-                <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
+                <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">{t('common.cancel')}</button>
                 <button 
                   type="submit" 
                   disabled={submitting}
                   className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
                 >
-                  {submitting ? "Traitement..." : "Créer le compte"}
+                  {submitting ? t('common.processing') : t('admins.create_account')}
                 </button>
               </div>
             </form>

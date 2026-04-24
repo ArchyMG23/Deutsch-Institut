@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { 
   Plus, 
   X, 
@@ -18,6 +19,7 @@ import { useData } from '../context/DataContext';
 import { toast } from 'sonner';
 
 export default function LevelManagement() {
+  const { t } = useTranslation();
   const { fetchWithAuth } = useAuth();
   const { levels, loading, refreshLevels } = useData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -52,14 +54,14 @@ export default function LevelManagement() {
       if (res.ok) {
         setIsAddModalOpen(false);
         refreshLevels();
-        toast.success('Niveau créé avec succès');
+        toast.success(t('levels.level_added'));
       } else {
         const errorData = await res.json();
-        toast.error(errorData.message || 'Erreur lors de la création du niveau');
+        toast.error(errorData.message || t('common.error'));
       }
     } catch (err) {
       console.error("Error adding level:", err);
-      toast.error('Erreur lors de la création du niveau');
+      toast.error(t('common.error'));
     } finally {
       setSubmitting(false);
     }
@@ -86,24 +88,27 @@ export default function LevelManagement() {
       if (res.ok) {
         setEditingLevel(null);
         refreshLevels();
-        toast.success('Niveau modifié avec succès');
+        toast.success(t('levels.level_updated'));
       } else {
         const errorData = await res.json();
-        toast.error(errorData.message || 'Erreur lors de la modification');
+        toast.error(errorData.message || t('common.error'));
       }
     } catch (err) {
       console.error("Error editing level:", err);
-      toast.error('Erreur lors de la modification du niveau');
+      toast.error(t('common.error'));
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleDeleteLevel = async (id: string) => {
-    if (!window.confirm('Supprimer ce niveau ?')) return;
+    if (!window.confirm(t('levels.confirm_delete'))) return;
     try {
       const res = await fetchWithAuth(`/api/levels/${id}`, { method: 'DELETE' });
-      if (res.ok) refreshLevels();
+      if (res.ok) {
+        refreshLevels();
+        toast.success(t('levels.level_deleted'));
+      }
     } catch (err) {
       console.error("Error deleting level:", err);
     }
@@ -141,13 +146,13 @@ export default function LevelManagement() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h3 className="text-xl font-bold">Gestion des Niveaux</h3>
+        <h3 className="text-xl font-bold">{t('levels.title')}</h3>
         <button 
           onClick={() => setIsAddModalOpen(true)}
           className="btn-primary flex items-center gap-2"
         >
           <Plus size={18} />
-          <span>Nouveau Niveau</span>
+          <span>{t('levels.add_level')}</span>
         </button>
       </div>
 
@@ -157,21 +162,21 @@ export default function LevelManagement() {
             type="text" 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Rechercher un niveau..."
+            placeholder={t('classes.search_placeholder')}
             className="w-full pl-10 pr-4 py-2 bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg focus:ring-2 focus:ring-dia-red transition-all"
           />
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none z-10" size={18} />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-neutral-400 uppercase">Trier par:</span>
+          <span className="text-xs font-bold text-neutral-400 uppercase">{t('common.sort_by')}:</span>
           <select 
             value={sortConfig?.key || ''} 
             onChange={(e) => handleSort(e.target.value)}
             className="bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-dia-red outline-none"
           >
-            <option value="name">Nom</option>
-            <option value="tuition">Scolarité</option>
-            <option value="hours">Heures</option>
+            <option value="name">{t('common.name')}</option>
+            <option value="tuition">{t('sidebar.finances')}</option>
+            <option value="hours">{t('levels.hours')}</option>
           </select>
           <button 
             onClick={() => handleSort(sortConfig?.key || 'name')}
@@ -214,7 +219,7 @@ export default function LevelManagement() {
               </div>
               <div className="flex items-center gap-3 text-sm">
                 <Clock size={16} className="text-neutral-400" />
-                <span className="font-medium">{level.hours} Heures</span>
+                <span className="font-medium">{level.hours} {t('levels.hours')}</span>
               </div>
             </div>
           </div>
@@ -226,7 +231,7 @@ export default function LevelManagement() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-neutral-900 w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-              <h3 className="text-2xl font-bold tracking-tight">Nouveau Niveau</h3>
+              <h3 className="text-2xl font-bold tracking-tight">{t('levels.add_level')}</h3>
               <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
                 <X size={24} />
               </button>
@@ -234,20 +239,20 @@ export default function LevelManagement() {
             <form onSubmit={handleAddLevel} className="p-8 space-y-6">
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Nom du niveau (ex: A1)</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('levels.name')}</label>
                   <input name="name" required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Frais de scolarité (XAF)</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('levels.price')}</label>
                   <input name="tuition" required type="number" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Quota horaire total</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('levels.hours')}</label>
                   <input name="hours" required type="number" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
               </div>
               <div className="pt-4 flex gap-4">
-                <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
+                <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">{t('common.cancel')}</button>
                 <button 
                   type="submit" 
                   disabled={submitting}
@@ -256,10 +261,10 @@ export default function LevelManagement() {
                   {submitting ? (
                     <>
                       <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
-                      Création...
+                      {t('classes.creating')}
                     </>
                   ) : (
-                    "Créer"
+                    t('common.submit')
                   )}
                 </button>
               </div>
@@ -273,7 +278,7 @@ export default function LevelManagement() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-neutral-900 w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-              <h3 className="text-2xl font-bold tracking-tight">Modifier Niveau</h3>
+              <h3 className="text-2xl font-bold tracking-tight">{t('common.edit')}</h3>
               <button onClick={() => setEditingLevel(null)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
                 <X size={24} />
               </button>
@@ -281,20 +286,20 @@ export default function LevelManagement() {
             <form onSubmit={handleEditLevel} className="p-8 space-y-6">
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Nom du niveau</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('levels.name')}</label>
                   <input name="name" defaultValue={editingLevel.name} required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Frais de scolarité (XAF)</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('levels.price')}</label>
                   <input name="tuition" defaultValue={editingLevel.tuition} required type="number" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Quota horaire total</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('levels.hours')}</label>
                   <input name="hours" defaultValue={editingLevel.hours} required type="number" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
               </div>
               <div className="pt-4 flex gap-4">
-                <button type="button" onClick={() => setEditingLevel(null)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">Annuler</button>
+                <button type="button" onClick={() => setEditingLevel(null)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">{t('common.cancel')}</button>
                 <button 
                   type="submit" 
                   disabled={submitting}
@@ -303,10 +308,10 @@ export default function LevelManagement() {
                   {submitting ? (
                     <>
                       <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
-                      Mise à jour...
+                      {t('common.updating')}
                     </>
                   ) : (
-                    "Enregistrer"
+                    t('common.save')
                   )}
                 </button>
               </div>
