@@ -68,6 +68,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
+    const handleOnline = () => toast.success(i18n.t('common.online_msg') || 'Vous êtes de nouveau en ligne');
+    const handleOffline = () => toast.error(i18n.t('common.offline_msg') || 'Connexion perdue. Vérifiez votre accès internet (Orange/MTN)');
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
     console.log("AuthProvider: Initializing Auth listener...");
     
     // Safety timeout: force loading to false after 8 seconds if Firebase doesn't respond
@@ -167,6 +173,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       unsubscribe();
       clearTimeout(safetyTimeout);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
     };
   }, []);
 

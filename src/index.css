@@ -22,8 +22,18 @@
 
   body {
     @apply bg-neutral-50 text-neutral-900 antialiased transition-colors duration-300;
+    /* Ensure minimum height on mobile and prevent pull-to-refresh if needed */
+    /* overflow-x: hidden; */
+    min-height: 100vh;
+    min-height: 100dvh;
+    -webkit-tap-highlight-color: transparent;
   }
   
+  /* Fix for iOS Safari auto-zoom on inputs */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+
   .dark body {
     @apply bg-neutral-950 text-neutral-50;
   }
