@@ -55,7 +55,8 @@ function AnimatedRoutes() {
   const location = useLocation();
   
   return (
-    <Routes location={location}>
+    <AnimatePresence mode="wait">
+      <Routes location={location} key={location.pathname}>
       <Route path="/login" element={<LoginPage />} />
       
       {/* Admin Routes */}
@@ -253,7 +254,8 @@ function AnimatedRoutes() {
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    );
+    </AnimatePresence>
+  );
 }
 
 export default function App() {

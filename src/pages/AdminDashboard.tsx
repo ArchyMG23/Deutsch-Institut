@@ -114,8 +114,8 @@ export default function AdminDashboard() {
 
   const { totalIncome, totalExpense } = React.useMemo(() => {
     return {
-      totalIncome: finances.filter(f => f.type === 'income').reduce((acc, curr) => acc + curr.amount, 0),
-      totalExpense: finances.filter(f => f.type === 'expense').reduce((acc, curr) => acc + curr.amount, 0)
+      totalIncome: (finances || []).filter(f => f.type === 'income').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0),
+      totalExpense: (finances || []).filter(f => f.type === 'expense').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0)
     };
   }, [finances]);
   

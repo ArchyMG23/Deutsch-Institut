@@ -99,13 +99,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             let fullProfileData = { ...userData };
 
             // Fetch additional profile data if it's a student or teacher
-            if (userData.role === 'student' && userData.matricule) {
-              const studentDoc = await getDoc(doc(db, 'students', userData.matricule));
+            if (userData.role === 'student') {
+              const studentDoc = await getDoc(doc(db, 'students', firebaseUser.uid));
               if (studentDoc.exists()) {
                 fullProfileData = { ...fullProfileData, ...studentDoc.data() };
               }
-            } else if (userData.role === 'teacher' && userData.matricule) {
-              const teacherDoc = await getDoc(doc(db, 'teachers', userData.matricule));
+            } else if (userData.role === 'teacher') {
+              const teacherDoc = await getDoc(doc(db, 'teachers', firebaseUser.uid));
               if (teacherDoc.exists()) {
                 fullProfileData = { ...fullProfileData, ...teacherDoc.data() };
               }

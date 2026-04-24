@@ -105,7 +105,7 @@ export default function StudentManagement() {
       });
 
       const finalY = (doc as any).lastAutoTable.finalY + 15;
-      const totalPaid = selectedStudent.payments.reduce((acc, p) => acc + p.amount, 0);
+      const totalPaid = (selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
       
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
@@ -442,8 +442,8 @@ export default function StudentManagement() {
         aValue = classes.find(c => c.id === a.classId)?.name?.toLowerCase() || '';
         bValue = classes.find(c => c.id === b.classId)?.name?.toLowerCase() || '';
       } else if (key === 'tuition') {
-        aValue = a.payments.reduce((acc, p) => acc + p.amount, 0);
-        bValue = b.payments.reduce((acc, p) => acc + p.amount, 0);
+        aValue = (a.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+        bValue = (b.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
       } else {
         aValue = (a as any)[key];
         bValue = (b as any)[key];
@@ -585,7 +585,7 @@ export default function StudentManagement() {
             </thead>
             <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
               {sortedStudents.map((student) => {
-                const totalPaid = student.payments.reduce((acc, p) => acc + p.amount, 0);
+                const totalPaid = (student.payments || []).reduce((acc, p) => acc + (p.amount || 0), 0);
                 const level = levels.find(l => l.id === student.levelId);
                 const tuition = level?.tuition || 0;
                 const isFullyPaid = totalPaid >= tuition;
@@ -1042,7 +1042,7 @@ export default function StudentManagement() {
                 <div>
                   <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">{t('students.tuition_status') || 'Statut Scolarité'}</p>
                   <p className="text-sm font-bold">
-                    {formatCurrency(selectedStudent.payments.reduce((acc, p) => acc + p.amount, 0))} / {formatCurrency(levels.find(l => l.id === selectedStudent.levelId)?.tuition || 0)}
+                    {formatCurrency((selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0))} / {formatCurrency(levels.find(l => l.id === selectedStudent.levelId)?.tuition || 0)}
                   </p>
                 </div>
               </div>
@@ -1069,7 +1069,7 @@ export default function StudentManagement() {
                 </button>
                 <button 
                   onClick={handleSendReminder}
-                  disabled={submitting || (selectedStudent.payments.reduce((acc, p) => acc + p.amount, 0) >= (levels.find(l => l.id === selectedStudent.levelId)?.tuition || 0))}
+                  disabled={submitting || ((selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0) >= (levels.find(l => l.id === selectedStudent.levelId)?.tuition || 0))}
                   className="flex-1 min-w-[120px] bg-dia-red/10 text-dia-red py-3 rounded-2xl font-bold hover:bg-dia-red/20 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:grayscale"
                 >
                   {submitting ? (
@@ -1207,7 +1207,7 @@ export default function StudentManagement() {
                     <tfoot>
                       <tr className="border-t-2 border-neutral-900">
                         <td className="py-4 font-bold uppercase">{t('students.total_paid')}</td>
-                        <td className="py-4 text-right font-black text-lg">{formatCurrency(selectedStudent.payments.reduce((acc, p) => acc + p.amount, 0))}</td>
+                        <td className="py-4 text-right font-black text-lg">{formatCurrency((selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0))}</td>
                       </tr>
                     </tfoot>
                   </table>

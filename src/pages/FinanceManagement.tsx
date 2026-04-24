@@ -130,7 +130,7 @@ const TransactionTable = ({
                 </td>
                 <td className="px-6 py-4 print:px-2">
                   <span className="text-[10px] font-bold uppercase px-2 py-1 bg-neutral-100 dark:bg-neutral-800 rounded-full text-neutral-500 border border-neutral-200 dark:border-neutral-700">
-                    {t(`finances.categories.${record.category.toLowerCase()}`) || record.category}
+                    {t(`finances.categories.${(record.category || 'other').toLowerCase()}`) || record.category || 'Other'}
                   </span>
                 </td>
                 {isTrash && (
@@ -203,7 +203,17 @@ export default function FinanceManagement() {
   }, [refreshFinances, refreshTrash]);
 
   // Available Years from data
-  const availableYears = Array.from(new Set(allRecords.map(r => new Date(r.date).getFullYear().toString()))) as string[];
+  const availableYears = Array.from(new Set(
+    allRecords
+      .filter(r => r && r.date)
+      .map(r => {
+        try {
+          return new Date(r.date).getFullYear().toString();
+        } catch (e) {
+          return new Date().getFullYear().toString();
+        }
+      })
+  )) as string[];
   availableYears.sort((a, b) => b.localeCompare(a));
   if (!availableYears.includes(new Date().getFullYear().toString())) {
     availableYears.push(new Date().getFullYear().toString());
@@ -294,20 +304,24 @@ export default function FinanceManagement() {
   };
 
   const filteredByDate = allRecords.filter(r => {
+    if (!r || !r.date) return false;
     const d = new Date(r.date);
     const yearMatch = d.getFullYear().toString() === selectedYear;
     const monthMatch = selectedMonth === 'all' || d.getMonth().toString() === selectedMonth;
+    const desc = (r.description || '').toLowerCase();
+    const cat = (r.category || '').toLowerCase();
+    const query = searchQuery.toLowerCase();
     const searchMatch = searchQuery === '' || 
-      r.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.amount.toString().includes(searchQuery);
+      desc.includes(query) ||
+      cat.includes(query) ||
+      (r.amount && r.amount.toString().includes(searchQuery));
     return yearMatch && monthMatch && searchMatch;
   });
 
   const filteredByType = filteredByDate.filter(r => filterType === 'all' || r.type === filterType);
 
-  const totalIncome = filteredByDate.filter(r => r.type === 'income').reduce((acc, r) => acc + r.amount, 0);
-  const totalExpense = filteredByDate.filter(r => r.type === 'expense').reduce((acc, r) => acc + r.amount, 0);
+  const totalIncome = filteredByDate.filter(r => r && r.type === 'income').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
+  const totalExpense = filteredByDate.filter(r => r && r.type === 'expense').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
   const balance = totalIncome - totalExpense;
 
   const sortedRecords = [...filteredByType].sort((a, b) => {
@@ -598,8 +612,8 @@ export default function FinanceManagement() {
                 });
               if (monthRecords.length === 0) return null;
 
-              const monthIncome = monthRecords.filter(r => r.type === 'income').reduce((acc, r) => acc + r.amount, 0);
-              const monthExpense = monthRecords.filter(r => r.type === 'expense').reduce((acc, r) => acc + r.amount, 0);
+              const monthIncome = (monthRecords || []).filter(r => r.type === 'income').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
+              const monthExpense = (monthRecords || []).filter(r => r.type === 'expense').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
 
               return (
                 <div key={month.value} className="card overflow-hidden">
