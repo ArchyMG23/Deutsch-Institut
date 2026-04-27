@@ -33,7 +33,7 @@ import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 
 export default function AdminDashboard() {
-  const { students, teachers, finances, evaluations, loading, refreshStudents, refreshTeachers, refreshFinances, refreshEvaluations } = useData();
+  const { students, teachers, finances, evaluations, loading, refreshAll } = useData();
   const { fetchWithAuth } = useAuth();
   const { t } = useTranslation();
   const [configStatus, setConfigStatus] = useState<any>(null);
@@ -44,13 +44,10 @@ export default function AdminDashboard() {
   const [checkingDiag, setCheckingDiag] = useState(false);
   
   useEffect(() => {
-    refreshStudents();
-    refreshTeachers();
-    refreshFinances();
-    refreshEvaluations();
+    refreshAll();
     checkConfig();
     fetchLogs();
-  }, [refreshStudents, refreshTeachers, refreshFinances, refreshEvaluations]);
+  }, [refreshAll]);
 
   const fetchLogs = async () => {
     try {

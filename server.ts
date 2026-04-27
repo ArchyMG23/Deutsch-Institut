@@ -98,7 +98,7 @@ if (!admin.apps.length) {
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
   port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: process.env.SMTP_PORT === '465', // true for 465, false for other ports (like 587 STARTTLS)
+  secure: process.env.SMTP_PORT === '465', 
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
@@ -107,15 +107,12 @@ const transporter = nodemailer.createTransport({
     rejectUnauthorized: false,
     minVersion: 'TLSv1.2'
   },
-  pool: true,
-  maxConnections: 3,
-  maxMessages: 100,
-  connectionTimeout: 20000, // Increased to 20s
-  greetingTimeout: 10000,
-  socketTimeout: 30000,
-  debug: true,
-  logger: true,
-  // Force IPv4
+  greetingTimeout: 15000,
+  connectionTimeout: 30000,
+  socketTimeout: 45000,
+  debug: false,
+  logger: false,
+  // Strict IPv4
   // @ts-ignore
   family: 4
 } as any);
@@ -126,7 +123,7 @@ let lastSmtpError = "";
 if (process.env.SMTP_USER && process.env.SMTP_PASS) {
   transporter.verify((error, success) => {
     if (error) {
-      const isTimeout = error.message.toLowerCase().includes('timeout') || error.code === 'ETIMEDOUT';
+      const isTimeout = error.message.toLowerCase().includes('timeout') || (error as any).code === 'ETIMEDOUT';
       const errorMsg = isTimeout 
         ? "Délai d'attente dépassé : Le serveur SMTP ne répond pas. Vérifiez le port (587 ou 465) et si votre hôte autorise les connexions SMTP." 
         : `La configuration mail est incorrecte. Erreur: ${error.message}`;

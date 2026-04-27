@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { Student, Teacher, ClassRoom, Level, FinanceRecord, LibraryItem, Evaluation } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -36,92 +36,133 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [loading, setLoading] = useState(false);
-  const [lastFetch, setLastFetch] = useState<number>(0);
+  const lastFetchRef = useRef<number>(0);
+  const lastFetchTimesRef = useRef<Record<string, number>>({});
+
+  const shouldFetch = useCallback((key: string) => {
+    const now = Date.now();
+    const last = lastFetchTimesRef.current[key] || 0;
+    return now - last > 5000; // 5 second throttle
+  }, []);
 
   const refreshStudents = useCallback(async () => {
+    if (!shouldFetch('students')) return;
     try {
       const res = await fetchWithAuth('/api/students');
-      if (res.ok) setStudents(await res.json());
+      if (res.ok) {
+        setStudents(await res.json());
+        lastFetchTimesRef.current['students'] = Date.now();
+      }
     } catch (err) {
       console.error("Error fetching students:", err);
     }
-  }, [fetchWithAuth]);
+  }, [fetchWithAuth, shouldFetch]);
 
   const refreshTeachers = useCallback(async () => {
+    if (!shouldFetch('teachers')) return;
     try {
       const res = await fetchWithAuth('/api/teachers');
-      if (res.ok) setTeachers(await res.json());
+      if (res.ok) {
+        setTeachers(await res.json());
+        lastFetchTimesRef.current['teachers'] = Date.now();
+      }
     } catch (err) {
       console.error("Error fetching teachers:", err);
     }
-  }, [fetchWithAuth]);
+  }, [fetchWithAuth, shouldFetch]);
 
   const refreshClasses = useCallback(async () => {
+    if (!shouldFetch('classes')) return;
     try {
       const res = await fetchWithAuth('/api/classes');
-      if (res.ok) setClasses(await res.json());
+      if (res.ok) {
+        setClasses(await res.json());
+        lastFetchTimesRef.current['classes'] = Date.now();
+      }
     } catch (err) {
       console.error("Error fetching classes:", err);
     }
-  }, [fetchWithAuth]);
+  }, [fetchWithAuth, shouldFetch]);
 
   const refreshLevels = useCallback(async () => {
+    if (!shouldFetch('levels')) return;
     try {
       const res = await fetchWithAuth('/api/levels');
-      if (res.ok) setLevels(await res.json());
+      if (res.ok) {
+        setLevels(await res.json());
+        lastFetchTimesRef.current['levels'] = Date.now();
+      }
     } catch (err) {
       console.error("Error fetching levels:", err);
     }
-  }, [fetchWithAuth]);
+  }, [fetchWithAuth, shouldFetch]);
 
   const refreshFinances = useCallback(async () => {
+    if (!shouldFetch('finances')) return;
     try {
       const res = await fetchWithAuth('/api/finances');
-      if (res.ok) setFinances(await res.json());
+      if (res.ok) {
+        setFinances(await res.json());
+        lastFetchTimesRef.current['finances'] = Date.now();
+      }
     } catch (err) {
       console.error("Error fetching finances:", err);
     }
-  }, [fetchWithAuth]);
+  }, [fetchWithAuth, shouldFetch]);
 
   const refreshTrash = useCallback(async () => {
+    if (!shouldFetch('trash')) return;
     try {
       const res = await fetchWithAuth('/api/finances/trash');
-      if (res.ok) setTrashFinances(await res.json());
+      if (res.ok) {
+        setTrashFinances(await res.json());
+        lastFetchTimesRef.current['trash'] = Date.now();
+      }
     } catch (err) {
       console.error("Error fetching trash:", err);
     }
-  }, [fetchWithAuth]);
+  }, [fetchWithAuth, shouldFetch]);
 
   const refreshLibrary = useCallback(async () => {
+    if (!shouldFetch('library')) return;
     try {
       const res = await fetchWithAuth('/api/library');
-      if (res.ok) setLibrary(await res.json());
+      if (res.ok) {
+        setLibrary(await res.json());
+        lastFetchTimesRef.current['library'] = Date.now();
+      }
     } catch (err) {
       console.error("Error fetching library:", err);
     }
-  }, [fetchWithAuth]);
+  }, [fetchWithAuth, shouldFetch]);
 
   const refreshEvaluations = useCallback(async () => {
+    if (!shouldFetch('evaluations')) return;
     try {
       const res = await fetchWithAuth('/api/evaluations');
-      if (res.ok) setEvaluations(await res.json());
+      if (res.ok) {
+        setEvaluations(await res.json());
+        lastFetchTimesRef.current['evaluations'] = Date.now();
+      }
     } catch (err) {
       console.error("Error fetching evaluations:", err);
     }
-  }, [fetchWithAuth]);
+  }, [fetchWithAuth, shouldFetch]);
 
   const refreshAll = useCallback(async (force = false) => {
     if (!user) return;
     
     // Prevent double fetching within 30 seconds unless forced
     const now = Date.now();
+    const lastFetch = lastFetchRef.current;
     if (!force && lastFetch && now - lastFetch < 30000) {
-      console.log("Skipping refreshAll (last fetch was too recent)");
       return;
     }
     
     setLoading(true);
     try {
+      lastFetchTimesRef.current = {}; 
+      
       await Promise.all([
         refreshStudents(),
         refreshTeachers(),
@@ -132,11 +173,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         refreshLibrary(),
         refreshEvaluations()
       ]);
-      setLastFetch(now);
+      lastFetchRef.current = now;
     } finally {
       setLoading(false);
     }
-  }, [user, lastFetch, refreshStudents, refreshTeachers, refreshClasses, refreshLevels, refreshFinances, refreshLibrary, refreshEvaluations]);
+  }, [user, refreshStudents, refreshTeachers, refreshClasses, refreshLevels, refreshFinances, refreshTrash, refreshLibrary, refreshEvaluations]);
 
   return (
     <DataContext.Provider value={{
