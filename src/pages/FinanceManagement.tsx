@@ -328,90 +328,122 @@ export default function FinanceManagement() {
   };
 
   const filteredByDate = React.useMemo(() => {
-    const query = searchQuery.toLowerCase();
-    return allRecords.filter(r => {
-      if (!r || !r.date) return false;
-      const d = new Date(r.date);
-      const yearMatch = d.getFullYear().toString() === selectedYear;
-      const monthMatch = selectedMonth === 'all' || d.getMonth().toString() === selectedMonth;
-      
-      if (!yearMatch || !monthMatch) return false;
-
-      const desc = (r.description || '').toLowerCase();
-      const cat = (r.category || '').toLowerCase();
-      
-      const searchMatch = searchQuery === '' || 
-        desc.includes(query) ||
-        cat.includes(query) ||
-        (r.amount && r.amount.toString().includes(searchQuery));
+    try {
+      const query = searchQuery.toLowerCase();
+      return allRecords.filter(r => {
+        if (!r || !r.date) return false;
+        const d = new Date(r.date);
+        if (isNaN(d.getTime())) return false;
+        const yearMatch = d.getFullYear().toString() === selectedYear;
+        const monthMatch = selectedMonth === 'all' || d.getMonth().toString() === selectedMonth;
         
-      return searchMatch;
-    });
+        if (!yearMatch || !monthMatch) return false;
+
+        const desc = (r.description || '').toLowerCase();
+        const cat = (r.category || '').toLowerCase();
+        
+        const searchMatch = searchQuery === '' || 
+          desc.includes(query) ||
+          cat.includes(query) ||
+          (r.amount && r.amount.toString().includes(searchQuery));
+          
+        return searchMatch;
+      });
+    } catch (e) {
+      console.error("Crash in filteredByDate memo:", e);
+      return [];
+    }
   }, [allRecords, selectedYear, selectedMonth, searchQuery]);
 
   const filteredByType = React.useMemo(() => {
-    if (filterType === 'all') return filteredByDate;
-    return filteredByDate.filter(r => r.type === filterType);
+    try {
+      if (filterType === 'all') return filteredByDate;
+      return filteredByDate.filter(r => r.type === filterType);
+    } catch (e) {
+      console.error("Crash in filteredByType memo:", e);
+      return [];
+    }
   }, [filteredByDate, filterType]);
 
   const { totalIncome, totalExpense, balance } = React.useMemo(() => {
-    let income = 0;
-    let expense = 0;
-    filteredByDate.forEach(r => {
-      if (r && r.type === 'income') income += (Number(r.amount) || 0);
-      else if (r && r.type === 'expense') expense += (Number(r.amount) || 0);
-    });
-    return { 
-      totalIncome: income, 
-      totalExpense: expense, 
-      balance: income - expense 
-    };
+    try {
+      let income = 0;
+      let expense = 0;
+      filteredByDate.forEach(r => {
+        if (r && r.type === 'income') income += (Number(r.amount) || 0);
+        else if (r && r.type === 'expense') expense += (Number(r.amount) || 0);
+      });
+      return { 
+        totalIncome: income, 
+        totalExpense: expense, 
+        balance: income - expense 
+      };
+    } catch (e) {
+      console.error("Crash in balance stats memo:", e);
+      return { totalIncome: 0, totalExpense: 0, balance: 0 };
+    }
   }, [filteredByDate]);
 
   const sortedRecords = React.useMemo(() => {
-    const records = [...filteredByType];
-    if (!sortConfig) return records;
-    
-    const { key, direction } = sortConfig;
-    
-    return records.sort((a, b) => {
-      let aValue: any = (a as any)[key];
-      let bValue: any = (b as any)[key];
+    try {
+      const records = [...filteredByType];
+      if (!sortConfig) return records;
+      
+      const { key, direction } = sortConfig;
+      
+      return records.sort((a, b) => {
+        let aValue: any = (a as any)[key];
+        let bValue: any = (b as any)[key];
 
-      if (key === 'date') {
-        aValue = new Date(aValue).getTime();
-        bValue = new Date(bValue).getTime();
-      } else if (typeof aValue === 'string') {
-        aValue = aValue.toLowerCase();
-        bValue = bValue.toLowerCase();
-      }
+        if (key === 'date') {
+          aValue = new Date(aValue).getTime();
+          bValue = new Date(bValue).getTime();
+          if (isNaN(aValue)) aValue = 0;
+          if (isNaN(bValue)) bValue = 0;
+        } else if (typeof aValue === 'string') {
+          aValue = aValue.toLowerCase();
+          bValue = bValue.toLowerCase();
+        }
 
-      if (aValue < bValue) return direction === 'asc' ? -1 : 1;
-      if (aValue > bValue) return direction === 'asc' ? 1 : -1;
-      return 0;
-    });
+        if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    } catch (e) {
+      console.error("Crash in sortedRecords memo:", e);
+      return filteredByType;
+    }
   }, [filteredByType, sortConfig]);
 
   const recordsByMonth = React.useMemo(() => {
-    if (selectedMonth !== 'all') return null;
-    
-    const groups: Record<string, FinanceRecord[]> = {};
-    filteredByType.forEach(r => {
-      const m = new Date(r.date).getMonth().toString();
-      if (!groups[m]) groups[m] = [];
-      groups[m].push(r);
-    });
-    
-    // Sort each group's individual records
-    Object.keys(groups).forEach(m => {
-      groups[m].sort((a, b) => {
-        const dateA = new Date(a.date).getTime();
-        const dateB = new Date(b.date).getTime();
-        return sortConfig?.direction === 'asc' ? dateA - dateB : dateB - dateA;
+    try {
+      if (selectedMonth !== 'all') return null;
+      
+      const groups: Record<string, FinanceRecord[]> = {};
+      filteredByType.forEach(r => {
+        const d = new Date(r.date);
+        if (isNaN(d.getTime())) return;
+        const m = d.getMonth().toString();
+        if (!groups[m]) groups[m] = [];
+        groups[m].push(r);
       });
-    });
-    
-    return groups;
+      
+      // Sort each group's individual records
+      Object.keys(groups).forEach(m => {
+        groups[m].sort((a, b) => {
+          const dateA = new Date(a.date).getTime();
+          const dateB = new Date(b.date).getTime();
+          const valA = isNaN(dateA) ? 0 : dateA;
+          const valB = isNaN(dateB) ? 0 : dateB;
+          return sortConfig?.direction === 'asc' ? valA - valB : valB - valA;
+        });
+      });
+      
+      return groups;
+    } catch (e) {
+      console.error("Crash in recordsByMonth memo:", e);
+      return {};
+    }
   }, [filteredByType, selectedMonth, sortConfig]);
 
   const handleSort = (key: string) => {
