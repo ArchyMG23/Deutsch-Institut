@@ -8,6 +8,10 @@ i18n
   .init({
     fallbackLng: 'fr',
     supportedLngs: ['fr', 'de', 'en'],
+    detection: {
+      order: ['cookie', 'localStorage', 'navigator', 'htmlTag', 'path', 'subdomain'],
+      caches: ['cookie', 'localStorage'],
+    },
     interpolation: {
       escapeValue: false,
     },
@@ -73,7 +77,12 @@ i18n
             archive: "Archiver",
             delete_forever: "Supprimer définitivement",
             restore: "Restaurer",
-            update: "Mettre à jour"
+            update: "Mettre à jour",
+            accept_cookies: "Accepter",
+            decline_cookies: "Refuser",
+            cookies_title: "Gestion des Cookies",
+            cookies_message: "Nous utilisons des cookies pour améliorer votre expérience de navigation et analyser le trafic du site.",
+            read_more: "En savoir plus"
           },
           login: {
             title: "DIA_SAAS",
@@ -589,7 +598,12 @@ i18n
             archive: "Archivieren",
             delete_forever: "Endgültig löschen",
             restore: "Wiederherstellen",
-            update: "Aktualisieren"
+            update: "Aktualisieren",
+            accept_cookies: "Akzeptieren",
+            decline_cookies: "Ablehnen",
+            cookies_title: "Cookie-Verwaltung",
+            cookies_message: "Wir verwenden Cookies, um Ihre Browser-Erfahrung zu verbessern und den Website-Traffic zu analysieren.",
+            read_more: "Mehr erfahren"
           },
           login: {
             title: "DIA_SAAS",

@@ -8,6 +8,7 @@ import { DashboardLayout } from './components/DashboardLayout';
 import LoginPage from './pages/LoginPage';
 import { Toaster } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
+import CookieConsent from './components/CookieConsent';
 
 // Lazy load pages for better performance
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
@@ -56,7 +57,14 @@ function AnimatedRoutes() {
   
   return (
     <AnimatePresence mode="wait">
-      <Routes location={location} key={location.pathname}>
+      <motion.div 
+        key={location.pathname}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.1 }}
+      >
+        <Routes location={location}>
       <Route path="/login" element={<LoginPage />} />
       
       {/* Admin Routes */}
@@ -254,6 +262,7 @@ function AnimatedRoutes() {
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </motion.div>
     </AnimatePresence>
   );
 }
@@ -265,6 +274,7 @@ export default function App() {
         <DataProvider>
           <Toaster position="top-right" richColors visibleToasts={3} expand={true} duration={3000} closeButton />
           <Router>
+            <CookieConsent />
             <Suspense fallback={
               <div className="flex items-center justify-center min-h-screen">
                 <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-dia-red"></div>

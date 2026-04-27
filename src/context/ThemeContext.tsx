@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import Cookies from 'js-cookie';
 
 interface ThemeContextType {
   theme: 'light' | 'dark';
@@ -10,7 +11,7 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof window !== 'undefined') {
-      return (localStorage.getItem('theme') as 'light' | 'dark') || 'light';
+      return (Cookies.get('theme') as 'light' | 'dark') || 'light';
     }
     return 'light';
   });
@@ -22,7 +23,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     } else {
       root.classList.remove('dark');
     }
-    localStorage.setItem('theme', theme);
+    Cookies.set('theme', theme, { expires: 365 });
   }, [theme]);
 
   const toggleTheme = () => {

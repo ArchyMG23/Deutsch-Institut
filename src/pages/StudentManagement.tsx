@@ -49,6 +49,8 @@ export default function StudentManagement() {
   const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<'active' | 'former'>('active');
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
   
   const printRef = useRef<HTMLDivElement>(null);
   const receiptRef = useRef<HTMLDivElement>(null);
@@ -455,6 +457,16 @@ export default function StudentManagement() {
     });
   }, [students, searchQuery, activeTab, sortConfig, levels, classes]);
 
+  const paginatedStudents = React.useMemo(() => {
+    return sortedStudents.slice(0, currentPage * itemsPerPage);
+  }, [sortedStudents, currentPage, itemsPerPage]);
+
+  const hasMore = sortedStudents.length > paginatedStudents.length;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, activeTab]);
+
   const handleSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc';
     if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -584,7 +596,7 @@ export default function StudentManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-              {sortedStudents.map((student) => {
+              {paginatedStudents.map((student) => {
                 const totalPaid = (student.payments || []).reduce((acc, p) => acc + (p.amount || 0), 0);
                 const level = levels.find(l => l.id === student.levelId);
                 const tuition = level?.tuition || 0;
@@ -730,6 +742,16 @@ export default function StudentManagement() {
               })}
             </tbody>
           </table>
+          {hasMore && (
+            <div className="p-6 text-center border-t border-neutral-100 dark:border-neutral-800">
+              <button 
+                onClick={() => setCurrentPage(p => p + 1)}
+                className="px-6 py-2 bg-neutral-100 dark:bg-neutral-800 rounded-xl text-sm font-bold uppercase hover:bg-neutral-200 transition-all text-neutral-600 dark:text-neutral-300"
+              >
+                {t('common.show_more') || 'Voir plus'} ({sortedStudents.length - paginatedStudents.length} restants)
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

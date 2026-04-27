@@ -27,20 +27,32 @@ import { motion } from 'motion/react';
 
 import { useTranslation } from 'react-i18next';
 
-const TransactionTable = ({ 
+const TransactionTable = React.memo(({ 
   records, 
   onSort, 
   sortConfig,
   onDelete,
-  isTrash = false
+  isTrash = false,
+  limit = 20
 }: { 
   records: FinanceRecord[], 
   onSort?: (key: string) => void, 
   sortConfig?: { key: string, direction: 'asc' | 'desc' } | null,
   onDelete?: (id: string) => void,
-  isTrash?: boolean
+  isTrash?: boolean,
+  limit?: number
 }) => {
   const { t } = useTranslation();
+  const [displayLimit, setDisplayLimit] = useState(limit);
+  
+  const visibleRecords = React.useMemo(() => records.slice(0, displayLimit), [records, displayLimit]);
+  const hasMore = records.length > displayLimit;
+
+  // Reset limit when records change (e.g. filter change)
+  useEffect(() => {
+    setDisplayLimit(limit);
+  }, [records, limit]);
+
   const SortIcon = ({ column }: { column: string }) => {
     if (!sortConfig || sortConfig.key !== column) return null;
     return sortConfig.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />;
@@ -108,8 +120,8 @@ const TransactionTable = ({
           </tr>
         </thead>
         <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-          {records.length > 0 ? (
-            records.map((record) => (
+          {visibleRecords.length > 0 ? (
+            visibleRecords.map((record) => (
               <tr key={record.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors group">
                 <td className="px-6 py-4 text-sm font-medium print:px-2">
                   {new Date(isTrash && record.deletedAt ? record.deletedAt : record.date).toLocaleDateString()}
@@ -167,9 +179,19 @@ const TransactionTable = ({
           )}
         </tbody>
       </table>
+      {hasMore && (
+        <div className="p-6 text-center border-t border-neutral-100 dark:border-neutral-800 print:hidden">
+          <button 
+            onClick={() => setDisplayLimit(p => p + limit)}
+            className="text-xs font-bold uppercase tracking-widest text-dia-red hover:bg-dia-red/5 px-6 py-2 rounded-xl transition-all"
+          >
+            {t('common.show_more') || 'Voir plus'} ({records.length - displayLimit} restantes)
+          </button>
+        </div>
+      )}
     </div>
   );
-};
+});
 
 export default function FinanceManagement() {
   const { t } = useTranslation();
@@ -203,24 +225,26 @@ export default function FinanceManagement() {
   }, [refreshFinances, refreshTrash]);
 
   // Available Years from data
-  const availableYears = Array.from(new Set(
-    allRecords
-      .filter(r => r && r.date)
-      .map(r => {
+  const availableYears = React.useMemo(() => {
+    const years = new Set<string>();
+    allRecords.forEach(r => {
+      if (r && r.date) {
         try {
-          return new Date(r.date).getFullYear().toString();
+          years.add(new Date(r.date).getFullYear().toString());
         } catch (e) {
-          return new Date().getFullYear().toString();
+          // Ignore invalid dates
         }
-      })
-  )) as string[];
-  availableYears.sort((a, b) => b.localeCompare(a));
-  if (!availableYears.includes(new Date().getFullYear().toString())) {
-    availableYears.push(new Date().getFullYear().toString());
-    availableYears.sort((a, b) => b.localeCompare(a));
-  }
+      }
+    });
+    
+    // Ensure current year is always available
+    const currentYear = new Date().getFullYear().toString();
+    years.add(currentYear);
+    
+    return Array.from(years).sort((a, b) => b.localeCompare(a));
+  }, [allRecords]);
 
-  const months = [
+  const months = React.useMemo(() => [
     { value: 'all', label: t('finances.all_year') },
     { value: '0', label: t('months.january') },
     { value: '1', label: t('months.february') },
@@ -234,7 +258,7 @@ export default function FinanceManagement() {
     { value: '9', label: t('months.october') },
     { value: '10', label: t('months.november') },
     { value: '11', label: t('months.december') },
-  ];
+  ], [t]);
 
   const handleAddRecord = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -303,46 +327,92 @@ export default function FinanceManagement() {
     }
   };
 
-  const filteredByDate = allRecords.filter(r => {
-    if (!r || !r.date) return false;
-    const d = new Date(r.date);
-    const yearMatch = d.getFullYear().toString() === selectedYear;
-    const monthMatch = selectedMonth === 'all' || d.getMonth().toString() === selectedMonth;
-    const desc = (r.description || '').toLowerCase();
-    const cat = (r.category || '').toLowerCase();
+  const filteredByDate = React.useMemo(() => {
     const query = searchQuery.toLowerCase();
-    const searchMatch = searchQuery === '' || 
-      desc.includes(query) ||
-      cat.includes(query) ||
-      (r.amount && r.amount.toString().includes(searchQuery));
-    return yearMatch && monthMatch && searchMatch;
-  });
+    return allRecords.filter(r => {
+      if (!r || !r.date) return false;
+      const d = new Date(r.date);
+      const yearMatch = d.getFullYear().toString() === selectedYear;
+      const monthMatch = selectedMonth === 'all' || d.getMonth().toString() === selectedMonth;
+      
+      if (!yearMatch || !monthMatch) return false;
 
-  const filteredByType = filteredByDate.filter(r => filterType === 'all' || r.type === filterType);
+      const desc = (r.description || '').toLowerCase();
+      const cat = (r.category || '').toLowerCase();
+      
+      const searchMatch = searchQuery === '' || 
+        desc.includes(query) ||
+        cat.includes(query) ||
+        (r.amount && r.amount.toString().includes(searchQuery));
+        
+      return searchMatch;
+    });
+  }, [allRecords, selectedYear, selectedMonth, searchQuery]);
 
-  const totalIncome = filteredByDate.filter(r => r && r.type === 'income').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
-  const totalExpense = filteredByDate.filter(r => r && r.type === 'expense').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
-  const balance = totalIncome - totalExpense;
+  const filteredByType = React.useMemo(() => {
+    if (filterType === 'all') return filteredByDate;
+    return filteredByDate.filter(r => r.type === filterType);
+  }, [filteredByDate, filterType]);
 
-  const sortedRecords = [...filteredByType].sort((a, b) => {
-    if (!sortConfig) return 0;
+  const { totalIncome, totalExpense, balance } = React.useMemo(() => {
+    let income = 0;
+    let expense = 0;
+    filteredByDate.forEach(r => {
+      if (r && r.type === 'income') income += (Number(r.amount) || 0);
+      else if (r && r.type === 'expense') expense += (Number(r.amount) || 0);
+    });
+    return { 
+      totalIncome: income, 
+      totalExpense: expense, 
+      balance: income - expense 
+    };
+  }, [filteredByDate]);
+
+  const sortedRecords = React.useMemo(() => {
+    const records = [...filteredByType];
+    if (!sortConfig) return records;
+    
     const { key, direction } = sortConfig;
     
-    let aValue: any = (a as any)[key];
-    let bValue: any = (b as any)[key];
+    return records.sort((a, b) => {
+      let aValue: any = (a as any)[key];
+      let bValue: any = (b as any)[key];
 
-    if (key === 'date') {
-      aValue = new Date(aValue).getTime();
-      bValue = new Date(bValue).getTime();
-    } else if (typeof aValue === 'string') {
-      aValue = aValue.toLowerCase();
-      bValue = bValue.toLowerCase();
-    }
+      if (key === 'date') {
+        aValue = new Date(aValue).getTime();
+        bValue = new Date(bValue).getTime();
+      } else if (typeof aValue === 'string') {
+        aValue = aValue.toLowerCase();
+        bValue = bValue.toLowerCase();
+      }
 
-    if (aValue < bValue) return direction === 'asc' ? -1 : 1;
-    if (aValue > bValue) return direction === 'asc' ? 1 : -1;
-    return 0;
-  });
+      if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredByType, sortConfig]);
+
+  const recordsByMonth = React.useMemo(() => {
+    if (selectedMonth !== 'all') return null;
+    
+    const groups: Record<string, FinanceRecord[]> = {};
+    filteredByType.forEach(r => {
+      const m = new Date(r.date).getMonth().toString();
+      if (!groups[m]) groups[m] = [];
+      groups[m].push(r);
+    });
+    
+    // Sort each group's individual records
+    Object.keys(groups).forEach(m => {
+      groups[m].sort((a, b) => {
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        return sortConfig?.direction === 'asc' ? dateA - dateB : dateB - dateA;
+      });
+    });
+    
+    return groups;
+  }, [filteredByType, selectedMonth, sortConfig]);
 
   const handleSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -602,18 +672,12 @@ export default function FinanceManagement() {
           </div>
         ) : selectedMonth === 'all' ? (
           <div className="space-y-8">
-            {[...months].filter(m => m.value !== 'all').reverse().map(month => {
-              const monthRecords = filteredByType
-                .filter(r => new Date(r.date).getMonth().toString() === month.value)
-                .sort((a, b) => {
-                  const dateA = new Date(a.date).getTime();
-                  const dateB = new Date(b.date).getTime();
-                  return sortConfig?.direction === 'asc' ? dateA - dateB : dateB - dateA;
-                });
-              if (monthRecords.length === 0) return null;
+            {recordsByMonth && [...months].filter(m => m.value !== 'all').reverse().map(month => {
+              const monthRecords = recordsByMonth[month.value];
+              if (!monthRecords || monthRecords.length === 0) return null;
 
-              const monthIncome = (monthRecords || []).filter(r => r.type === 'income').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
-              const monthExpense = (monthRecords || []).filter(r => r.type === 'expense').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
+              const monthIncome = monthRecords.filter(r => r.type === 'income').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
+              const monthExpense = monthRecords.filter(r => r.type === 'expense').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
 
               return (
                 <div key={month.value} className="card overflow-hidden">

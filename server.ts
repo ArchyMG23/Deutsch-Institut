@@ -98,16 +98,25 @@ if (!admin.apps.length) {
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
   port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: process.env.SMTP_PORT === '465',
+  secure: process.env.SMTP_PORT === '465', // true for 465, false for other ports (like 587 STARTTLS)
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
   tls: {
-    rejectUnauthorized: false
+    rejectUnauthorized: false,
+    minVersion: 'TLSv1.2'
   },
-  // Force IPv4 because some environments have issues routing IPv6 for SMTP
-  // @ts-ignore - family is a valid option but missing in some specific type definitions
+  pool: true,
+  maxConnections: 3,
+  maxMessages: 100,
+  connectionTimeout: 20000, // Increased to 20s
+  greetingTimeout: 10000,
+  socketTimeout: 30000,
+  debug: true,
+  logger: true,
+  // Force IPv4
+  // @ts-ignore
   family: 4
 } as any);
 
@@ -117,10 +126,15 @@ let lastSmtpError = "";
 if (process.env.SMTP_USER && process.env.SMTP_PASS) {
   transporter.verify((error, success) => {
     if (error) {
-      console.error("❌ SMTP Error: La configuration mail est incorrecte (vérifiez le mot de passe d'application).", error.message);
+      const isTimeout = error.message.toLowerCase().includes('timeout') || error.code === 'ETIMEDOUT';
+      const errorMsg = isTimeout 
+        ? "Délai d'attente dépassé : Le serveur SMTP ne répond pas. Vérifiez le port (587 ou 465) et si votre hôte autorise les connexions SMTP." 
+        : `La configuration mail est incorrecte. Erreur: ${error.message}`;
+      
+      console.error("❌ SMTP Error:", errorMsg);
       isSmtpOperational = false;
-      lastSmtpError = error.message;
-      addLog('ERROR', "Échec de la connexion SMTP au démarrage", error.message);
+      lastSmtpError = errorMsg;
+      addLog('ERROR', "Échec de la connexion SMTP au démarrage", errorMsg);
     } else {
       console.log("✅ SMTP Ready: Le serveur est prêt à envoyer des emails.");
       isSmtpOperational = true;
@@ -180,6 +194,9 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 // Multer Config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
+    if (!fs.existsSync(UPLOADS_DIR)) {
+      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    }
     cb(null, UPLOADS_DIR);
   },
   filename: (req, file, cb) => {
@@ -191,6 +208,11 @@ const storage = multer.diskStorage({
 const upload = multer({ 
   storage,
   limits: { fileSize: 1024 * 1024 * 1024 } // 1GB
+});
+
+const memoryUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 } // 2MB for profile photos
 });
 
 // ... (initialData removed as we use Firestore)
@@ -1344,18 +1366,15 @@ async function startServer() {
   app.use('/uploads', express.static(UPLOADS_DIR));
 
   // Profile Upload API
-  app.post('/api/profile/upload-photo', authenticate, upload.single('photo'), async (req: any, res) => {
-    if (!fs.existsSync(UPLOADS_DIR)) {
-      try { fs.mkdirSync(UPLOADS_DIR, { recursive: true }); } catch(err) {}
-    }
-    
+  app.post('/api/profile/upload-photo', authenticate, memoryUpload.single('photo'), async (req: any, res) => {
     if (!req.file) {
       addLog('ERROR', 'Tentative d\'upload sans fichier');
       return res.status(400).json({ message: 'Aucun fichier téléchargé' });
     }
     
     try {
-      const photoURL = `/uploads/${req.file.filename}`;
+      // Small photos are converted to base64 for persistence in Firestore
+      const photoURL = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
       const targetUserId = req.body.userId || req.user.id; // Allow admin to specify a user ID
       
       // Security check: Only admins can update other people's photos
