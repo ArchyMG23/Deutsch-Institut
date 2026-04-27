@@ -105,40 +105,49 @@ const transporter = nodemailer.createTransport({
   },
   tls: {
     rejectUnauthorized: false,
-    minVersion: 'TLSv1.2'
+    minVersion: 'TLSv1.2',
+    // Support legacy hosts if needed
+    ciphers: 'SSLv3'
   },
-  greetingTimeout: 15000,
-  connectionTimeout: 30000,
-  socketTimeout: 45000,
-  debug: false,
-  logger: false,
-  // Strict IPv4
-  // @ts-ignore
-  family: 4
+  connectionTimeout: 20000,
+  greetingTimeout: 20000,
+  socketTimeout: 30000,
+  debug: true, // Enable debug for now to see logs in console
+  logger: true,
 } as any);
 
 // Verify SMTP connection at startup
 let isSmtpOperational = false;
 let lastSmtpError = "";
 if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+  console.log("📨 Attempting to verify SMTP connection...");
   transporter.verify((error, success) => {
     if (error) {
-      const isTimeout = error.message.toLowerCase().includes('timeout') || (error as any).code === 'ETIMEDOUT';
+      const isTimeout = error.message.toLowerCase().includes('timeout') || (error as any).code === 'ETIMEDOUT' || (error as any).code === 'ECONNRESET';
       const errorMsg = isTimeout 
-        ? "Délai d'attente dépassé : Le serveur SMTP ne répond pas. Vérifiez le port (587 ou 465) et si votre hôte autorise les connexions SMTP." 
+        ? "Délai d'attente dépassé ou connexion réinitialisée : Le serveur SMTP ne répond pas. Vérifiez le port (587 ou 465) et si votre hôte autorise les connexions SMTP." 
         : `La configuration mail est incorrecte. Erreur: ${error.message}`;
       
       console.error("❌ SMTP Error:", errorMsg);
+      console.error("Full SMTP Error stack:", error);
       isSmtpOperational = false;
       lastSmtpError = errorMsg;
-      addLog('ERROR', "Échec de la connexion SMTP au démarrage", errorMsg);
+      // Note: addLog might not be available yet if it's the very start and firestore isn't ready
+      // But we call it here assuming it was intended
+      try {
+        addLog('ERROR', "Échec de la connexion SMTP au démarrage", errorMsg);
+      } catch (e) {}
     } else {
-      console.log("✅ SMTP Ready: Le serveur est prêt à envoyer des emails.");
+      console.log("✅ SMTP Server is ready to take our messages");
       isSmtpOperational = true;
       lastSmtpError = "";
-      addLog('INFO', "Connexion SMTP établie avec succès");
+      try {
+        addLog('INFO', "Connexion SMTP établie avec succès");
+      } catch(e) {}
     }
   });
+} else {
+  console.log("ℹ️ SMTP credentials not provided, email features will be disabled.");
 }
 
 async function sendEmail(to: string, subject: string, text: string, html?: string, cc?: string) {
@@ -1184,26 +1193,65 @@ async function startServer() {
   });
 
   // Finances API
-  app.get('/api/finances', authenticate, async (req, res) => {
+  app.get('/api/finances', authenticate, async (req: any, res: any) => {
     try {
-      const snapshot = await dbAdmin.collection('finances').get();
-      const finances = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter((f: any) => !f.deletedAt);
-      res.json(finances);
+      const { year, month } = req.query;
+      let query: any = dbAdmin.collection('finances');
+      
+      // If we have filters, we could try to optimize on server side
+      // For now, let's just make it faster by limiting if no filter
+      // Or just fetch all but be aware of performance
+      const snapshot = await query.get();
+      
+      let records = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+      
+      // Filter out archived ones
+      records = records.filter((f: any) => !f.deletedAt);
+      
+      // If year/month requested, filter on server to reduce payload size
+      if (year) {
+        records = records.filter((f: any) => {
+          if (!f.date) return false;
+          const d = new Date(f.date);
+          return d.getFullYear().toString() === year;
+        });
+      }
+      
+      if (month && month !== 'all') {
+        records = records.filter((f: any) => {
+          if (!f.date) return false;
+          const d = new Date(f.date);
+          return d.getMonth().toString() === month;
+        });
+      }
+
+      // Sort by date descending by default
+      records.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      // Limit to 2000 records to prevent browser crash, most recent first
+      if (records.length > 2000) {
+        records = records.slice(0, 2000);
+      }
+
+      res.json(records);
     } catch (err: any) {
+      console.error("Finance fetch error:", err);
       res.status(500).json({ message: err.message });
     }
   });
 
-  app.get('/api/finances/trash', authenticate, async (req, res) => {
+  app.get('/api/finances/trash', authenticate, async (req: any, res: any) => {
     try {
       const snapshot = await dbAdmin.collection('finances').get();
       const trash = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter((f: any) => !!f.deletedAt);
+        .map((doc: any) => ({ id: doc.id, ...doc.data() }))
+        .filter((f: any) => !!f.deletedAt)
+        .sort((a: any, b: any) => new Date(b.deletedAt || b.date).getTime() - new Date(a.deletedAt || a.date).getTime())
+        .slice(0, 1000); // Limit trash too
+
       res.json(trash);
     } catch (err: any) {
+      console.error("Trash fetch error:", err);
       res.status(500).json({ message: err.message });
     }
   });

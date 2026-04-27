@@ -41,20 +41,17 @@ const Placeholder = ({ title }: { title: string }) => (
 );
 
 const PageWrapper = ({ children }: { children: React.ReactNode }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 5 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: -5 }}
-    transition={{ duration: 0.15, ease: "easeOut" }}
-    className="h-full"
-  >
+  <div className="h-full">
     {children}
-  </motion.div>
+  </div>
 );
+
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 function AnimatedRoutes() {
   return (
-    <Routes>
+    <ErrorBoundary>
+      <Routes>
       <Route path="/login" element={<LoginPage />} />
       
       {/* Admin Routes */}
@@ -252,6 +249,7 @@ function AnimatedRoutes() {
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+    </ErrorBoundary>
   );
 }
 

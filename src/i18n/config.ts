@@ -82,7 +82,8 @@ i18n
             decline_cookies: "Refuser",
             cookies_title: "Gestion des Cookies",
             cookies_message: "Nous utilisons des cookies pour améliorer votre expérience de navigation et analyser le trafic du site.",
-            read_more: "En savoir plus"
+            read_more: "En savoir plus",
+            locale_date: "fr-FR"
           },
           login: {
             title: "DIA_SAAS",
@@ -603,7 +604,8 @@ i18n
             decline_cookies: "Ablehnen",
             cookies_title: "Cookie-Verwaltung",
             cookies_message: "Wir verwenden Cookies, um Ihre Browser-Erfahrung zu verbessern und den Website-Traffic zu analysieren.",
-            read_more: "Mehr erfahren"
+            read_more: "Mehr erfahren",
+            locale_date: "de-DE"
           },
           login: {
             title: "DIA_SAAS",
@@ -1138,7 +1140,8 @@ i18n
             archive: "Archive",
             delete_forever: "Delete forever",
             restore: "Restore",
-            update: "Update"
+            update: "Update",
+            locale_date: "en-US"
           },
           login: {
             title: "DIA_SAAS",

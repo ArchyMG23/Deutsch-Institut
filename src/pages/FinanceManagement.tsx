@@ -42,7 +42,7 @@ const TransactionTable = React.memo(({
   isTrash?: boolean,
   limit?: number
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [displayLimit, setDisplayLimit] = useState(limit);
   
   const visibleRecords = React.useMemo(() => records.slice(0, displayLimit), [records, displayLimit]);
@@ -215,7 +215,7 @@ const TransactionTable = React.memo(({
 });
 
 export default function FinanceManagement() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { 
     finances: allRecords, 
     trashFinances, 
@@ -241,14 +241,9 @@ export default function FinanceManagement() {
   const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Only refresh if we don't have records yet or if they are very stale
-    if (allRecords.length === 0) {
-      refreshFinances();
-    }
-    if (trashFinances.length === 0) {
-      refreshTrash();
-    }
-  }, [refreshFinances, refreshTrash, allRecords.length, trashFinances.length]);
+    refreshFinances();
+    refreshTrash();
+  }, [refreshFinances, refreshTrash]);
 
   // Available Years from data
   const availableYears = React.useMemo(() => {
@@ -421,6 +416,7 @@ export default function FinanceManagement() {
       const { key, direction } = sortConfig;
       
       return records.sort((a, b) => {
+        if (!a || !b) return 0;
         let aValue: any = (a as any)[key];
         let bValue: any = (b as any)[key];
 
@@ -430,8 +426,11 @@ export default function FinanceManagement() {
           if (isNaN(aValue)) aValue = 0;
           if (isNaN(bValue)) bValue = 0;
         } else if (typeof aValue === 'string') {
-          aValue = aValue.toLowerCase();
-          bValue = bValue.toLowerCase();
+          aValue = (aValue || '').toLowerCase();
+          bValue = (bValue || '').toLowerCase();
+        } else if (typeof aValue === 'number') {
+          aValue = aValue || 0;
+          bValue = bValue || 0;
         }
 
         if (aValue < bValue) return direction === 'asc' ? -1 : 1;
@@ -443,37 +442,6 @@ export default function FinanceManagement() {
       return filteredByType;
     }
   }, [filteredByType, sortConfig]);
-
-  const recordsByMonth = React.useMemo(() => {
-    try {
-      if (selectedMonth !== 'all') return null;
-      
-      const groups: Record<string, FinanceRecord[]> = {};
-      filteredByType.forEach(r => {
-        const d = new Date(r.date);
-        if (isNaN(d.getTime())) return;
-        const m = d.getMonth().toString();
-        if (!groups[m]) groups[m] = [];
-        groups[m].push(r);
-      });
-      
-      // Sort each group's individual records
-      Object.keys(groups).forEach(m => {
-        groups[m].sort((a, b) => {
-          const dateA = new Date(a.date).getTime();
-          const dateB = new Date(b.date).getTime();
-          const valA = isNaN(dateA) ? 0 : dateA;
-          const valB = isNaN(dateB) ? 0 : dateB;
-          return sortConfig?.direction === 'asc' ? valA - valB : valB - valA;
-        });
-      });
-      
-      return groups;
-    } catch (e) {
-      console.error("Crash in recordsByMonth memo:", e);
-      return {};
-    }
-  }, [filteredByType, selectedMonth, sortConfig]);
 
   const handleSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -504,11 +472,16 @@ export default function FinanceManagement() {
       
       const recordsHtml = sortedRecords.map(r => `
         <tr style="border-bottom: 1px solid #eee;">
-          <td style="padding: 8px;">${new Date(r.date).toLocaleDateString()}</td>
-          <td style="padding: 8px;">${r.description}</td>
-          <td style="padding: 8px;">${t(`finances.categories.${r.category.toLowerCase()}`) || r.category}</td>
-          <td style="padding: 8px; text-align: right; font-weight: bold; color: ${r.type === 'income' ? '#2f855a' : '#c53030'};">
-            ${r.type === 'income' ? '+' : '-'}${formatCurrency(r.amount)}
+          <td style="padding: 8px;">${r && r.date ? new Date(r.date).toLocaleDateString() : '--'}</td>
+          <td style="padding: 8px;">${r?.description || '--'}</td>
+          <td style="padding: 8px;">${(() => {
+            try {
+              const cat = String(r?.category || 'other').toLowerCase();
+              return t(`finances.categories.${cat}`) || r?.category || 'Other';
+            } catch (e) { return '--'; }
+          })()}</td>
+          <td style="padding: 8px; text-align: right; font-weight: bold; color: ${r?.type === 'income' ? '#2f855a' : '#c53030'};">
+            ${r?.type === 'income' ? '+' : '-'}${formatCurrency(r?.amount || 0)}
           </td>
         </tr>
       `).join('');
@@ -570,14 +543,12 @@ export default function FinanceManagement() {
 
       {/* Trash Warning */}
       {viewMode === 'trash' && (
-        <motion.div 
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
+        <div 
           className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded-2xl flex items-center gap-3 text-red-600 dark:text-red-400"
         >
           <Trash2 size={20} />
           <p className="text-sm font-medium">{t('finances.trash_warning')}</p>
-        </motion.div>
+        </div>
       )}
 
       {/* Date Filters Grid */}
@@ -675,7 +646,7 @@ export default function FinanceManagement() {
           <p className="text-xl font-bold bg-neutral-100 px-6 py-2 rounded-full uppercase">
             {selectedMonth === 'all' ? `${t('common.year')} ${selectedYear}` : `${months.find(m => m.value === selectedMonth)?.label} ${selectedYear}`}
           </p>
-          <p className="text-sm text-neutral-400 mt-4">{t('common.generated_on')} {new Date().toLocaleString(t('common.locale_date') || 'fr-FR')}</p>
+          <p className="text-sm text-neutral-400 mt-4">{t('common.generated_on')} {new Date().toLocaleString(i18n.language === 'de' ? 'de-DE' : i18n.language === 'en' ? 'en-US' : 'fr-FR')}</p>
         </div>
 
         {/* Stats Cards */}
@@ -690,7 +661,7 @@ export default function FinanceManagement() {
               </div>
               <span className="text-[10px] font-bold text-green-600 uppercase tracking-wider">{t('finances.income')}</span>
             </div>
-            <h4 className="text-3xl font-black text-neutral-900 dark:text-white">{formatCurrency(totalIncome)}</h4>
+            <h4 className="text-3xl font-black text-neutral-900 dark:text-white line-clamp-1">{formatCurrency(totalIncome)}</h4>
           </div>
 
           <div className={cn(
@@ -703,7 +674,7 @@ export default function FinanceManagement() {
               </div>
               <span className="text-[10px] font-bold text-red-600 uppercase tracking-wider">{t('finances.expense')}</span>
             </div>
-            <h4 className="text-3xl font-black text-neutral-900 dark:text-white">{formatCurrency(totalExpense)}</h4>
+            <h4 className="text-3xl font-black text-neutral-900 dark:text-white line-clamp-1">{formatCurrency(totalExpense)}</h4>
           </div>
 
           <div className={cn(
@@ -716,72 +687,42 @@ export default function FinanceManagement() {
               </div>
               <span className="text-[10px] font-bold text-dia-red uppercase tracking-wider">{t('finances.balance')}</span>
             </div>
-            <h4 className="text-3xl font-black text-neutral-900 dark:text-white">{formatCurrency(balance)}</h4>
+            <h4 className="text-3xl font-black text-neutral-900 dark:text-white line-clamp-1">{formatCurrency(balance)}</h4>
           </div>
         </div>
 
         {/* Transactions Section */}
-        {viewMode === 'trash' ? (
-          <div className="card overflow-hidden">
-            <div className="p-6 border-b border-neutral-100 dark:border-neutral-800">
-              <h5 className="font-bold flex items-center gap-2 text-red-600">
-                <Trash2 size={20} />
-                {t('finances.audit_archives')}
-              </h5>
+        <div className="card overflow-hidden">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-6 border-b border-neutral-100 dark:border-neutral-800 gap-4 print:hidden">
+            <h5 className="font-bold flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-dia-red animate-pulse" />
+              {viewMode === 'trash' ? t('finances.audit_archives') : t('finances.transaction_history')}
+            </h5>
+            <div className="flex items-center gap-1 p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl">
+              {(['all', 'income', 'expense'] as const).map((type) => (
+                <button 
+                  key={type}
+                  onClick={() => setFilterType(type)}
+                  className={cn(
+                    "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
+                    filterType === type 
+                      ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" 
+                      : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+                  )}
+                >
+                  {type === 'all' ? t('common.all') : type === 'income' ? t('finances.income') : t('finances.expense')}
+                </button>
+              ))}
             </div>
-            <TransactionTable records={trashFinances} isTrash={true} />
           </div>
-        ) : selectedMonth === 'all' ? (
-          <div className="space-y-8">
-            {recordsByMonth && [...months].filter(m => m.value !== 'all').reverse().map(month => {
-              const monthRecords = recordsByMonth[month.value];
-              if (!monthRecords || monthRecords.length === 0) return null;
-
-              const monthIncome = monthRecords.filter(r => r.type === 'income').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
-              const monthExpense = monthRecords.filter(r => r.type === 'expense').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
-
-              return (
-                <div key={month.value} className="card overflow-hidden">
-                  <div className="flex items-center justify-between p-6 bg-neutral-50 dark:bg-neutral-800/50 border-b border-neutral-100 dark:border-neutral-800">
-                    <h5 className="text-lg font-black uppercase tracking-tight">{month.label} {selectedYear}</h5>
-                    <div className="flex gap-4 text-xs font-bold">
-                      <span className="text-green-600">{t('finances.income')}: {formatCurrency(monthIncome)}</span>
-                      <span className="text-red-600">{t('finances.expense')}: {formatCurrency(monthExpense)}</span>
-                      <span className="text-dia-red">{t('finances.balance')}: {formatCurrency(monthIncome - monthExpense)}</span>
-                    </div>
-                  </div>
-                  <TransactionTable records={monthRecords} onDelete={handleDeleteRecord} />
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="card overflow-hidden">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-6 border-b border-neutral-100 dark:border-neutral-800 gap-4 print:hidden">
-              <h5 className="font-bold flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-dia-red animate-pulse" />
-                {t('finances.transaction_history')}
-              </h5>
-              <div className="flex items-center gap-1 p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl">
-                {(['all', 'income', 'expense'] as const).map((type) => (
-                  <button 
-                    key={type}
-                    onClick={() => setFilterType(type)}
-                    className={cn(
-                      "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
-                      filterType === type 
-                        ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" 
-                        : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
-                    )}
-                  >
-                    {type === 'all' ? t('common.all') : type === 'income' ? t('finances.income') : t('finances.expense')}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <TransactionTable records={sortedRecords} onSort={handleSort} sortConfig={sortConfig} onDelete={handleDeleteRecord} />
-          </div>
-        )}
+          <TransactionTable 
+            records={viewMode === 'trash' ? (trashFinances || []) : (sortedRecords || [])} 
+            onSort={viewMode === 'trash' ? undefined : handleSort} 
+            sortConfig={viewMode === 'trash' ? null : sortConfig} 
+            onDelete={viewMode === 'trash' ? undefined : handleDeleteRecord}
+            isTrash={viewMode === 'trash'}
+          />
+        </div>
       </div>
 
       {/* Delete Confirmation Modal */}
