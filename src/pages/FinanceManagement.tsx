@@ -124,7 +124,16 @@ const TransactionTable = React.memo(({
             visibleRecords.map((record) => (
               <tr key={record.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors group">
                 <td className="px-6 py-4 text-sm font-medium print:px-2">
-                  {new Date(isTrash && record.deletedAt ? record.deletedAt : record.date).toLocaleDateString()}
+                  {(() => {
+                    try {
+                      const dateSrc = isTrash && record.deletedAt ? record.deletedAt : record.date;
+                      if (!dateSrc) return '--';
+                      const d = new Date(dateSrc);
+                      return isNaN(d.getTime()) ? '--' : d.toLocaleDateString();
+                    } catch (e) {
+                      return '--';
+                    }
+                  })()}
                 </td>
                 <td className="px-6 py-4 print:px-2">
                   <div className="flex items-center gap-3">
@@ -135,14 +144,26 @@ const TransactionTable = React.memo(({
                       {record.type === 'income' ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-neutral-700 dark:text-neutral-300 group-hover:text-dia-red transition-colors">{record.description}</p>
-                      {isTrash && <p className="text-[10px] text-neutral-400">{t('finances.trans_date')}: {new Date(record.date).toLocaleDateString()}</p>}
+                      <p className="text-sm font-bold text-neutral-700 dark:text-neutral-300 group-hover:text-dia-red transition-colors">{record.description || t('common.no_description')}</p>
+                      {isTrash && (
+                        <p className="text-[10px] text-neutral-400">
+                          {t('finances.trans_date')}: {(() => {
+                            try {
+                              const d = new Date(record.date);
+                              return isNaN(d.getTime()) ? '--' : d.toLocaleDateString();
+                            } catch (e) { return '--'; }
+                          })()}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </td>
                 <td className="px-6 py-4 print:px-2">
                   <span className="text-[10px] font-bold uppercase px-2 py-1 bg-neutral-100 dark:bg-neutral-800 rounded-full text-neutral-500 border border-neutral-200 dark:border-neutral-700">
-                    {t(`finances.categories.${(record.category || 'other').toLowerCase()}`) || record.category || 'Other'}
+                    {(() => {
+                      const cat = String(record.category || 'other').toLowerCase();
+                      return t(`finances.categories.${cat}`) || record.category || 'Other';
+                    })()}
                   </span>
                 </td>
                 {isTrash && (
@@ -220,22 +241,30 @@ export default function FinanceManagement() {
   const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    refreshFinances();
-    refreshTrash();
-  }, [refreshFinances, refreshTrash]);
+    // Only refresh if we don't have records yet or if they are very stale
+    if (allRecords.length === 0) {
+      refreshFinances();
+    }
+    if (trashFinances.length === 0) {
+      refreshTrash();
+    }
+  }, [refreshFinances, refreshTrash, allRecords.length, trashFinances.length]);
 
   // Available Years from data
   const availableYears = React.useMemo(() => {
     const years = new Set<string>();
-    allRecords.forEach(r => {
-      if (r && r.date) {
-        try {
-          years.add(new Date(r.date).getFullYear().toString());
-        } catch (e) {
-          // Ignore invalid dates
+    try {
+      allRecords.forEach(r => {
+        if (r && r.date) {
+          const d = new Date(r.date);
+          if (!isNaN(d.getTime())) {
+            years.add(d.getFullYear().toString());
+          }
         }
-      }
-    });
+      });
+    } catch (e) {
+      console.error("Error calculating available years:", e);
+    }
     
     // Ensure current year is always available
     const currentYear = new Date().getFullYear().toString();
