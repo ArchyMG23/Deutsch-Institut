@@ -29,6 +29,8 @@ const TeacherDashboard = lazy(() => import('./pages/TeacherDashboard'));
 const TeacherPlanning = lazy(() => import('./pages/TeacherPlanning'));
 const TeacherStudents = lazy(() => import('./pages/TeacherStudents'));
 const TeacherProfile = lazy(() => import('./pages/TeacherProfile'));
+const ReportManagement = lazy(() => import('./pages/ReportManagement'));
+const StudentChatPage = lazy(() => import('./pages/StudentChatPage'));
 
 // Placeholder components for other pages
 const Placeholder = ({ title }: { title: string }) => (
@@ -125,6 +127,20 @@ function AnimatedRoutes() {
           </DashboardLayout>
         </RoleGuard>
       } />
+      <Route path="/admin/reports" element={
+        <RoleGuard allowedRoles={['admin']}>
+          <DashboardLayout>
+            <PageWrapper><ReportManagement /></PageWrapper>
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/admin/chat" element={
+        <RoleGuard allowedRoles={['admin']}>
+          <DashboardLayout>
+            <PageWrapper><StudentChatPage /></PageWrapper>
+          </DashboardLayout>
+        </RoleGuard>
+      } />
       <Route path="/admin/profile" element={
         <RoleGuard allowedRoles={['admin']}>
           <DashboardLayout>
@@ -176,6 +192,20 @@ function AnimatedRoutes() {
           </DashboardLayout>
         </RoleGuard>
       } />
+      <Route path="/teacher/reports" element={
+        <RoleGuard allowedRoles={['teacher']}>
+          <DashboardLayout>
+            <PageWrapper><ReportManagement /></PageWrapper>
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/teacher/chat" element={
+        <RoleGuard allowedRoles={['teacher']}>
+          <DashboardLayout>
+            <PageWrapper><StudentChatPage /></PageWrapper>
+          </DashboardLayout>
+        </RoleGuard>
+      } />
       <Route path="/teacher/profile" element={
         <RoleGuard allowedRoles={['teacher']}>
           <DashboardLayout>
@@ -217,6 +247,13 @@ function AnimatedRoutes() {
         <RoleGuard allowedRoles={['student']}>
           <DashboardLayout>
             <PageWrapper><EvaluationManagement /></PageWrapper>
+          </DashboardLayout>
+        </RoleGuard>
+      } />
+      <Route path="/student/chat" element={
+        <RoleGuard allowedRoles={['student']}>
+          <DashboardLayout>
+            <PageWrapper><StudentChatPage /></PageWrapper>
           </DashboardLayout>
         </RoleGuard>
       } />

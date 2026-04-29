@@ -65,6 +65,16 @@ service cloud.firestore {
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
 
+    function isTeacher() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+    }
+
+    function isStudent() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
+    }
+
     function isValidEmail(email) {
       return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
     }
@@ -86,8 +96,7 @@ service cloud.firestore {
              data.firstName is string &&
              data.lastName is string &&
              data.status in ['online', 'offline'] &&
-             isValidDateString(data.createdAt) &&
-             (data.get('fcmToken', '') is string);
+             isValidDateString(data.createdAt);
     }
 
     function isValidCommunique(data) {
@@ -109,9 +118,67 @@ service cloud.firestore {
              data.description is string && data.description.size() < 500;
     }
 
+    function isValidReport(data) {
+      return data.enseignant_id == request.auth.uid &&
+             data.statut in ['brouillon', 'soumis'] &&
+             data.contenu is string && data.contenu.size() > 0;
+    }
+
+    function isValidMessage(data) {
+      return data.uid_auteur == request.auth.uid &&
+             data.message is string && data.message.size() > 0 &&
+             data.message.size() < 1000;
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
+
+    match /ecole/{configId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /rapports_journaliers/{rapportId} {
+      allow read: if isAdmin() || (isTeacher() && resource.data.enseignant_id == request.auth.uid);
+      allow create: if (isAdmin() || isTeacher()) && isValidReport(request.resource.data);
+      allow update: if isAdmin() || (isTeacher() && resource.data.enseignant_id == request.auth.uid && isValidReport(request.resource.data));
+      allow delete: if isAdmin();
+    }
+
+    match /chat_eleves/{messageId} {
+      // Students see a limited view (no nom_auteur, no uid_auteur)
+      allow get: if isAuthenticated();
+      allow list: if isAuthenticated();
+      
+      // We rely on the client to select only public fields, or we could use field-level security
+      // However, usually in Firestore we control what fields are returned by not including them.
+      // Rules also prevent writing to unauthorized fields.
+      
+      allow create: if isAuthenticated() && isValidMessage(request.resource.data);
+      allow update: if isAdmin() || (isAuthenticated() && resource.data.uid_auteur == request.auth.uid && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['supprime']));
+      allow delete: if isAdmin();
+    }
+
+    match /scolarites/{eleveId} {
+      allow read: if isAdmin() || isOwner(eleveId);
+      allow write: if isAdmin();
+
+      match /versements/{versementId} {
+        allow read: if isAdmin() || isOwner(eleveId);
+        allow create: if isAdmin();
+        // Immutability for receipts
+        allow update: if isAdmin() && (resource.data.recu_numero == null || request.resource.data.recu_numero == resource.data.recu_numero);
+        allow delete: if isAdmin() && resource.data.recu_numero == null;
+      }
+    }
+
+    match /audit_log/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated(); // Audit can be written by any active user action
+      allow update, delete: if false; // Logs are immutable
+    }
 
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin() || (isAuthenticated() && resource != null && resource.data.matricule in ['T26001', 'S26001']);

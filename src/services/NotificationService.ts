@@ -21,6 +21,24 @@ export const NotificationService = {
   },
 
   /**
+   * Envoie une requête au backend pour envoyer un message WhatsApp.
+   */
+  async _triggerWhatsApp(fetchWithAuth: any, phone: string, message: string) {
+    if (!phone) return false;
+    try {
+      const res = await fetchWithAuth('/api/notifications/send-whatsapp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, message })
+      });
+      return res.ok;
+    } catch (err) {
+      console.error("NotificationService: Error triggering WhatsApp:", err);
+      return false;
+    }
+  },
+
+  /**
    * Notifie un utilisateur de ses identifiants de connexion.
    * Note: This is now handled automatically by the backend during student/teacher creation,
    * but this method remains for manual resends.
@@ -60,7 +78,23 @@ export const NotificationService = {
     }
 
     toast.info(`Identifiants générés : ${user.matricule} / ${password}`);
-    return await this._triggerEmail(fetchWithAuth, user.email, subject, message, html, undefined, undefined, cc);
+    
+    // Send email
+    const emailSent = await this._triggerEmail(fetchWithAuth, user.email, subject, message, html, undefined, undefined, cc);
+    
+    // Send WhatsApp if phone is available
+    if (user.phone) {
+      const waMessage = `Bienvenue chez DIA_SAAS!\nVoici vos identifiants:\nMatricule: ${user.matricule}\nMot de passe: ${password}\nLien: ${window.location.origin}/login`;
+      await this._triggerWhatsApp(fetchWithAuth, user.phone, waMessage);
+    }
+    
+    // Send WhatsApp to parent if available
+    if ('parentPhone' in user && user.parentPhone) {
+      const waParentMessage = `Bonjour,\nVotre enfant ${user.firstName} a été inscrit chez DIA_SAAS.\nMatricule: ${user.matricule}\nMot de passe: ${password}`;
+      await this._triggerWhatsApp(fetchWithAuth, (user as any).parentPhone as string, waParentMessage);
+    }
+
+    return emailSent;
   },
 
   /**
@@ -100,6 +134,18 @@ export const NotificationService = {
     let cc = undefined;
     if ((student as any).parentEmail) {
       cc = (student as any).parentEmail;
+    }
+
+    // Send WhatsApp if phone is available
+    if (student.phone) {
+      const waMessage = `DIA_SAAS: Rappel de frais de scolarité pour ${student.firstName}.\nSolde restant: ${formatCurrency(balance)}. Merci de régulariser.`;
+      await this._triggerWhatsApp(fetchWithAuth, student.phone, waMessage);
+    }
+
+    // Send WhatsApp to parent if available
+    if ((student as any).parentPhone) {
+      const waParentMessage = `DIA_SAAS: Rappel de frais de scolarité pour votre enfant ${student.firstName}.\nSolde restant: ${formatCurrency(balance)}.`;
+      await this._triggerWhatsApp(fetchWithAuth, (student as any).parentPhone as string, waParentMessage);
     }
 
     return await this._triggerEmail(fetchWithAuth, student.email, subject, message, html, pushTitle, pushBody, cc);
@@ -159,6 +205,18 @@ export const NotificationService = {
     if ('parentEmail' in student && student.parentEmail) {
       cc = (student as any).parentEmail;
     }
+    
+    // Send WhatsApp if phone is available
+    if (student.phone) {
+      const waMessage = `DIA_SAAS: Reçu de paiement confirmé pour ${student.firstName}.\nMontant: ${formatCurrency(payment.amount)}\nTotal réglé: ${formatCurrency(totalPaid)}\nSolde: ${formatCurrency(balance)}`;
+      await this._triggerWhatsApp(fetchWithAuth, student.phone, waMessage);
+    }
+
+    // Send WhatsApp to parent if available
+    if ('parentPhone' in student && (student as any).parentPhone) {
+      const waParentMessage = `DIA_SAAS: Paiement de scolarité reçu pour ${student.firstName}.\nMontant: ${formatCurrency(payment.amount)}\nSolde restant: ${formatCurrency(balance)}`;
+      await this._triggerWhatsApp(fetchWithAuth, (student as any).parentPhone as string, waParentMessage);
+    }
 
     return await this._triggerEmail(fetchWithAuth, student.email, subject, message, html, "Paiement Confirmé", `Reçu de ${formatCurrency(payment.amount)} envoyé par email.`, cc);
   },
@@ -202,6 +260,12 @@ export const NotificationService = {
     let cc = undefined;
     if ('parentEmail' in user && user.parentEmail) {
       cc = user.parentEmail;
+    }
+
+    // Send WhatsApp if phone is available
+    if (user.phone) {
+      const waMessage = `DIA_SAAS: ${typeLabel} ${actionLabel} - ${details.subject}.\n${details.date ? `Date: ${details.date}\n` : ''}${details.time ? `Heure: ${details.time}` : ''}`;
+      await this._triggerWhatsApp(fetchWithAuth, user.phone, waMessage);
     }
 
     return await this._triggerEmail(fetchWithAuth, user.email, subject, message, html, pushTitle, pushBody, cc);

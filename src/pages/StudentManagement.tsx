@@ -654,6 +654,25 @@ export default function StudentManagement() {
                         {activeTab === 'active' ? (
                           <>
                             <button 
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (!student.phone) {
+                                  toast.error(t('common.no_phone') || 'Aucun numéro de téléphone');
+                                  return;
+                                }
+                                const message = `Bonjour ${student.firstName}, c'est l'Institut DIA. Comment pouvons-nous vous aider ?`;
+                                await NotificationService._triggerWhatsApp(fetchWithAuth, student.phone, message);
+                                toast.success(t('common.whatsapp_sent') || 'Notification WhatsApp simulée');
+                                
+                                // Also open link for manual interaction
+                                window.open(`https://wa.me/${student.phone.replace(/\s/g, '')}?text=${encodeURIComponent(message)}`, '_blank');
+                              }}
+                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-green-600"
+                              title="Zap WhatsApp"
+                            >
+                              <Smartphone size={18} />
+                            </button>
+                            <button 
                               onClick={() => handleResetCredentials(student.id)}
                               className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-dia-yellow"
                               title={t('students.resend_credentials')}

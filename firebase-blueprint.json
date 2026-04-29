@@ -104,9 +104,126 @@
         "readAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "readAt"]
+    },
+    "ecole": {
+      "title": "School Config",
+      "description": "Global settings for the establishment",
+      "type": "object",
+      "properties": {
+        "nom": { "type": "string" },
+        "logo_url": { "type": "string" },
+        "annee_scolaire": { "type": "string" },
+        "format_recu": { "type": "string", "enum": ["A5", "thermique_58", "thermique_80"] }
+      }
+    },
+    "rapports_journaliers": {
+      "title": "Daily Report",
+      "description": "Daily teaching activity reports",
+      "type": "object",
+      "properties": {
+        "enseignant_id": { "type": "string" },
+        "enseignant_nom": { "type": "string" },
+        "classe_id": { "type": "string" },
+        "matiere": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "contenu": { "type": "string" },
+        "presents": { "type": "integer" },
+        "absents": { "type": "integer" },
+        "observations": { "type": "string" },
+        "devoirs": { "type": "string" },
+        "statut": { "type": "string", "enum": ["brouillon", "soumis"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["enseignant_id", "classe_id", "date", "contenu", "statut"]
+    },
+    "chat_eleves": {
+      "title": "Student Chat Message",
+      "description": "Anonymized chat for students",
+      "type": "object",
+      "properties": {
+        "uid_auteur": { "type": "string" },
+        "nom_auteur": { "type": "string" },
+        "alias": { "type": "string" },
+        "message": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "supprime": { "type": "boolean" },
+        "reponse_admin": { "type": "string" }
+      },
+      "required": ["uid_auteur", "message", "timestamp"]
+    },
+    "scolarites": {
+      "title": "Tuition Account",
+      "description": "Master tuition balance for a student",
+      "type": "object",
+      "properties": {
+        "eleve_id": { "type": "string" },
+        "matricule": { "type": "string" },
+        "nom_eleve": { "type": "string" },
+        "classe_id": { "type": "string" },
+        "montant_total_du": { "type": "number" },
+        "total_verse": { "type": "number" },
+        "reste": { "type": "number" },
+        "surplus": { "type": "number" },
+        "statut_paiement": { "type": "string", "enum": ["EN COURS", "SOLDÉ", "SURPLUS"] }
+      },
+      "required": ["eleve_id", "matricule", "montant_total_du"]
+    },
+    "versement": {
+      "title": "Versements Item",
+      "description": "Individual payment transaction",
+      "type": "object",
+      "properties": {
+        "montant": { "type": "number" },
+        "date": { "type": "string", "format": "date-time" },
+        "mode_paiement": { "type": "string", "enum": ["Espèces", "Mobile Money", "Virement", "Autre"] },
+        "recu_numero": { "type": "string" },
+        "caissier_id": { "type": "string" },
+        "notes": { "type": "string" },
+        "recu_genere_at": { "type": "string", "format": "date-time" },
+        "recu_genere_par": { "type": "string" }
+      },
+      "required": ["montant", "date", "mode_paiement"]
+    },
+    "audit_log": {
+      "title": "Audit Log",
+      "description": "System-wide activity log",
+      "type": "object",
+      "properties": {
+        "action": { "type": "string" },
+        "user_id": { "type": "string" },
+        "cible_id": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "details": { "type": "object" }
+      },
+      "required": ["action", "user_id", "timestamp"]
     }
   },
   "firestore": {
+    "/ecole/{configId}": {
+      "schema": "ecole",
+      "description": "Global school config"
+    },
+    "/rapports_journaliers/{rapportId}": {
+      "schema": "rapports_journaliers",
+      "description": "Teacher reports"
+    },
+    "/chat_eleves/{messageId}": {
+      "schema": "chat_eleves",
+      "description": "Student chat messages"
+    },
+    "/scolarites/{eleveId}": {
+      "schema": "scolarites",
+      "description": "Tuition accounts"
+    },
+    "/scolarites/{eleveId}/versements/{versementId}": {
+      "schema": "versement",
+      "description": "Individual payments"
+    },
+    "/audit_log/{logId}": {
+      "schema": "audit_log",
+      "description": "Audit trail"
+    },
     "/users/{userId}": {
       "schema": "users",
       "description": "User profiles"

@@ -18,7 +18,8 @@ import {
   Bell,
   Sun,
   Moon,
-  FileText
+  FileText,
+  MessageSquare
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -38,11 +39,13 @@ export function Sidebar() {
     { to: '/admin', icon: LayoutDashboard, label: t('sidebar.dashboard') },
     { to: '/admin/students', icon: Users, label: t('sidebar.students') },
     { to: '/admin/teachers', icon: GraduationCap, label: t('sidebar.teachers') },
-    { to: '/admin/levels', icon: Layers, label: t('sidebar.classes') },
+    { to: '/admin/levels', icon: Layers, label: t('sidebar.levels') },
     { to: '/admin/classes', icon: LayoutDashboard, label: t('sidebar.classes') },
     { to: '/admin/evaluations', icon: FileText, label: t('sidebar.evaluations') },
+    { to: '/admin/reports', icon: FileText, label: t('sidebar.reports') },
     { to: '/admin/finances', icon: Wallet, label: t('sidebar.finances') },
-    {to: '/admin/library', icon: Library, label: t('sidebar.library') },
+    { to: '/admin/library', icon: Library, label: t('sidebar.library') },
+    { to: '/admin/chat', icon: MessageSquare, label: t('sidebar.chat') },
     { to: '/admin/communiques', icon: Bell, label: t('sidebar.communiques') },
     { to: '/admin/admins', icon: Shield, label: t('sidebar.manage_admins') },
     { to: '/admin/profile', icon: User, label: t('sidebar.profile') },
@@ -53,7 +56,9 @@ export function Sidebar() {
     { to: '/teacher/planning', icon: Calendar, label: t('sidebar.planning') },
     { to: '/teacher/students', icon: Users, label: t('sidebar.students') },
     { to: '/teacher/evaluations', icon: FileText, label: t('sidebar.evaluations') },
+    { to: '/teacher/reports', icon: FileText, label: t('sidebar.reports') },
     { to: '/teacher/library', icon: Library, label: t('sidebar.library') },
+    { to: '/teacher/chat', icon: MessageSquare, label: t('sidebar.chat') },
     { to: '/teacher/communiques', icon: Bell, label: t('sidebar.communiques') },
     { to: '/teacher/profile', icon: User, label: t('sidebar.profile') },
   ];
@@ -63,6 +68,7 @@ export function Sidebar() {
     { to: '/student/calendar', icon: Calendar, label: t('sidebar.calendar') },
     { to: '/student/evaluations', icon: FileText, label: t('sidebar.evaluations') },
     { to: '/student/library', icon: Library, label: t('sidebar.library') },
+    { to: '/student/chat', icon: MessageSquare, label: t('sidebar.chat') },
     { to: '/student/communiques', icon: Bell, label: t('sidebar.communiques') },
     { to: '/student/profile', icon: User, label: t('sidebar.profile') },
   ];

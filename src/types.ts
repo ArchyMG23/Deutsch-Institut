@@ -124,6 +124,98 @@ export interface CommuniqueRead {
   readAt: string;
 }
 
+export interface SchoolConfig {
+  id: string;
+  nom: string;
+  logo_url: string;
+  annee_scolaire: string;
+  format_recu: 'A5' | 'thermique_58' | 'thermique_80';
+}
+
+export interface DailyReport {
+  id: string;
+  enseignant_id: string;
+  enseignant_nom: string;
+  classe_id: string;
+  matiere: string;
+  date: string;
+  contenu: string;
+  presents: number;
+  absents: number;
+  duree_heures: number; // For salary calculation
+  observations?: string;
+  devoirs?: string;
+  statut: 'brouillon' | 'soumis';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  uid_auteur: string;
+  nom_auteur: string; // Visible only to admin
+  alias: string; // Anonymized for students
+  message: string;
+  timestamp: string;
+  supprime?: boolean;
+  reponse_admin?: string;
+}
+
+export interface StudentScolarite {
+  id: string;
+  eleve_id: string;
+  matricule: string;
+  nom_eleve: string;
+  classe_id: string;
+  montant_total_du: number;
+  total_verse: number;
+  reste: number;
+  surplus: number;
+  statut_paiement: 'EN COURS' | 'SOLDÉ' | 'SURPLUS';
+}
+
+export interface Versement {
+  id: string;
+  montant: number;
+  date: string;
+  mode_paiement: 'Espèces' | 'Mobile Money' | 'Virement' | 'Autre';
+  recu_numero: string;
+  caissier_id: string;
+  notes?: string;
+  recu_genere_at?: string;
+  recu_genere_par?: string;
+}
+
+export interface AuditLog {
+  id: string;
+  action: string;
+  user_id: string;
+  cible_id?: string;
+  timestamp: string;
+  details: any;
+}
+
+export interface Charge {
+  id: string;
+  libelle: string;
+  montant: number;
+  categorie: 'loyer' | 'internet' | 'electricite' | 'divers';
+  date: string;
+  notes?: string;
+}
+
+export interface Session {
+  id: string;
+  enseignant_id: string;
+  enseignant_nom: string;
+  classe_id: string;
+  date: string;
+  duree_heures: number;
+  taux_horaire_applique: number;
+  salaire_calcule: number;
+  status: 'prevue' | 'terminee';
+}
+
 export type GradeValue = number; // 0-100 (standard) or 0-25 per module
 
 export interface Evaluation {

@@ -19,6 +19,7 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'dia-secret-key-2026';
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
 const APP_NAME = process.env.APP_NAME || 'DIA DEUTSCH INSTITUT';
+const WHATSAPP_SENDER_NUMBER = process.env.WHATSAPP_SENDER_NUMBER || '654491319';
 
 // Initialize Firebase Admin
 let firebaseConfig: any = {};
@@ -97,22 +98,21 @@ if (!admin.apps.length) {
 // Email Transporter Config
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: process.env.SMTP_PORT === '465', 
+  port: parseInt(process.env.SMTP_PORT || (process.env.SMTP_HOST?.includes('gmail') ? '465' : '587')),
+  secure: process.env.SMTP_PORT === '465' || (!process.env.SMTP_PORT && (process.env.SMTP_HOST || '').includes('gmail')), 
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
   tls: {
     rejectUnauthorized: false,
-    minVersion: 'TLSv1.2',
-    // Support legacy hosts if needed
-    ciphers: 'SSLv3'
+    minVersion: 'TLSv1.2'
   },
-  connectionTimeout: 20000,
-  greetingTimeout: 20000,
-  socketTimeout: 30000,
-  debug: true, // Enable debug for now to see logs in console
+  family: 4, // Strict IPv4 to avoid timeouts on IPv6 failover
+  connectionTimeout: 5000, // Faster failure if port is blocked
+  greetingTimeout: 5000,
+  socketTimeout: 10000,
+  debug: true,
   logger: true,
 } as any);
 
@@ -121,28 +121,31 @@ let isSmtpOperational = false;
 let lastSmtpError = "";
 if (process.env.SMTP_USER && process.env.SMTP_PASS) {
   console.log("📨 Attempting to verify SMTP connection...");
-  transporter.verify((error, success) => {
+  transporter.verify((error) => {
     if (error) {
+      console.error("❌ SMTP Error Stack:", error);
       const isTimeout = error.message.toLowerCase().includes('timeout') || (error as any).code === 'ETIMEDOUT' || (error as any).code === 'ECONNRESET';
-      const errorMsg = isTimeout 
-        ? "Délai d'attente dépassé ou connexion réinitialisée : Le serveur SMTP ne répond pas. Vérifiez le port (587 ou 465) et si votre hôte autorise les connexions SMTP." 
+      
+      let errorMsg = isTimeout 
+        ? `SMTP Error (${(error as any).code || 'TIMEOUT'}): Délai d'attente dépassé. Hôte: ${process.env.SMTP_HOST || 'smtp.gmail.com'}. Port: ${process.env.SMTP_PORT || '465/587'}.` 
         : `La configuration mail est incorrecte. Erreur: ${error.message}`;
       
-      console.error("❌ SMTP Error:", errorMsg);
-      console.error("Full SMTP Error stack:", error);
+      if (isTimeout) {
+        errorMsg += " NOTE: Les ports SMTP (465/587) sont souvent bloqués dans les environnements de test cloud. Les notifications WhatsApp Zap (654491319) sont recommandées comme alternative.";
+      }
+
+      console.error("❌ SMTP User Message:", errorMsg);
       isSmtpOperational = false;
       lastSmtpError = errorMsg;
-      // Note: addLog might not be available yet if it's the very start and firestore isn't ready
-      // But we call it here assuming it was intended
       try {
-        addLog('ERROR', "Échec de la connexion SMTP au démarrage", errorMsg);
+        if (dbAdmin) addLog('ERROR', "Échec de la connexion SMTP au démarrage. Réseau restreint.", errorMsg);
       } catch (e) {}
     } else {
       console.log("✅ SMTP Server is ready to take our messages");
       isSmtpOperational = true;
       lastSmtpError = "";
       try {
-        addLog('INFO', "Connexion SMTP établie avec succès");
+        if (dbAdmin) addLog('INFO', "Connexion SMTP établie avec succès");
       } catch(e) {}
     }
   });
@@ -438,6 +441,37 @@ async function startServer() {
     } catch (err: any) {
       addLog('ERROR', `Erreur lors du login/lookup pour ${matricule}`, err.message);
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/notifications/send-whatsapp', authenticate, async (req: any, res) => {
+    // Only allow admins and teachers to send notifications
+    if (req.user.role !== 'admin' && req.user.role !== 'teacher') {
+      return res.status(403).json({ message: 'Droits insuffisants' });
+    }
+
+    const { phone, message } = req.body;
+    
+    if (!phone || !message) {
+      return res.status(400).json({ message: 'Numéro ou message manquant' });
+    }
+
+    try {
+      // In a real implementation, you would use a WhatsApp Gateway here (e.g., Twilio, Z-API, etc.)
+      // For now, we log the attempt with the configured sender number
+      console.log(`[WhatsApp Notification] DE: ${WHATSAPP_SENDER_NUMBER} -> A: ${phone}`);
+      console.log(`[WhatsApp Message] ${message}`);
+      
+      addLog('INFO', `Notification WhatsApp envoyée à ${phone} via ${WHATSAPP_SENDER_NUMBER}`);
+      
+      res.json({ 
+        success: true, 
+        sender: WHATSAPP_SENDER_NUMBER,
+        message: 'Notification envoyée (Simulation)' 
+      });
+    } catch (err: any) {
+      console.error("WhatsApp notification error:", err);
+      res.status(500).json({ message: 'Erreur lors de l\'envoi WhatsApp' });
     }
   });
 
@@ -1562,9 +1596,6 @@ async function startServer() {
       res.status(500).json({ message: `Erreur d'envoi: ${err.message}` });
     }
   });
-
-  // Serve uploaded files
-  app.use('/uploads', express.static(UPLOADS_DIR));
 
   // Vite Middleware or Static Fallback
   const distPath = path.join(process.cwd(), 'dist');

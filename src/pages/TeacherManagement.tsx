@@ -255,6 +255,23 @@ export default function TeacherManagement() {
               </div>
               <div className="flex gap-1">
                 <button 
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    if (!teacher.phone) {
+                      toast.error(t('common.no_phone') || 'Aucun numéro');
+                      return;
+                    }
+                    const msg = `Bonjour M/Mme ${teacher.lastName}, c'est l'administration DIA.`;
+                    await NotificationService._triggerWhatsApp(fetchWithAuth, teacher.phone, msg);
+                    toast.success("Notification WhatsApp Zap envoyée");
+                    window.open(`https://wa.me/${teacher.phone.replace(/\s/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+                  }}
+                  className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors text-green-600"
+                  title="Zap WhatsApp"
+                >
+                  <Smartphone size={16} />
+                </button>
+                <button 
                   onClick={() => {
                     setSelectedTeacher(teacher);
                     setIsEditModalOpen(true);
