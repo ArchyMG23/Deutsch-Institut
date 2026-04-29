@@ -99,7 +99,7 @@ if (!admin.apps.length) {
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
   port: parseInt(process.env.SMTP_PORT || (process.env.SMTP_HOST?.includes('gmail') ? '465' : '587')),
-  secure: process.env.SMTP_PORT === '465' || (!process.env.SMTP_PORT && (process.env.SMTP_HOST || '').includes('gmail')), 
+  secure: process.env.SMTP_PORT === '465', 
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
@@ -109,45 +109,31 @@ const transporter = nodemailer.createTransport({
     minVersion: 'TLSv1.2'
   },
   family: 4, // Strict IPv4 to avoid timeouts on IPv6 failover
-  connectionTimeout: 5000, // Faster failure if port is blocked
-  greetingTimeout: 5000,
-  socketTimeout: 10000,
-  debug: true,
-  logger: true,
+  connectionTimeout: 10000, 
+  greetingTimeout: 10000,
+  socketTimeout: 15000,
 } as any);
 
-// Verify SMTP connection at startup
+// Verify SMTP connection at startup (non-blocking)
 let isSmtpOperational = false;
 let lastSmtpError = "";
 if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-  console.log("📨 Attempting to verify SMTP connection...");
-  transporter.verify((error) => {
-    if (error) {
-      console.error("❌ SMTP Error Stack:", error);
-      const isTimeout = error.message.toLowerCase().includes('timeout') || (error as any).code === 'ETIMEDOUT' || (error as any).code === 'ECONNRESET';
-      
-      let errorMsg = isTimeout 
-        ? `SMTP Error (${(error as any).code || 'TIMEOUT'}): Délai d'attente dépassé. Hôte: ${process.env.SMTP_HOST || 'smtp.gmail.com'}. Port: ${process.env.SMTP_PORT || '465/587'}.` 
-        : `La configuration mail est incorrecte. Erreur: ${error.message}`;
-      
-      if (isTimeout) {
-        errorMsg += " NOTE: Les ports SMTP (465/587) sont souvent bloqués dans les environnements de test cloud. Les notifications WhatsApp Zap (654491319) sont recommandées comme alternative.";
-      }
-
-      console.error("❌ SMTP User Message:", errorMsg);
-      isSmtpOperational = false;
-      lastSmtpError = errorMsg;
-      try {
-        if (dbAdmin) addLog('ERROR', "Échec de la connexion SMTP au démarrage. Réseau restreint.", errorMsg);
-      } catch (e) {}
-    } else {
-      console.log("✅ SMTP Server is ready to take our messages");
-      isSmtpOperational = true;
-      lastSmtpError = "";
-      try {
-        if (dbAdmin) addLog('INFO', "Connexion SMTP établie avec succès");
-      } catch(e) {}
-    }
+  console.log("📨 SMTP: Initialisation en arrière-plan...");
+  transporter.verify().then(() => {
+    console.log("✅ SMTP Server is ready");
+    isSmtpOperational = true;
+    lastSmtpError = "";
+    if (dbAdmin) addLog('INFO', "Connexion SMTP établie avec succès");
+  }).catch((error) => {
+    const isNetworkError = error.code === 'ENETUNREACH' || error.message.includes('ENETUNREACH') || error.message.includes('timeout');
+    let errorMsg = isNetworkError 
+      ? `SMTP: Port bloqué par l'environnement Cloud. Port: ${process.env.SMTP_PORT || '465/587'}.` 
+      : `SMTP: Erreur de configuration: ${error.message}`;
+    
+    console.warn("⚠️  " + errorMsg);
+    isSmtpOperational = false;
+    lastSmtpError = errorMsg;
+    if (dbAdmin) addLog('ERROR', "SMTP non disponible (Réseau restreint)", errorMsg);
   });
 } else {
   console.log("ℹ️ SMTP credentials not provided, email features will be disabled.");
@@ -1596,6 +1582,9 @@ async function startServer() {
       res.status(500).json({ message: `Erreur d'envoi: ${err.message}` });
     }
   });
+
+  // Serve uploaded files
+  app.use('/uploads', express.static(UPLOADS_DIR));
 
   // Vite Middleware or Static Fallback
   const distPath = path.join(process.cwd(), 'dist');
