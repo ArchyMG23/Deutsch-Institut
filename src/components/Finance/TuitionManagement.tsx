@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
 import { collection, query, where, getDocs, doc, setDoc, updateDoc, getDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { Student, StudentScolarite, Versement, SchoolConfig } from '../../types';
-import { Search, CreditCard, Printer, History, AlertCircle, CheckCircle2, User, Landmark } from 'lucide-react';
+import { Search, CreditCard, Printer, History, AlertCircle, CheckCircle2, User, Landmark, Share2, Send, MessageCircle, Mail as MailIcon } from 'lucide-react';
 import { formatCurrency, cn } from '../../utils';
 import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
 import { addAuditLog } from '../../utils/auditLogger';
 import { useAuth } from '../../context/AuthContext';
+import { generateWhatsAppLink, generateMailtoLink, APP_NAME_FOR_LINKS } from '../../utils/contactLinks';
 
 const TuitionManagement: React.FC = () => {
   const { user } = useAuth();
@@ -326,13 +327,36 @@ const TuitionManagement: React.FC = () => {
                         <span>{v.recu_numero}</span>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => handleGeneratePDF(v)}
-                      className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-dia-red hover:scale-110 transition-transform"
-                      title="Réimprimer le reçu"
-                    >
-                      <Printer size={18} />
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button 
+                        onClick={() => handleGeneratePDF(v)}
+                        className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-dia-red hover:scale-110 transition-transform"
+                        title="Réimprimer le reçu"
+                      >
+                        <Printer size={18} />
+                      </button>
+                      <button 
+                        onClick={() => {
+                          const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n🧾 *REÇU DE PAIEMENT*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\nBonjour,\nNous confirmons la réception du versement suivant pour l'élève *${targetStudent.firstName} ${targetStudent.lastName}* :\n\n🔹 *Montant* : ${formatCurrency(v.montant)}\n🔹 *Reçu N°* : ${v.recu_numero}\n🔹 *Date* : ${new Date(v.date).toLocaleDateString()}\n🔹 *Mode* : ${v.mode_paiement}\n\n📊 *SITUATION FINANCIÈRE* :\n- Déjà versé : ${formatCurrency(scolarite.total_verse)}\n- *RESTE À PAYER* : ${formatCurrency(scolarite.reste)}\n\nMerci de votre confiance. 🙏\n━━━━━━━━━━━━━━━━━━━━━━━`;
+                          window.open(generateWhatsAppLink(targetStudent.phone || targetStudent.parentPhone || '', msg), '_blank');
+                        }}
+                        className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-green-600 hover:scale-110 transition-transform"
+                        title="Envoyer par WhatsApp"
+                      >
+                        <MessageCircle size={18} />
+                      </button>
+                      <button 
+                        onClick={() => {
+                          const subject = `[REÇU] Paiement Scolarité - ${targetStudent.firstName} ${targetStudent.lastName}`;
+                          const body = `-----------------------------------------------------------\nREÇU DE PAIEMENT - ${APP_NAME_FOR_LINKS}\n-----------------------------------------------------------\n\nBonjour,\n\nNous vous confirmons la réception d'un versement de ${formatCurrency(v.montant)} pour l'élève ${targetStudent.firstName} ${targetStudent.lastName}.\n\nDétails du versement :\n- Reçu N° : ${v.recu_numero}\n- Date : ${new Date(v.date).toLocaleDateString()}\n- Mode de paiement : ${v.mode_paiement}\n\nSITUATION ACTUELLE :\n- Total versé à ce jour : ${formatCurrency(scolarite.total_verse)}\n- RESTE À PAYER : ${formatCurrency(scolarite.reste)}\n\nMerci de votre confiance.\n\nCordialement,\nL'administration de ${APP_NAME_FOR_LINKS}`;
+                          window.location.href = generateMailtoLink(targetStudent.email || targetStudent.parentEmail || '', subject, body);
+                        }}
+                        className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-blue-500 hover:scale-110 transition-transform"
+                        title="Envoyer par Email"
+                      >
+                        <MailIcon size={18} />
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {versements.length === 0 && (
@@ -381,6 +405,31 @@ const TuitionManagement: React.FC = () => {
                     {formatCurrency(scolarite.reste)}
                   </span>
                 </div>
+
+                {scolarite.reste > 0 && (
+                  <div className="pt-2 flex flex-col gap-2">
+                    <p className="text-[10px] font-bold text-neutral-400 uppercase text-center mb-1">Rappels rapides</p>
+                    <button 
+                      onClick={() => {
+                        const msg = `📢 *RAPPEL DE PAIEMENT - ${APP_NAME_FOR_LINKS}*\n\nBonjour,\nSauf erreur de notre part, il reste un solde de *${formatCurrency(scolarite.reste)}* à régler pour la scolarité de ${targetStudent.firstName} ${targetStudent.lastName}.\n\nMerci de passer en caisse ou d'effectuer un virement mobile.\nCordialement.`;
+                        window.open(generateWhatsAppLink(targetStudent.phone || targetStudent.parentPhone || '', msg), '_blank');
+                      }}
+                      className="w-full py-2 bg-green-50 text-green-700 border border-green-200 rounded-xl text-xs font-bold hover:bg-green-100 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <MessageCircle size={14} /> Rappeler par WhatsApp
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const subject = `Rappel de paiement scolarité - ${APP_NAME_FOR_LINKS}`;
+                        const body = `Bonjour,\n\nNous vous informons qu'il reste un solde de ${formatCurrency(scolarite.reste)} à régler sur la scolarité de ${targetStudent.firstName} ${targetStudent.lastName}.\n\nNous vous prions de bien vouloir régulariser cette situation dès que possible.\n\nCordialement,\nL'administration.`;
+                        window.location.href = generateMailtoLink(targetStudent.email || targetStudent.parentEmail || '', subject, body);
+                      }}
+                      className="w-full py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold hover:bg-blue-100 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <MailIcon size={14} /> Rappeler par Email
+                    </button>
+                  </div>
+                )}
                 {scolarite.surplus > 0 && (
                   <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center gap-3 text-blue-700 dark:text-blue-400">
                     <AlertCircle size={20} />

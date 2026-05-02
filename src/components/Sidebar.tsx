@@ -120,7 +120,6 @@ export function Sidebar() {
                     src="/logo.png" 
                     alt="DIA Logo" 
                     className="w-11 h-11 rounded-xl shadow-lg shadow-dia-red/10 object-contain bg-white" 
-                    referrerPolicy="no-referrer"
                     onError={() => setLogoError(true)}
                   />
                 ) : (

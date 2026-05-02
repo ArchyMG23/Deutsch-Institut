@@ -23,6 +23,8 @@ import { toast } from 'sonner';
 import { collection, query, orderBy, getDocs, addDoc, serverTimestamp, where, updateDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { CommuniqueRead } from '../types';
+import { generateWhatsAppLink, generateMailtoLink, APP_NAME_FOR_LINKS } from '../utils/contactLinks';
+import { Smartphone, Mail as MailIcon } from 'lucide-react';
 
 export default function CommuniqueManagement() {
   const { t } = useTranslation();
@@ -430,23 +432,44 @@ export default function CommuniqueManagement() {
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-2">
-                    {isAdmin && (
+                    <div className="flex items-center gap-2">
                       <button 
-                        onClick={() => toggleArchive(c)}
-                        className="p-2 hover:bg-neutral-50 rounded-xl text-neutral-400 hover:text-amber-600 transition-colors tooltip"
-                        title={c.isArchived ? t('communiques.unarchive') : t('communiques.archive')}
+                        onClick={() => {
+                          const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n📢 *COMMUNIQUÉ OFFICIEL*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\n📌 *${c.title}*\n\n${c.content.substring(0, 500)}${c.content.length > 500 ? '...' : ''}\n\n🔗 *Lire la suite* : ${window.location.origin}\n━━━━━━━━━━━━━━━━━━━━━━━`;
+                          window.open(generateWhatsAppLink('', msg), '_blank');
+                        }}
+                        className="p-2 hover:bg-neutral-50 rounded-xl text-green-600 transition-colors"
+                        title="Partager sur WhatsApp"
                       >
-                        <Archive size={18} />
+                        <Smartphone size={18} />
                       </button>
-                    )}
-                    <button 
-                      onClick={() => openCommunique(c)}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-neutral-50 hover:bg-neutral-100 text-neutral-900 text-xs font-bold rounded-xl transition-all active:scale-95"
-                    >
-                      {t('common.read_more')} <ChevronRight size={14} />
-                    </button>
-                  </div>
+                      <button 
+                        onClick={() => {
+                          const subject = `📢 COMMUNIQUÉ : ${c.title}`;
+                          const body = `-----------------------------------------------------------\nCOMMUNIQUÉ - ${APP_NAME_FOR_LINKS}\n-----------------------------------------------------------\n\n${c.content}\n\nConsultez l'intégralité sur votre espace personnel : ${window.location.origin}`;
+                          window.location.href = generateMailtoLink('', subject, body);
+                        }}
+                        className="p-2 hover:bg-neutral-50 rounded-xl text-blue-500 transition-colors"
+                        title="Partager par Email"
+                      >
+                        <MailIcon size={18} />
+                      </button>
+                      {isAdmin && (
+                        <button 
+                          onClick={() => toggleArchive(c)}
+                          className="p-2 hover:bg-neutral-50 rounded-xl text-neutral-400 hover:text-amber-600 transition-colors tooltip"
+                          title={c.isArchived ? t('communiques.unarchive') : t('communiques.archive')}
+                        >
+                          <Archive size={18} />
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => openCommunique(c)}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-neutral-50 hover:bg-neutral-100 text-neutral-900 text-xs font-bold rounded-xl transition-all active:scale-95"
+                      >
+                        {t('common.read_more')} <ChevronRight size={14} />
+                      </button>
+                    </div>
                 </div>
               </div>
             </div>

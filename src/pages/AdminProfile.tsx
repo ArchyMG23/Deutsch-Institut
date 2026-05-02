@@ -22,6 +22,7 @@ import { toast } from 'sonner';
 import { db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { SchoolConfig } from '../types';
+import { compressImage } from '../utils/image-compression';
 
 export default function AdminProfile() {
   const { user, profile, updateProfile, fetchWithAuth, logout } = useAuth();
@@ -110,10 +111,13 @@ export default function AdminProfile() {
     if (!file) return;
 
     setUploading(true);
-    const formData = new FormData();
-    formData.append('photo', file);
-
     try {
+      // Compresser l'image avant l'envoi
+      const compressedFile = await compressImage(file);
+      
+      const formData = new FormData();
+      formData.append('photo', compressedFile);
+
       const res = await fetchWithAuth('/api/profile/upload-photo', {
         method: 'POST',
         body: formData

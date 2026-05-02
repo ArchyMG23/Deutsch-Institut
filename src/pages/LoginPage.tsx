@@ -131,7 +131,6 @@ export default function LoginPage() {
                 src="/logo.png" 
                 alt="DIA Logo" 
                 className="w-20 h-20 rounded-2xl shadow-xl shadow-dia-red/20 object-contain bg-white" 
-                referrerPolicy="no-referrer"
                 onError={() => setLogoError(true)}
                 onLoad={(e) => {
                   if ((e.target as HTMLImageElement).naturalWidth === 0) {

@@ -22,6 +22,8 @@ import { cn, formatCurrency } from '../utils';
 import { Evaluation, Student, ClassRoom } from '../types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { generateWhatsAppLink, generateMailtoLink, APP_NAME_FOR_LINKS } from '../utils/contactLinks';
+import { Smartphone, Mail } from 'lucide-react';
 
 export default function EvaluationManagement() {
   const { t } = useTranslation();
@@ -366,6 +368,18 @@ export default function EvaluationManagement() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          <button 
+                            onClick={() => {
+                              const grade = getGoetheGrade(ev.total);
+                              const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n📊 *RELEVÉ DE NOTES*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\nFélicitations ! Les résultats de l'évaluation sont disponibles.\n\n👤 *Étudiant* : ${ev.studentName}\n📝 *Module* : ${ev.moduleName || 'Examen'}\n\n⭐ *SCORE FINAL* : *${ev.total}/100*\n🏆 *Mention* : ${grade.label}\n\nContinuez vos efforts ! 💪\n━━━━━━━━━━━━━━━━━━━━━━━`;
+                              const student = students.find(s => s.uid === ev.studentId);
+                              window.open(generateWhatsAppLink(student?.parentPhone || student?.phone || '', msg), '_blank');
+                            }}
+                            className="p-2 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg text-green-600 transition-colors"
+                            title="Share via WhatsApp"
+                          >
+                            <Smartphone size={16} />
+                          </button>
                           <button onClick={() => sendEmail(ev)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-500 hover:text-blue-600 transition-colors" title={t('common.send_email')}>
                             <Send size={16} />
                           </button>

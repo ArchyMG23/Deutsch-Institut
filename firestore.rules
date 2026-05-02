@@ -45,120 +45,139 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // 0. Global Safety Net - Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
     // ===============================================================
-    // Helper Functions
+    // Shared Helpers
     // ===============================================================
 
-    function isAuthenticated() {
+    function isSignedIn() {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
+    // Identifies if the user is a verified admin or a bootstrap admin
     function isAdmin() {
-      return isAuthenticated() && 
-        (request.auth.token.email == "yombivictor@gmail.com" ||
-         request.auth.token.email == "gabrielyombi311@gmail.com" || 
-         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+      return isSignedIn() && (
+        request.auth.token.email == "yombivictor@gmail.com" ||
+        request.auth.token.email == "gabrielyombi311@gmail.com" || 
+        request.auth.uid == "ODbaguDQ7GRMDmGLo8SzsH46u2E2" || // Reported User UID
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
     }
 
-    function isTeacher() {
-      return isAuthenticated() && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
     }
 
-    function isStudent() {
-      return isAuthenticated() && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
+    function isVerified() {
+      // Mandate verification for write operations as per instructions, 
+      // but allow bootstrap admins even if unverified for initial setup.
+      return isSignedIn() && (
+        request.auth.token.email_verified == true ||
+        request.auth.token.email == "yombivictor@gmail.com" ||
+        request.auth.token.email == "gabrielyombi311@gmail.com" ||
+        request.auth.uid == "ODbaguDQ7GRMDmGLo8SzsH46u2E2"
+      );
     }
 
-    function isValidEmail(email) {
-      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
     }
 
-    function isValidDateString(dateStr) {
-      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    function incoming() { 
+      return request.resource.data; 
+    }
+
+    function existing() { 
+      return resource.data; 
     }
 
     // ===============================================================
-    // Domain Validators
+    // Entity Validators
     // ===============================================================
 
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'matricule', 'email', 'role', 'firstName', 'lastName', 'status', 'createdAt']) &&
-             data.uid is string && data.uid.size() > 0 &&
-             data.matricule is string && data.matricule.size() > 0 &&
-             isValidEmail(data.email) &&
+             data.uid == request.auth.uid &&
              data.role in ['admin', 'teacher', 'student'] &&
-             data.firstName is string &&
-             data.lastName is string &&
-             data.status in ['online', 'offline'] &&
-             isValidDateString(data.createdAt);
+             data.email is string &&
+             data.firstName is string && data.firstName.size() < 100 &&
+             data.lastName is string && data.lastName.size() < 100;
     }
 
-    function isValidCommunique(data) {
-      return data.keys().hasAll(['title', 'content', 'authorId', 'targetRoles', 'createdAt']) &&
-             data.title is string && data.title.size() > 0 &&
-             data.title.size() < 200 &&
-             data.content is string && data.content.size() > 0 &&
-             data.content.size() < 5000 &&
-             data.authorId is string &&
-             data.targetRoles is list &&
-             isValidDateString(data.createdAt);
+    function isValidChatMessage(data) {
+      return data.keys().hasAll(['uid_auteur', 'alias', 'message', 'timestamp', 'supprime']) &&
+             data.uid_auteur == request.auth.uid &&
+             data.message is string && data.message.size() > 0 && data.message.size() <= 2000 &&
+             data.alias is string &&
+             data.supprime is bool;
     }
 
     function isValidFinance(data) {
       return data.keys().hasAll(['type', 'amount', 'date', 'description']) &&
              data.type in ['income', 'expense'] &&
-             data.amount is number && data.amount >= 0 &&
-             isValidDateString(data.date) &&
-             data.description is string && data.description.size() < 500;
-    }
-
-    function isValidReport(data) {
-      return data.enseignant_id == request.auth.uid &&
-             data.statut in ['brouillon', 'soumis'] &&
-             data.contenu is string && data.contenu.size() > 0;
-    }
-
-    function isValidMessage(data) {
-      return data.uid_auteur == request.auth.uid &&
-             data.message is string && data.message.size() > 0 &&
-             data.message.size() < 1000;
+             data.amount is number && data.amount >= 0;
     }
 
     // ===============================================================
-    // Rules
+    // Collection Rules
     // ===============================================================
 
-    match /ecole/{configId} {
-      allow read: if isAuthenticated();
+    // Chat Éleves - Public chat area
+    match /chat_eleves/{messageId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      
+      allow create: if isVerified() && isValidChatMessage(incoming());
+      
+      allow update: if isVerified() && (
+        isAdmin() || 
+        (existing().uid_auteur == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['supprime']))
+      );
+      
+      allow delete: if isAdmin();
+    }
+
+    // Users & Profiles
+    match /users/{userId} {
+      allow read: if isSignedIn() && (isOwner(userId) || isAdmin() || resource.data.matricule in ['T26001', 'S26001']);
+      allow create: if isSignedIn() && isValidUser(incoming()) && (isOwner(userId) || isAdmin());
+      allow update: if isVerified() && (
+        isAdmin() || 
+        (isOwner(userId) && incoming().role == existing().role && incoming().uid == existing().uid)
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /students/{studentId} {
+      allow read: if isSignedIn() && (isOwner(studentId) || isAdmin());
       allow write: if isAdmin();
     }
 
-    match /rapports_journaliers/{rapportId} {
-      allow read: if isAdmin() || (isTeacher() && resource.data.enseignant_id == request.auth.uid);
-      allow create: if (isAdmin() || isTeacher()) && isValidReport(request.resource.data);
-      allow update: if isAdmin() || (isTeacher() && resource.data.enseignant_id == request.auth.uid && isValidReport(request.resource.data));
-      allow delete: if isAdmin();
+    match /teachers/{teacherId} {
+      allow read: if isSignedIn() && (isOwner(teacherId) || isAdmin());
+      allow write: if isAdmin();
     }
 
-    match /chat_eleves/{messageId} {
-      // Students see a limited view (no nom_auteur, no uid_auteur)
-      allow get: if isAuthenticated();
-      allow list: if isAuthenticated();
-      
-      // We rely on the client to select only public fields, or we could use field-level security
-      // However, usually in Firestore we control what fields are returned by not including them.
-      // Rules also prevent writing to unauthorized fields.
-      
-      allow create: if isAuthenticated() && isValidMessage(request.resource.data);
-      allow update: if isAdmin() || (isAuthenticated() && resource.data.uid_auteur == request.auth.uid && 
-                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['supprime']));
-      allow delete: if isAdmin();
+    // Academy Data
+    match /ecole/{configId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /classes/{classId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Finance & Scolarite
+    match /finances/{recordId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin() && isValidFinance(incoming());
     }
 
     match /scolarites/{eleveId} {
@@ -168,69 +187,37 @@ service cloud.firestore {
       match /versements/{versementId} {
         allow read: if isAdmin() || isOwner(eleveId);
         allow create: if isAdmin();
-        // Immutability for receipts
-        allow update: if isAdmin() && (resource.data.recu_numero == null || request.resource.data.recu_numero == resource.data.recu_numero);
-        allow delete: if isAdmin() && resource.data.recu_numero == null;
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    // Reports & Communiques
+    match /rapports_journaliers/{rapportId} {
+      allow read: if isAdmin() || (isSignedIn() && existing().enseignant_id == request.auth.uid);
+      allow create: if isSignedIn() && incoming().enseignant_id == request.auth.uid;
+      allow update: if isAdmin() || (isSignedIn() && existing().enseignant_id == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /communiques/{communiqueId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+      
+      match /reads/{userId} {
+        allow read: if isAdmin() || isOwner(userId);
+        allow create: if isOwner(userId);
       }
     }
 
     match /audit_log/{logId} {
       allow read: if isAdmin();
-      allow create: if isAuthenticated(); // Audit can be written by any active user action
-      allow update, delete: if false; // Logs are immutable
-    }
-
-    match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin() || (isAuthenticated() && resource != null && resource.data.matricule in ['T26001', 'S26001']);
-      allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
-                    (isOwner(userId) || isAdmin()) && 
-                    (request.resource.data.role != 'admin' || isAdmin() || request.auth.token.email == "yombivictor@gmail.com" || request.auth.token.email == "gabrielyombi311@gmail.com");
-      allow update: if isAuthenticated() && isValidUser(request.resource.data) && 
-                    ((isOwner(userId) && request.resource.data.role == resource.data.role) || isAdmin()) &&
-                    request.resource.data.uid == resource.data.uid;
-    }
-
-    match /students/{studentId} {
-      allow read: if isOwner(studentId) || isAdmin() || (isAuthenticated() && get(/databases/$(database)/documents/users/$(studentId)).data.matricule == 'S26001');
-      allow write: if isAdmin();
-    }
-
-    match /teachers/{teacherId} {
-      allow read: if isOwner(teacherId) || isAdmin() || (isAuthenticated() && get(/databases/$(database)/documents/users/$(teacherId)).data.matricule == 'T26001');
-      allow write: if isAdmin();
-    }
-
-    match /finances/{recordId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin() && isValidFinance(request.resource.data);
-    }
-
-    match /classes/{classId} {
-      allow read: if isAuthenticated(); // Simplified for now, should check assignment
-      allow write: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
     }
 
     match /library/{itemId} {
-      allow read: if isAuthenticated();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
-    }
-
-    match /communiques/{communiqueId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() && isValidCommunique(request.resource.data);
-      
-      match /reads/{userId} {
-        allow read: if isAdmin() || isOwner(userId);
-        allow create: if isOwner(userId) && 
-                      request.resource.data.keys().hasAll(['userId', 'userName', 'readAt']) &&
-                      request.resource.data.userId == userId &&
-                      request.resource.data.readAt is string;
-      }
-    }
-
-    // Default deny
-    match /{path=**} {
-      allow read, write: if false;
     }
   }
 }

@@ -26,6 +26,7 @@ import { useData } from '../context/DataContext';
 import { toast } from 'sonner';
 
 import { useTranslation } from 'react-i18next';
+import { generateWhatsAppLink, generateMailtoLink, APP_NAME_FOR_LINKS } from '../utils/contactLinks';
 
 export default function TeacherManagement() {
   const { t } = useTranslation();
@@ -255,21 +256,36 @@ export default function TeacherManagement() {
               </div>
               <div className="flex gap-1">
                 <button 
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    if (!teacher.phone) {
-                      toast.error(t('common.no_phone') || 'Aucun numéro');
-                      return;
-                    }
-                    const msg = `Bonjour M/Mme ${teacher.lastName}, c'est l'administration DIA.`;
-                    await NotificationService._triggerWhatsApp(fetchWithAuth, teacher.phone, msg);
-                    toast.success("Notification WhatsApp Zap envoyée");
-                    window.open(`https://wa.me/${teacher.phone.replace(/\s/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+                  onClick={() => {
+                    const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n🚀 *ACCÈS ENSEIGNANT*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\nBonjour M/Mme ${teacher.lastName},\n\nBienvenue dans notre équipe pédagogique. Voici vos identifiants pour gérer vos classes et vos évaluations :\n\n🔑 *Matricule* : ${teacher.matricule}\n🔒 *Mot de passe* : ${teacher.password || 'Inconnu'}\n\n🌐 *Accès* : ${window.location.origin}\n\nNous vous souhaitons une excellente collaboration ! 🙏`;
+                    window.open(generateWhatsAppLink(teacher.phone || '', msg), '_blank');
                   }}
                   className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors text-green-600"
-                  title="Zap WhatsApp"
+                  title="WhatsApp"
                 >
                   <Smartphone size={16} />
+                </button>
+                <button 
+                  onClick={() => {
+                    const subject = `🔐 Vos Identifiants Enseignant - ${APP_NAME_FOR_LINKS}`;
+                    const body = `-----------------------------------------------------------\nESPACE ENSEIGNANT - ${APP_NAME_FOR_LINKS}\n-----------------------------------------------------------\n\nBonjour ${teacher.firstName},\n\nVoici vos identifiants pour accéder à votre espace de gestion pédagogique :\n\n- Matricule : ${teacher.matricule}\n- Mot de passe : ${teacher.password || 'Inconnu'}\n\n🌐 Lien : ${window.location.origin}\n\nCordialement,\nLa Direction Académique.`;
+                    window.location.href = generateMailtoLink(teacher.email || '', subject, body);
+                  }}
+                  className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors text-indigo-500"
+                  title="Send Credentials"
+                >
+                  <Mail size={16} />
+                </button>
+                <button 
+                  onClick={() => {
+                    const subject = `Message de l'administration - ${APP_NAME_FOR_LINKS}`;
+                    const body = `Bonjour M/Mme ${teacher.lastName},\n\n`;
+                    window.location.href = generateMailtoLink(teacher.email || '', subject, body);
+                  }}
+                  className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors text-blue-500"
+                  title="Email"
+                >
+                  <Mail size={16} />
                 </button>
                 <button 
                   onClick={() => {

@@ -21,6 +21,7 @@ import { useAuth } from '../context/AuthContext';
 import { cn, formatCurrency } from '../utils';
 import { Student } from '../types';
 import { toast } from 'sonner';
+import { compressImage } from '../utils/image-compression';
 
 export default function StudentProfile() {
   const { t, i18n } = useTranslation();
@@ -98,10 +99,11 @@ export default function StudentProfile() {
     if (!file) return;
 
     setUploading(true);
-    const formData = new FormData();
-    formData.append('photo', file);
-
     try {
+      const compressedFile = await compressImage(file);
+      const formData = new FormData();
+      formData.append('photo', compressedFile);
+
       const res = await fetchWithAuth('/api/profile/upload-photo', {
         method: 'POST',
         body: formData

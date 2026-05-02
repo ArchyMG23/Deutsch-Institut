@@ -22,6 +22,8 @@ import { formatCurrency } from '../../utils';
 import { Charge, Session, Versement, DailyReport } from '../../types';
 import { motion } from 'motion/react';
 import { useTranslation } from 'react-i18next';
+import { generateWhatsAppLink, generateMailtoLink, APP_NAME_FOR_LINKS } from '../../utils/contactLinks';
+import { Smartphone, Mail, Share2 } from 'lucide-react';
 import { 
   BarChart, 
   Bar, 
@@ -157,6 +159,27 @@ export default function RealFinanceDashboard() {
         </select>
         <button onClick={fetchFinanceStats} className="ml-auto p-2 bg-dia-red/5 text-dia-red rounded-lg hover:bg-dia-red/10">
           <Activity size={18} />
+        </button>
+        <button 
+          onClick={() => {
+            const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n💰 *BILAN FINANCIER*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\n📅 *Période* : Année ${selectedYear}\n\n🟢 *Revenus* : ${formatCurrency(data.revenus)}\n🔴 *Charges* : ${formatCurrency(totalCharges)}\n\n💎 *RÉSULTAT NET* : *${formatCurrency(resultatNet)}*\n\nDocument généré le ${new Date().toLocaleDateString()}\n━━━━━━━━━━━━━━━━━━━━━━━`;
+            window.open(generateWhatsAppLink('', msg), '_blank');
+          }}
+          className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors"
+          title="Partager via WhatsApp"
+        >
+          <Smartphone size={18} />
+        </button>
+        <button 
+          onClick={() => {
+            const subject = `📊 Rapport Financier Annuel ${selectedYear} - ${APP_NAME_FOR_LINKS}`;
+            const body = `-----------------------------------------------------------\nBILAN FINANCIER - ${APP_NAME_FOR_LINKS}\n-----------------------------------------------------------\n\nVoici le résumé financier pour l'année ${selectedYear} :\n\n- Revenus globaux : ${formatCurrency(data.revenus)}\n- Charges totales : ${formatCurrency(totalCharges)}\n\n=> RÉSULTAT NET : ${formatCurrency(resultatNet)}\n\nRapport généré le ${new Date().toLocaleString()}.\n\nCordialement,\nService Comptabilité.`;
+            window.location.href = generateMailtoLink('', subject, body);
+          }}
+          className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+          title="Partager par Email"
+        >
+          <Mail size={18} />
         </button>
       </div>
 

@@ -140,25 +140,84 @@ if (process.env.SMTP_USER && process.env.SMTP_PASS) {
 }
 
 async function sendEmail(to: string, subject: string, text: string, html?: string, cc?: string) {
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    console.log(`[EMAIL SIMULATION] to ${to}${cc ? ' cc ' + cc : ''}: ${subject}\n${text}`);
-    return;
+  const from = process.env.SMTP_FROM || `"DIA_SAAS" <gabrielyombi311@gmail.com>`;
+
+  // 1. Try Resend API (HTTPS - Recommended for Cloud)
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          from: from.includes('<') ? from : `"System" <${from}>`,
+          to: cc ? [to, cc] : to,
+          subject: subject,
+          text: text,
+          html: html || text
+        })
+      });
+      if (response.ok) {
+        addLog('EMAIL', `Email (API Resend) envoyé à ${to}`, { subject });
+        return;
+      }
+      const err = await response.json();
+      console.error("❌ Resend API Error:", err);
+    } catch (e: any) {
+      console.error("❌ Resend Fetch Error:", e.message);
+    }
   }
 
-  console.log(`[EMAIL START] Attempting to send to ${to}${cc ? ' cc ' + cc : ''}...`);
-  try {
-    const info = await transporter.sendMail({
-      from: process.env.SMTP_FROM || `"DIA_SAAS" <${process.env.SMTP_USER}>`,
-      to,
-      cc,
-      subject,
-      text,
-      html,
-    });
-    addLog('EMAIL', `Email envoyé avec succès à ${to}`, { messageId: info.messageId, cc });
-  } catch (err: any) {
-    addLog('ERROR', `Échec de l'envoi d'email à ${to}`, err.message);
+  // 2. Try Brevo API (HTTPS)
+  if (process.env.BREVO_API_KEY) {
+    try {
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'api-key': process.env.BREVO_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          sender: { email: from.match(/<(.+)>/)?.[1] || from, name: "DIA SAAS" },
+          to: [{ email: to }],
+          bcc: cc ? [{ email: cc }] : undefined,
+          subject: subject,
+          textContent: text,
+          htmlContent: html || text
+        })
+      });
+      if (response.ok) {
+        addLog('EMAIL', `Email (API Brevo) envoyé à ${to}`, { subject });
+        return;
+      }
+    } catch (e: any) {
+      console.error("❌ Brevo Fetch Error:", e.message);
+    }
   }
+
+  // 3. Fallback to SMTP
+  if (process.env.SMTP_USER && process.env.SMTP_PASS && isSmtpOperational) {
+    console.log(`[EMAIL START] Attempting SMTP send to ${to}...`);
+    try {
+      const info = await transporter.sendMail({
+        from,
+        to,
+        cc,
+        subject,
+        text,
+        html,
+      });
+      addLog('EMAIL', `Email (SMTP) envoyé avec succès à ${to}`, { messageId: info.messageId, cc });
+      return;
+    } catch (err: any) {
+      addLog('ERROR', `Échec de l'envoi d'email SMTP à ${to}`, err.message);
+    }
+  }
+
+  // 4. Fallback to simulation
+  console.log(`[EMAIL SIMULATION] to ${to}${cc ? ' cc ' + cc : ''}: ${subject}\n${text}`);
 }
 
 async function sendPushNotification(tokens: string[], title: string, body: string, data: any = {}) {
@@ -354,6 +413,7 @@ async function startServer() {
       smtp: isSmtpOperational,
       smtpError: lastSmtpError,
       smtpConfigured: !!(process.env.SMTP_USER && process.env.SMTP_PASS),
+      emailApiActive: !!(process.env.RESEND_API_KEY || process.env.BREVO_API_KEY),
       firebaseServiceAccountMissing: !process.env.FIREBASE_SERVICE_ACCOUNT,
       smtpPassMissing: !process.env.SMTP_PASS
     });
@@ -368,15 +428,14 @@ async function startServer() {
     if (req.user.role !== 'admin') return res.status(403).json({ message: 'Interdit' });
     
     try {
-      await transporter.sendMail({
-        from: process.env.SMTP_FROM || `"DIA_SAAS TEST" <${process.env.SMTP_USER}>`,
-        to: req.user.email,
-        subject: "Test de configuration DIA_SAAS",
-        text: "Ceci est un email de test pour vérifier vos paramètres SMTP. Si vous recevez ce message, tout est opérationnel !",
-      });
+      await sendEmail(
+        req.user.email,
+        "Test de configuration DIA_SAAS",
+        "Ceci est un email de test pour vérifier la configuration de votre centre. Si vous recevez ce message, vos emails fonctionnent (via API ou SMTP) !"
+      );
       res.json({ message: 'Email de test envoyé avec succès.' });
     } catch (err: any) {
-      res.status(500).json({ message: `Erreur SMTP : ${err.message}` });
+      res.status(500).json({ message: `Erreur d'envoi : ${err.message}` });
     }
   });
 
@@ -1153,6 +1212,31 @@ async function startServer() {
         return res.status(400).json({ message: "Cette adresse email est déjà utilisée par un autre compte." });
       }
       res.status(500).json({ message: err.message || "Erreur lors de la mise à jour de l'enseignant." });
+    }
+  });
+
+  app.put('/api/users/:id', authenticate, async (req: any, res) => {
+    // Only admin can update other users, or user can update themselves
+    if (req.user.role !== 'admin' && req.user.id !== req.params.id) {
+      return res.status(403).json({ message: 'Interdit' });
+    }
+
+    try {
+      await dbAdmin.collection('users').doc(req.params.id).set(req.body, { merge: true });
+      
+      // If updating email or name, update Auth as well
+      if (req.body.email || (req.body.firstName && req.body.lastName)) {
+        const updateData: any = {};
+        if (req.body.email) updateData.email = req.body.email;
+        if (req.body.firstName && req.body.lastName) {
+          updateData.displayName = `${req.body.firstName} ${req.body.lastName}`;
+        }
+        await authAdmin.updateUser(req.params.id, updateData);
+      }
+      
+      res.json({ message: 'Profil mis à jour' });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 

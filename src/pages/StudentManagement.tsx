@@ -35,6 +35,7 @@ import { NotificationService } from '../services/NotificationService';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { toast } from 'sonner';
+import { generateWhatsAppLink, generateMailtoLink, generateSMSLink, APP_NAME_FOR_LINKS } from '../utils/contactLinks';
 
 export default function StudentManagement() {
   const { t } = useTranslation();
@@ -654,21 +655,13 @@ export default function StudentManagement() {
                         {activeTab === 'active' ? (
                           <>
                             <button 
-                              onClick={async (e) => {
+                              onClick={(e) => {
                                 e.stopPropagation();
-                                if (!student.phone) {
-                                  toast.error(t('common.no_phone') || 'Aucun numéro de téléphone');
-                                  return;
-                                }
-                                const message = `Bonjour ${student.firstName}, c'est l'Institut DIA. Comment pouvons-nous vous aider ?`;
-                                await NotificationService._triggerWhatsApp(fetchWithAuth, student.phone, message);
-                                toast.success(t('common.whatsapp_sent') || 'Notification WhatsApp simulée');
-                                
-                                // Also open link for manual interaction
-                                window.open(`https://wa.me/${student.phone.replace(/\s/g, '')}?text=${encodeURIComponent(message)}`, '_blank');
+                                const msg = `Bonjour ${student.firstName}, c'est l'Institut ${APP_NAME_FOR_LINKS}. Comment pouvons-nous vous aider ?`;
+                                window.open(generateWhatsAppLink(student.phone || student.parentPhone || '', msg), '_blank');
                               }}
                               className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-green-600"
-                              title="Zap WhatsApp"
+                              title="WhatsApp"
                             >
                               <Smartphone size={18} />
                             </button>
@@ -699,6 +692,17 @@ export default function StudentManagement() {
                               title={t('students.manage_payments')}
                             >
                               <CreditCard size={18} />
+                            </button>
+                            <button 
+                              onClick={() => {
+                                const subject = `🔐 VOS IDENTIFIANTS - ${APP_NAME_FOR_LINKS}`;
+                                const body = `-----------------------------------------------------------\nACCÈS PLATEFORME - ${APP_NAME_FOR_LINKS}\n-----------------------------------------------------------\n\nBonjour ${student.firstName},\n\nNous sommes ravis de vous compter parmi nous. Voici vos accès personnels pour consulter vos cours, notes et situations financières :\n\n🔹 Matricule : ${student.matricule}\n🔹 Mot de passe : ${student.password || 'Inconnu'}\n\n🌐 Lien d'accès : ${window.location.origin}\n\nNote : Nous vous conseillons de changer votre mot de passe dès votre première connexion.\n\nBonne formation !\nCordialement,\nL'administration.`;
+                                window.location.href = generateMailtoLink(student.email || student.parentEmail || '', subject, body);
+                              }}
+                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-indigo-600"
+                              title="Send Credentials"
+                            >
+                              <Mail size={18} />
                             </button>
                             <button 
                               onClick={() => {
@@ -1203,7 +1207,6 @@ export default function StudentManagement() {
                           src="/logo.png" 
                           alt="DIA Logo" 
                           className="h-10 w-10 object-contain mb-1 bg-white" 
-                          referrerPolicy="no-referrer"
                           onError={(e) => {
                             (e.target as HTMLImageElement).style.display = 'none';
                             (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');

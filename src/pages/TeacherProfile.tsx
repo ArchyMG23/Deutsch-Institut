@@ -20,6 +20,7 @@ import { Teacher } from '../types';
 import { cn, formatCurrency } from '../utils';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
+import { compressImage } from '../utils/image-compression';
 
 export default function TeacherProfile() {
   const { t } = useTranslation();
@@ -94,10 +95,11 @@ export default function TeacherProfile() {
     if (!file) return;
 
     setUploading(true);
-    const formData = new FormData();
-    formData.append('photo', file);
-
     try {
+      const compressedFile = await compressImage(file);
+      const formData = new FormData();
+      formData.append('photo', compressedFile);
+
       const res = await fetchWithAuth('/api/profile/upload-photo', {
         method: 'POST',
         body: formData
