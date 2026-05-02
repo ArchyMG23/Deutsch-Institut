@@ -338,7 +338,10 @@ const TuitionManagement: React.FC = () => {
                       <button 
                         onClick={() => {
                           const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n🧾 *REÇU DE PAIEMENT*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\nBonjour,\nNous confirmons la réception du versement suivant pour l'élève *${targetStudent.firstName} ${targetStudent.lastName}* :\n\n🔹 *Montant* : ${formatCurrency(v.montant)}\n🔹 *Reçu N°* : ${v.recu_numero}\n🔹 *Date* : ${new Date(v.date).toLocaleDateString()}\n🔹 *Mode* : ${v.mode_paiement}\n\n📊 *SITUATION FINANCIÈRE* :\n- Déjà versé : ${formatCurrency(scolarite.total_verse)}\n- *RESTE À PAYER* : ${formatCurrency(scolarite.reste)}\n\nMerci de votre confiance. 🙏\n━━━━━━━━━━━━━━━━━━━━━━━`;
-                          window.open(generateWhatsAppLink(targetStudent.phone || targetStudent.parentPhone || '', msg), '_blank');
+                          const a = document.createElement('a');
+                          a.href = generateWhatsAppLink(targetStudent.parentPhone || targetStudent.phone || '', msg);
+                          a.target = '_blank';
+                          a.click();
                         }}
                         className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-green-600 hover:scale-110 transition-transform"
                         title="Envoyer par WhatsApp"
@@ -349,7 +352,7 @@ const TuitionManagement: React.FC = () => {
                         onClick={() => {
                           const subject = `[REÇU] Paiement Scolarité - ${targetStudent.firstName} ${targetStudent.lastName}`;
                           const body = `-----------------------------------------------------------\nREÇU DE PAIEMENT - ${APP_NAME_FOR_LINKS}\n-----------------------------------------------------------\n\nBonjour,\n\nNous vous confirmons la réception d'un versement de ${formatCurrency(v.montant)} pour l'élève ${targetStudent.firstName} ${targetStudent.lastName}.\n\nDétails du versement :\n- Reçu N° : ${v.recu_numero}\n- Date : ${new Date(v.date).toLocaleDateString()}\n- Mode de paiement : ${v.mode_paiement}\n\nSITUATION ACTUELLE :\n- Total versé à ce jour : ${formatCurrency(scolarite.total_verse)}\n- RESTE À PAYER : ${formatCurrency(scolarite.reste)}\n\nMerci de votre confiance.\n\nCordialement,\nL'administration de ${APP_NAME_FOR_LINKS}`;
-                          const mailto = generateMailtoLink(targetStudent.email || targetStudent.parentEmail || '', subject, body);
+                          const mailto = generateMailtoLink(targetStudent.parentEmail || targetStudent.email || '', subject, body);
                           const a = document.createElement('a');
                           a.href = mailto;
                           a.click();
@@ -415,7 +418,10 @@ const TuitionManagement: React.FC = () => {
                     <button 
                       onClick={() => {
                         const msg = `📢 *RAPPEL DE PAIEMENT - ${APP_NAME_FOR_LINKS}*\n\nBonjour,\nSauf erreur de notre part, il reste un solde de *${formatCurrency(scolarite.reste)}* à régler pour la scolarité de ${targetStudent.firstName} ${targetStudent.lastName}.\n\nMerci de passer en caisse ou d'effectuer un virement mobile.\nCordialement.`;
-                        window.open(generateWhatsAppLink(targetStudent.phone || targetStudent.parentPhone || '', msg), '_blank');
+                        const a = document.createElement('a');
+                        a.href = generateWhatsAppLink(targetStudent.parentPhone || targetStudent.phone || '', msg);
+                        a.target = '_blank';
+                        a.click();
                       }}
                       className="w-full py-2 bg-green-50 text-green-700 border border-green-200 rounded-xl text-xs font-bold hover:bg-green-100 transition-colors flex items-center justify-center gap-2"
                     >
@@ -425,7 +431,7 @@ const TuitionManagement: React.FC = () => {
                       onClick={() => {
                         const subject = `Rappel de paiement scolarité - ${APP_NAME_FOR_LINKS}`;
                         const body = `Bonjour,\n\nNous vous informons qu'il reste un solde de ${formatCurrency(scolarite.reste)} à régler sur la scolarité de ${targetStudent.firstName} ${targetStudent.lastName}.\n\nNous vous prions de bien vouloir régulariser cette situation dès que possible.\n\nCordialement,\nL'administration.`;
-                        const mailto = generateMailtoLink(targetStudent.email || targetStudent.parentEmail || '', subject, body);
+                        const mailto = generateMailtoLink(targetStudent.parentEmail || targetStudent.email || '', subject, body);
                         const a = document.createElement('a');
                         a.href = mailto;
                         a.click();

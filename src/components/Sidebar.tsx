@@ -115,14 +115,16 @@ export function Sidebar() {
           <div className="p-6">
             <div className="flex items-center gap-3 mb-8">
               <div className="relative w-11 h-11 shrink-0">
-                {!logoError ? (
-                  <img 
-                    src="/logo.png" 
-                    alt="DIA Logo" 
-                    className="w-11 h-11 rounded-xl shadow-lg shadow-dia-red/10 object-contain bg-white" 
-                    onError={() => setLogoError(true)}
-                  />
-                ) : (
+                <img 
+                  src="/logo.png" 
+                  alt="DIA Logo" 
+                  className={cn(
+                    "w-11 h-11 rounded-xl shadow-lg shadow-dia-red/10 object-contain bg-white transition-opacity duration-300",
+                    logoError ? "opacity-0 invisible absolute" : "opacity-100"
+                  )}
+                  onError={() => setLogoError(true)}
+                />
+                {logoError && (
                   <div className="w-11 h-11 rounded-xl bg-dia-red flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-dia-red/20">
                     D
                   </div>

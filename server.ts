@@ -10,7 +10,6 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
-import nodemailer from 'nodemailer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,7 +18,6 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'dia-secret-key-2026';
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
 const APP_NAME = process.env.APP_NAME || 'DIA DEUTSCH INSTITUT';
-const WHATSAPP_SENDER_NUMBER = process.env.WHATSAPP_SENDER_NUMBER || '654491319';
 
 // Initialize Firebase Admin
 let firebaseConfig: any = {};
@@ -95,129 +93,9 @@ if (!admin.apps.length) {
   dbAdmin.settings({ ignoreUndefinedProperties: true });
 }
 
-// Email Transporter Config
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT || (process.env.SMTP_HOST?.includes('gmail') ? '465' : '587')),
-  secure: process.env.SMTP_PORT === '465', 
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false,
-    minVersion: 'TLSv1.2'
-  },
-  family: 4, // Strict IPv4 to avoid timeouts on IPv6 failover
-  connectionTimeout: 10000, 
-  greetingTimeout: 10000,
-  socketTimeout: 15000,
-} as any);
-
-// Verify SMTP connection at startup (non-blocking)
-let isSmtpOperational = false;
-let lastSmtpError = "";
-if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-  console.log("📨 SMTP: Initialisation en arrière-plan...");
-  transporter.verify().then(() => {
-    console.log("✅ SMTP Server is ready");
-    isSmtpOperational = true;
-    lastSmtpError = "";
-    if (dbAdmin) addLog('INFO', "Connexion SMTP établie avec succès");
-  }).catch((error) => {
-    const isNetworkError = error.code === 'ENETUNREACH' || error.message.includes('ENETUNREACH') || error.message.includes('timeout');
-    let errorMsg = isNetworkError 
-      ? `SMTP: Port bloqué par l'environnement Cloud. Port: ${process.env.SMTP_PORT || '465/587'}.` 
-      : `SMTP: Erreur de configuration: ${error.message}`;
-    
-    console.warn("⚠️  " + errorMsg);
-    isSmtpOperational = false;
-    lastSmtpError = errorMsg;
-    if (dbAdmin) addLog('ERROR', "SMTP non disponible (Réseau restreint)", errorMsg);
-  });
-} else {
-  console.log("ℹ️ SMTP credentials not provided, email features will be disabled.");
-}
-
-async function sendEmail(to: string, subject: string, text: string, html?: string, cc?: string) {
-  const from = process.env.SMTP_FROM || `"DIA_SAAS" <gabrielyombi311@gmail.com>`;
-
-  // 1. Try Resend API (HTTPS - Recommended for Cloud)
-  if (process.env.RESEND_API_KEY) {
-    try {
-      const response = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          from: from.includes('<') ? from : `"System" <${from}>`,
-          to: cc ? [to, cc] : to,
-          subject: subject,
-          text: text,
-          html: html || text
-        })
-      });
-      if (response.ok) {
-        addLog('EMAIL', `Email (API Resend) envoyé à ${to}`, { subject });
-        return;
-      }
-      const err = await response.json();
-      console.error("❌ Resend API Error:", err);
-    } catch (e: any) {
-      console.error("❌ Resend Fetch Error:", e.message);
-    }
-  }
-
-  // 2. Try Brevo API (HTTPS)
-  if (process.env.BREVO_API_KEY) {
-    try {
-      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-        method: 'POST',
-        headers: {
-          'api-key': process.env.BREVO_API_KEY,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          sender: { email: from.match(/<(.+)>/)?.[1] || from, name: "DIA SAAS" },
-          to: [{ email: to }],
-          bcc: cc ? [{ email: cc }] : undefined,
-          subject: subject,
-          textContent: text,
-          htmlContent: html || text
-        })
-      });
-      if (response.ok) {
-        addLog('EMAIL', `Email (API Brevo) envoyé à ${to}`, { subject });
-        return;
-      }
-    } catch (e: any) {
-      console.error("❌ Brevo Fetch Error:", e.message);
-    }
-  }
-
-  // 3. Fallback to SMTP
-  if (process.env.SMTP_USER && process.env.SMTP_PASS && isSmtpOperational) {
-    console.log(`[EMAIL START] Attempting SMTP send to ${to}...`);
-    try {
-      const info = await transporter.sendMail({
-        from,
-        to,
-        cc,
-        subject,
-        text,
-        html,
-      });
-      addLog('EMAIL', `Email (SMTP) envoyé avec succès à ${to}`, { messageId: info.messageId, cc });
-      return;
-    } catch (err: any) {
-      addLog('ERROR', `Échec de l'envoi d'email SMTP à ${to}`, err.message);
-    }
-  }
-
-  // 4. Fallback to simulation
-  console.log(`[EMAIL SIMULATION] to ${to}${cc ? ' cc ' + cc : ''}: ${subject}\n${text}`);
+// Email simulation (since we use client-side links)
+async function sendEmailSimulated(to: string, subject: string, text: string) {
+  console.log(`[EMAIL SIMULATION] to ${to}: ${subject}\n${text}`);
 }
 
 async function sendPushNotification(tokens: string[], title: string, body: string, data: any = {}) {
@@ -409,34 +287,13 @@ async function startServer() {
     res.json({
       firebaseAdmin: isFirebaseAdminInitialized,
       serviceAccountProjectId,
-      configProjectId: firebaseConfig.projectId,
-      smtp: isSmtpOperational,
-      smtpError: lastSmtpError,
-      smtpConfigured: !!(process.env.SMTP_USER && process.env.SMTP_PASS),
-      emailApiActive: !!(process.env.RESEND_API_KEY || process.env.BREVO_API_KEY),
-      firebaseServiceAccountMissing: !process.env.FIREBASE_SERVICE_ACCOUNT,
-      smtpPassMissing: !process.env.SMTP_PASS
+      configProjectId: firebaseConfig.projectId
     });
   });
 
   app.get('/api/admin/logs', authenticate, (req: any, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ message: 'Interdit' });
     res.json({ logs: serverLogs });
-  });
-
-  app.post('/api/health/test-email', authenticate, async (req: any, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Interdit' });
-    
-    try {
-      await sendEmail(
-        req.user.email,
-        "Test de configuration DIA_SAAS",
-        "Ceci est un email de test pour vérifier la configuration de votre centre. Si vous recevez ce message, vos emails fonctionnent (via API ou SMTP) !"
-      );
-      res.json({ message: 'Email de test envoyé avec succès.' });
-    } catch (err: any) {
-      res.status(500).json({ message: `Erreur d'envoi : ${err.message}` });
-    }
   });
 
   // Password Validation Utility
@@ -489,72 +346,27 @@ async function startServer() {
     }
   });
 
-  app.post('/api/notifications/send-whatsapp', authenticate, async (req: any, res) => {
-    // Only allow admins and teachers to send notifications
-    if (req.user.role !== 'admin' && req.user.role !== 'teacher') {
-      return res.status(403).json({ message: 'Droits insuffisants' });
-    }
-
-    const { phone, message } = req.body;
-    
-    if (!phone || !message) {
-      return res.status(400).json({ message: 'Numéro ou message manquant' });
-    }
+  app.post('/api/notifications/send-push', authenticate, async (req: any, res) => {
+    const { to, pushTitle, pushBody } = req.body;
+    if (!to || !pushTitle || !pushBody) return res.status(400).json({ message: 'Missing data' });
 
     try {
-      // In a real implementation, you would use a WhatsApp Gateway here (e.g., Twilio, Z-API, etc.)
-      // For now, we log the attempt with the configured sender number
-      console.log(`[WhatsApp Notification] DE: ${WHATSAPP_SENDER_NUMBER} -> A: ${phone}`);
-      console.log(`[WhatsApp Message] ${message}`);
-      
-      addLog('INFO', `Notification WhatsApp envoyée à ${phone} via ${WHATSAPP_SENDER_NUMBER}`);
-      
-      res.json({ 
-        success: true, 
-        sender: WHATSAPP_SENDER_NUMBER,
-        message: 'Notification envoyée (Simulation)' 
-      });
-    } catch (err: any) {
-      console.error("WhatsApp notification error:", err);
-      res.status(500).json({ message: 'Erreur lors de l\'envoi WhatsApp' });
-    }
-  });
-
-  app.post('/api/notifications/send-email', authenticate, async (req: any, res) => {
-    // Only allow admins and teachers to send notifications
-    if (req.user.role !== 'admin' && req.user.role !== 'teacher') {
-      return res.status(403).json({ message: 'Droits insuffisants' });
-    }
-
-    const { to, cc, subject, text, html, pushTitle, pushBody } = req.body;
-    
-    if (!to || !subject || (!text && !html)) {
-      return res.status(400).json({ message: 'Données manquantes pour l\'envoi de l\'email' });
-    }
-
-    try {
-      // Async send to avoid blocking the client
-      sendEmail(to, subject, text, html, cc).catch(e => console.error("Notification API email error:", e));
-      
-      // If push info is provided, try to find user's token and send push
-      if (pushTitle && pushBody) {
+      if (isFirebaseAdminInitialized) {
         const usersRef = dbAdmin.collection('users');
         const snapshot = await usersRef.where('email', '==', to).get();
         if (!snapshot.empty) {
           const userDoc = snapshot.docs[0].data();
           if (userDoc.fcmToken) {
-            sendPushNotification([userDoc.fcmToken], pushTitle, pushBody).catch(e => console.error("Push error:", e));
+            await sendPushNotification([userDoc.fcmToken], pushTitle, pushBody);
           }
         }
       }
-
-      res.json({ message: 'Notification envoyée' });
+      res.json({ message: 'Push sent' });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });
 
-  // API to send a communique to multiple users
   app.post('/api/communiques', authenticate, async (req: any, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ message: 'Seul l\'administrateur peut envoyer un communiqué' });
     
@@ -584,12 +396,10 @@ async function startServer() {
       const snapshot = await query.get();
       
       const tokens: string[] = [];
-      const emails: string[] = [];
       
       snapshot.forEach(doc => {
         const data = doc.data();
         if (data.fcmToken) tokens.push(data.fcmToken);
-        if (data.email) emails.push(data.email);
       });
 
       // 2. Send Push
@@ -597,23 +407,7 @@ async function startServer() {
         sendPushNotification(tokens, `Communiqué: ${title}`, content, { type: 'communique', id: docRef.id });
       }
 
-      // 3. Send Emails (batched slightly)
-      emails.forEach(email => {
-        const html = `
-          <div style="font-family: sans-serif; max-width: 600px; padding: 20px; border: 1px solid #eee; border-radius: 12px;">
-            <h2 style="color: #E31E24;">Communiqué Officiel - DIA_SAAS</h2>
-            <h3 style="margin-top: 20px;">${title}</h3>
-            <div style="padding: 15px; background: #f9f9f9; border-left: 4px solid #E31E24; margin: 20px 0; white-space: pre-wrap;">
-              ${content}
-            </div>
-            <p style="font-size: 12px; color: #888;">Envoyé par l'administration le ${new Date(createdAt).toLocaleString('fr-FR')}</p>
-            <p><a href="${process.env.APP_URL || 'https://' + req.get('host')}/login" style="color: #E31E24; font-weight: bold;">Consulter les archives</a></p>
-          </div>
-        `;
-        sendEmail(email, `[COMMUNIQUÉ] ${title}`, content, html).catch(e => console.error(`Communique email failed for ${email}:`, e));
-      });
-
-      res.json({ id: docRef.id, message: 'Communiqué créé et distribué' });
+      res.json({ id: docRef.id, message: 'Communiqué créé et distribué via Push' });
     } catch (err: any) {
       console.error("Communique creation error:", err);
       res.status(500).json({ message: err.message });
@@ -730,20 +524,7 @@ async function startServer() {
   });
 
   app.post('/api/students/send-receipt-email', authenticate, async (req: any, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Interdit' });
-    const { studentId, html } = req.body;
-    try {
-      const studentDoc = await dbAdmin.collection('users').doc(studentId).get();
-      if (!studentDoc.exists) return res.status(404).json({ message: 'Étudiant non trouvé' });
-      const student = studentDoc.data();
-      
-      const subject = `Reçu de Scolarité - ${student.firstName} ${student.lastName}`;
-      await sendEmail(student.email, subject, "Veuillez trouver ci-joint votre reçu de scolarité.", html, student.parentEmail);
-      
-      res.json({ message: 'Reçu envoyé' });
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
+    res.json({ message: 'Fonctionnalité désactivée (SMTP non configuré)' });
   });
 
   app.post('/api/system/reset', authenticate, async (req: any, res) => {
@@ -925,26 +706,7 @@ async function startServer() {
         }
       }
       
-      // Envoi d'email réel (Non-bloquant pour éviter le chargement infini)
-      const emailSubject = "Bienvenue chez DIA_SAAS - Vos identifiants";
-      const emailText = `Bonjour ${studentData.firstName},\n\nBienvenue chez DIA_SAAS !\n\nVoici vos identifiants de connexion :\nMatricule : ${studentData.matricule}\nMot de passe : ${password || 'DIA2026.'}\n\nLien de connexion : ${req.headers.origin}/login`;
-      const emailHtml = `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #E31E24;">Bienvenue chez DIA_SAAS !</h2>
-          <p>Bonjour <strong>${studentData.firstName}</strong>,</p>
-          <p>Votre compte a été créé avec succès. Voici vos identifiants de connexion :</p>
-          <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
-            <p style="margin: 5px 0;"><strong>Matricule :</strong> ${studentData.matricule}</p>
-            <p style="margin: 5px 0;"><strong>Mot de passe :</strong> ${password || 'DIA2026.'}</p>
-          </div>
-          <p>Vous pouvez vous connecter ici : <a href="${req.headers.origin}/login" style="color: #E31E24; font-weight: bold;">Accéder au portail</a></p>
-          <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-          <p style="font-size: 12px; color: #999;">Ceci est un message automatique, merci de ne pas y répondre.</p>
-        </div>
-      `;
-      
-      // On lance l'envoi sans attendre le résultat pour la réponse API
-      sendEmail(studentData.email, emailSubject, emailText, emailHtml).catch(e => console.error("Async email error:", e));
+      console.log(`[BOOTSTRAP] Student created: ${studentData.email}. Credentials would be sent via client.`);
       
       res.json(newStudent);
     } catch (err: any) {
@@ -1046,24 +808,9 @@ async function startServer() {
         password: newPassword
       });
 
-      const emailSubject = "Réinitialisation de vos identifiants - DIA_SAAS";
-      const emailHtml = `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #E31E24;">Vos nouveaux identifiants DIA_SAAS</h2>
-          <p>Bonjour <strong>${studentData.firstName}</strong>,</p>
-          <p>Suite à votre demande, vos identifiants de connexion ont été réinitialisés :</p>
-          <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
-            <p style="margin: 5px 0;"><strong>Matricule :</strong> ${studentData.matricule}</p>
-            <p style="margin: 5px 0;"><strong>Nouveau Mot de passe :</strong> ${newPassword}</p>
-          </div>
-          <p>Veuillez vous connecter et changer votre mot de passe dès que possible.</p>
-          <p>Lien : <a href="${req.headers.origin}/login" style="color: #E31E24; font-weight: bold;">Accéder au portail</a></p>
-        </div>
-      `;
+      console.log(`[CREDENTIALS] Password reset for: ${studentData.email}. Credentials would be handle by client.`);
       
-      await sendEmail(studentData.email, emailSubject, `Matricule: ${studentData.matricule}, Nouveau Mot de passe: ${newPassword}`, emailHtml);
-      
-      res.json({ message: 'Nouveaux identifiants générés et envoyés par email.' });
+      res.json({ message: 'Mot de passe réinitialisé. Les nouveaux identifiants doivent être communiqués par l\'administrateur.', password: newPassword });
     } catch (err: any) {
       console.error("Resend credentials error:", err);
       res.status(500).json({ message: err.message });
@@ -1071,24 +818,7 @@ async function startServer() {
   });
 
   app.post('/api/students/send-receipt-email', authenticate, async (req: any, res) => {
-    const { studentId, html } = req.body;
-    try {
-      const studentDoc = await dbAdmin.collection('students').doc(studentId).get();
-      if (!studentDoc.exists) return res.status(404).json({ message: 'Étudiant non trouvé' });
-      const studentData = studentDoc.data() as any;
-      
-      await sendEmail(
-        studentData.email, 
-        `[REÇU] Votre reçu de scolarité - DIA_SAAS`, 
-        "Veuillez trouver ci-joint votre reçu de scolarité.", 
-        html
-      );
-      
-      res.json({ message: 'Reçu envoyé par email.' });
-    } catch (err: any) {
-      console.error("Send receipt email error:", err);
-      res.status(500).json({ message: err.message });
-    }
+    res.json({ message: 'Cette fonctionnalité serveur est désactivée. Veuillez utiliser l\'envoi direct via WhatsApp/Email depuis le navigateur.' });
   });
 
   // Teachers API
@@ -1151,23 +881,7 @@ async function startServer() {
       await dbAdmin.collection('users').doc(userRecord.uid).set(newUser);
       await dbAdmin.collection('teachers').doc(userRecord.uid).set(newTeacher);
 
-      // Envoi d'email réel (Non-bloquant)
-      const emailSubject = "Bienvenue chez DIA_SAAS - Compte Enseignant";
-      const emailText = `Bonjour ${teacherData.firstName},\n\nVotre compte enseignant a été créé chez DIA_SAAS.\n\nVoici vos identifiants :\nMatricule : ${teacherData.matricule}\nMot de passe : ${password || 'DIA2026.'}\n\nLien : ${req.headers.origin}/login`;
-      const emailHtml = `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #E31E24;">Bienvenue chez DIA_SAAS !</h2>
-          <p>Bonjour <strong>${teacherData.firstName}</strong>,</p>
-          <p>Votre compte enseignant a été configuré. Voici vos accès :</p>
-          <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
-            <p style="margin: 5px 0;"><strong>Matricule :</strong> ${teacherData.matricule}</p>
-            <p style="margin: 5px 0;"><strong>Mot de passe :</strong> ${password || 'DIA2026.'}</p>
-          </div>
-          <p>Accédez à votre tableau de bord : <a href="${req.headers.origin}/login" style="color: #E31E24; font-weight: bold;">Se connecter</a></p>
-        </div>
-      `;
-      
-      sendEmail(teacherData.email, emailSubject, emailText, emailHtml).catch(e => console.error("Async email error:", e));
+      console.log(`[BOOTSTRAP] Teacher created: ${teacherData.email}. Credentials would be handle by client.`);
 
       res.json(newTeacher);
     } catch (err: any) {
@@ -1621,50 +1335,7 @@ async function startServer() {
 
   app.post('/api/evaluations/send-email', authenticate, async (req: any, res) => {
     if (req.user.role === 'student') return res.status(403).json({ message: 'Permission refusée' });
-    const { evaluation, recipientEmail, studentName } = req.body;
-    
-    try {
-      const mailOptions = {
-        from: `"${APP_NAME}" <${process.env.SMTP_USER}>`,
-        to: recipientEmail,
-        subject: `Résultats d'Évaluation Goethe - ${studentName}`,
-        html: `
-          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 12px; overflow: hidden;">
-            <div style="background-color: #e31e24; color: white; padding: 20px; text-align: center;">
-              <h2>Résultats d'Évaluation</h2>
-            </div>
-            <div style="padding: 20px;">
-              <p>Bonjour,</p>
-              <p>Voici les résultats de l'évaluation Goethe pour <strong>${studentName}</strong>.</p>
-              
-              <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                <table style="width: 100%; border-collapse: collapse;">
-                  <tr><td style="padding: 5px 0;"><strong>Module Lesen :</strong></td><td style="text-align: right;">${evaluation.modules.lesen}/25</td></tr>
-                  <tr><td style="padding: 5px 0;"><strong>Module Hören :</strong></td><td style="text-align: right;">${evaluation.modules.horen}/25</td></tr>
-                  <tr><td style="padding: 5px 0;"><strong>Module Schreiben :</strong></td><td style="text-align: right;">${evaluation.modules.schreiben}/25</td></tr>
-                  <tr><td style="padding: 5px 0;"><strong>Module Sprechen :</strong></td><td style="text-align: right;">${evaluation.modules.sprechen}/25</td></tr>
-                  <tr style="border-top: 1px solid #ddd;"><td style="padding: 10px 0;"><strong>Total :</strong></td><td style="text-align: right; color: #e31e24; font-weight: bold;">${evaluation.total}/100</td></tr>
-                </table>
-              </div>
-              
-              <p>Moyenne de l'examen : <strong>${evaluation.average}%</strong></p>
-              <p>Statut : <strong>${evaluation.total >= 60 ? 'Réussi' : 'Échec'}</strong></p>
-              
-              ${evaluation.comments ? `<p><strong>Commentaires :</strong><br/>${evaluation.comments}</p>` : ''}
-              
-              <p style="margin-top: 30px; font-size: 12px; color: #888;">Ceci est un message automatique, merci de ne pas y répondre directement.</p>
-            </div>
-          </div>
-        `
-      };
-
-      await transporter.sendMail(mailOptions);
-      addLog('EMAIL', `Bulletin envoyé à ${recipientEmail} pour ${studentName}`);
-      res.json({ message: 'Email envoyé avec succès' });
-    } catch (err: any) {
-      addLog('ERROR', 'Erreur envoi email évaluation', err.message);
-      res.status(500).json({ message: `Erreur d'envoi: ${err.message}` });
-    }
+    res.json({ message: 'Fonctionnalité désactivée (SMTP non configuré)' });
   });
 
   // Serve uploaded files

@@ -258,7 +258,10 @@ export default function TeacherManagement() {
                 <button 
                   onClick={() => {
                     const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n🚀 *ACCÈS ENSEIGNANT*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\nBonjour M/Mme ${teacher.lastName},\n\nBienvenue dans notre équipe pédagogique. Voici vos identifiants pour gérer vos classes et vos évaluations :\n\n🔑 *Matricule* : ${teacher.matricule}\n🔒 *Mot de passe* : ${teacher.password || 'Inconnu'}\n\n🌐 *Accès* : ${window.location.origin}\n\nNous vous souhaitons une excellente collaboration ! 🙏`;
-                    window.open(generateWhatsAppLink(teacher.phone || '', msg), '_blank');
+                    const a = document.createElement('a');
+                    a.href = generateWhatsAppLink(teacher.phone || '', msg);
+                    a.target = '_blank';
+                    a.click();
                   }}
                   className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors text-green-600"
                   title="WhatsApp"

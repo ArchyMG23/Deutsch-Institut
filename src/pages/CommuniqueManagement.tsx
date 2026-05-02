@@ -436,7 +436,10 @@ export default function CommuniqueManagement() {
                       <button 
                         onClick={() => {
                           const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n📢 *COMMUNIQUÉ OFFICIEL*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\n📌 *${c.title}*\n\n${c.content.substring(0, 500)}${c.content.length > 500 ? '...' : ''}\n\n🔗 *Lire la suite* : ${window.location.origin}\n━━━━━━━━━━━━━━━━━━━━━━━`;
-                          window.open(generateWhatsAppLink('', msg), '_blank');
+                          const a = document.createElement('a');
+                          a.href = generateWhatsAppLink('', msg);
+                          a.target = '_blank';
+                          a.click();
                         }}
                         className="p-2 hover:bg-neutral-50 rounded-xl text-green-600 transition-colors"
                         title="Partager sur WhatsApp"

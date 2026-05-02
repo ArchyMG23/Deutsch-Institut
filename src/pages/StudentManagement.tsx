@@ -331,6 +331,62 @@ export default function StudentManagement() {
     }
   };
 
+  const handleSendReceiptWhatsApp = () => {
+    if (!selectedStudent) return;
+    
+    const totalPaid = (selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+    const level = levels.find(l => l.id === selectedStudent.levelId);
+    const tuition = level?.tuition || 0;
+    const balance = tuition - totalPaid;
+    
+    const paidTranches = selectedStudent.payments
+      .filter(p => p.amount > 0)
+      .map(p => `✅ Tranche ${p.tranche}: ${formatCurrency(p.amount)}`)
+      .join('\n');
+      
+    const message = `*REÇU DE PAIEMENT - ${APP_NAME_FOR_LINKS}*\n\n` +
+      `Bonjour ${selectedStudent.firstName},\n\n` +
+      `Voici le point sur vos paiements :\n` +
+      `${paidTranches}\n\n` +
+      `💰 *Total payé : ${formatCurrency(totalPaid)}*\n` +
+      `📉 *Reste à payer : ${formatCurrency(balance)}*\n\n` +
+      `Merci de votre confiance.\n_L'administration_`;
+      
+    const a = document.createElement('a');
+    a.href = generateWhatsAppLink(selectedStudent.parentPhone || selectedStudent.phone || '', message);
+    a.target = '_blank';
+    a.click();
+    toast.success("Lien WhatsApp généré");
+  };
+
+  const handleSendReceiptMailto = () => {
+    if (!selectedStudent) return;
+    
+    const totalPaid = (selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+    const level = levels.find(l => l.id === selectedStudent.levelId);
+    const tuition = level?.tuition || 0;
+    const balance = tuition - totalPaid;
+    
+    const paidTranches = selectedStudent.payments
+      .filter(p => p.amount > 0)
+      .map(p => `- Tranche ${p.tranche}: ${formatCurrency(p.amount)}`)
+      .join('\n');
+
+    const subject = `REÇU DE PAIEMENT - ${selectedStudent.firstName} ${selectedStudent.lastName}`;
+    const body = `-----------------------------------------------\nREÇU DE PAIEMENT - ${APP_NAME_FOR_LINKS}\n-----------------------------------------------\n\n` +
+      `Bonjour ${selectedStudent.firstName} ${selectedStudent.lastName},\n\n` +
+      `Nous confirmons la situation de vos paiements :\n\n` +
+      `${paidTranches}\n\n` +
+      `TOTAL PAYÉ : ${formatCurrency(totalPaid)}\n` +
+      `SOLDE RESTANT : ${formatCurrency(balance)}\n\n` +
+      `Merci pour votre confiance.\nCordialement,\nL'administration ${APP_NAME_FOR_LINKS}.`;
+      
+    const a = document.createElement('a');
+    a.href = generateMailtoLink(selectedStudent.parentEmail || selectedStudent.email || '', subject, body);
+    a.click();
+    toast.success("Lien Email généré");
+  };
+
   const handleRestoreStudent = async (id: string) => {
     try {
       const res = await fetchWithAuth(`/api/students/${id}`, {
@@ -375,16 +431,12 @@ export default function StudentManagement() {
     const studentToRemind = targetStudent || selectedStudent;
     if (!studentToRemind) return;
     
-    // Robust matching: Try ID first, then try name as fallback (in case data was imported with names as IDs)
-    let level = levels.find(l => l.id === studentToRemind.levelId);
-    
-    if (!level && studentToRemind.levelId) {
-      // Try matching by name (case insensitive)
-      level = levels.find(l => l.name.toLowerCase() === studentToRemind.levelId.toLowerCase());
-    }
+    // Robust matching: Try ID first, then try name as fallback
+    const level = levels.find(l => l.id === studentToRemind.levelId) || 
+                  levels.find(l => l.name.toLowerCase() === studentToRemind.levelId?.toLowerCase());
 
     if (!level) {
-      toast.error(t('students.level_not_found'));
+      toast.error(t('students.level_not_found') + " (ID: " + studentToRemind.levelId + ")");
       return;
     }
 
@@ -665,7 +717,10 @@ export default function StudentManagement() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 const msg = `Bonjour ${student.firstName}, c'est l'Institut ${APP_NAME_FOR_LINKS}. Comment pouvons-nous vous aider ?`;
-                                window.open(generateWhatsAppLink(student.phone || student.parentPhone || '', msg), '_blank');
+                                const a = document.createElement('a');
+                                a.href = generateWhatsAppLink(student.phone || student.parentPhone || '', msg);
+                                a.target = '_blank';
+                                a.click();
                               }}
                               className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-green-600"
                               title="WhatsApp"
@@ -683,13 +738,53 @@ export default function StudentManagement() {
                               <RefreshCw size={18} />
                             </button>
                             <button 
-                              onClick={async (e) => {
+                              onClick={(e) => {
                                 e.stopPropagation();
-                                handleSendReminder(student);
+                                const level = levels.find(l => l.id === student.levelId) || 
+                                              levels.find(l => l.name.toLowerCase() === student.levelId?.toLowerCase());
+                                const tuition = level?.tuition || 0;
+                                const totalPaid = (student.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+                                const balance = tuition - totalPaid;
+
+                                const msg = `🔔 *RAPPEL DE PAIEMENT - ${APP_NAME_FOR_LINKS}*\n\n` +
+                                  `Bonjour ${student.firstName},\n\n` +
+                                  `Sauf erreur de notre part, il reste un solde de *${formatCurrency(balance)}* à régler sur la scolarité pour le niveau *${level?.name || 'N/A'}*.\n\n` +
+                                  `Merci de régulariser la situation dès que possible.\n` +
+                                  `_Cordialement, l'Administration._`;
+
+                                const a = document.createElement('a');
+                                a.href = generateWhatsAppLink(student.parentPhone || student.phone || '', msg);
+                                a.target = '_blank';
+                                a.click();
                               }}
-                              disabled={submitting || isFullyPaid}
-                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-dia-red disabled:opacity-30 disabled:grayscale"
-                              title={isFullyPaid ? t('students.tuition_paid') : t('students.send_reminder')}
+                              disabled={isFullyPaid}
+                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-green-600 disabled:opacity-30"
+                              title="Rappel WhatsApp"
+                            >
+                              <Smartphone size={18} />
+                            </button>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const level = levels.find(l => l.id === student.levelId) || 
+                                              levels.find(l => l.name.toLowerCase() === student.levelId?.toLowerCase());
+                                const tuition = level?.tuition || 0;
+                                const totalPaid = (student.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+                                const balance = tuition - totalPaid;
+
+                                const subject = `RAPPEL DE PAIEMENT - ${APP_NAME_FOR_LINKS}`;
+                                const body = `Bonjour ${student.firstName} ${student.lastName},\n\n` +
+                                  `Ceci est un rappel concernant votre scolarité (Niveau : ${level?.name || 'N/A'}).\n\n` +
+                                  `Il reste un solde de ${formatCurrency(balance)} à régulariser.\n\n` +
+                                  `Cordialement,\nL'administration de ${APP_NAME_FOR_LINKS}`;
+
+                                const a = document.createElement('a');
+                                a.href = generateMailtoLink(student.parentEmail || student.email || '', subject, body);
+                                a.click();
+                              }}
+                              disabled={isFullyPaid}
+                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-indigo-600 disabled:opacity-30"
+                              title="Rappel Email"
                             >
                               <Bell size={18} />
                             </button>
@@ -699,7 +794,7 @@ export default function StudentManagement() {
                                 setSelectedStudent(student);
                                 setIsReceiptModalOpen(true);
                               }}
-                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-dia-red"
+                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-blue-600"
                               title={t('students.manage_payments')}
                             >
                               <CreditCard size={18} />
@@ -1141,16 +1236,51 @@ export default function StudentManagement() {
                   {t('sidebar.finances')}
                 </button>
                 <button 
-                  onClick={handleSendReminder}
-                  disabled={submitting || ((selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0) >= (levels.find(l => l.id === selectedStudent.levelId)?.tuition || 0))}
-                  className="flex-1 min-w-[120px] bg-dia-red/10 text-dia-red py-3 rounded-2xl font-bold hover:bg-dia-red/20 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:grayscale"
+                  onClick={() => {
+                    const level = levels.find(l => l.id === selectedStudent.levelId) || 
+                                  levels.find(l => l.name.toLowerCase() === selectedStudent.levelId?.toLowerCase());
+                    const tuition = level?.tuition || 0;
+                    const totalPaid = (selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+                    const balance = tuition - totalPaid;
+
+                    const msg = `🔔 *RAPPEL DE PAIEMENT - ${APP_NAME_FOR_LINKS}*\n\n` +
+                      `Bonjour ${selectedStudent.firstName},\n\n` +
+                      `Nous vous rappelons qu'il reste un solde de *${formatCurrency(balance)}* à régler pour votre formation.\n\n` +
+                      `Merci de votre diligence.\n_L'Administration._`;
+
+                    const a = document.createElement('a');
+                    a.href = generateWhatsAppLink(selectedStudent.parentPhone || selectedStudent.phone || '', msg);
+                    a.target = '_blank';
+                    a.click();
+                  }}
+                  disabled={((selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0) >= (levels.find(l => l.id === selectedStudent.levelId)?.tuition || 0))}
+                  className="flex-1 min-w-[120px] bg-green-100 text-green-600 py-3 rounded-2xl font-bold hover:bg-green-200 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50"
                 >
-                  {submitting ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-dia-red/30 border-t-dia-red"></div>
-                  ) : (
-                    <Bell size={16} />
-                  )}
-                  {t('students.reminder') || 'Rappel'}
+                  <Smartphone size={16} />
+                  WhatsApp
+                </button>
+                <button 
+                  onClick={() => {
+                    const level = levels.find(l => l.id === selectedStudent.levelId) || 
+                                  levels.find(l => l.name.toLowerCase() === selectedStudent.levelId?.toLowerCase());
+                    const tuition = level?.tuition || 0;
+                    const totalPaid = (selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+                    const balance = tuition - totalPaid;
+
+                    const subject = `RAPPEL DE PAIEMENT - ${APP_NAME_FOR_LINKS}`;
+                    const body = `Bonjour ${selectedStudent.firstName} ${selectedStudent.lastName},\n\n` +
+                      `Ceci est un rappel concernant le solde de votre scolarité qui s'élève à ${formatCurrency(balance)}.\n\n` +
+                      `Nous vous remercions de régulariser cette situation.\n\nCordialement,\nL'administration de ${APP_NAME_FOR_LINKS}`;
+
+                    const a = document.createElement('a');
+                    a.href = generateMailtoLink(selectedStudent.parentEmail || selectedStudent.email || '', subject, body);
+                    a.click();
+                  }}
+                  disabled={((selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0) >= (levels.find(l => l.id === selectedStudent.levelId)?.tuition || 0))}
+                  className="flex-1 min-w-[120px] bg-indigo-100 text-indigo-600 py-3 rounded-2xl font-bold hover:bg-indigo-200 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+                >
+                  <Bell size={16} />
+                  Email
                 </button>
               </div>
             </div>
@@ -1169,10 +1299,24 @@ export default function StudentManagement() {
               </div>
               <div className="flex gap-2">
                 <button 
+                  onClick={handleSendReceiptWhatsApp}
+                  className="p-3 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-xl hover:bg-green-200 transition-colors"
+                  title="Envoyer par WhatsApp"
+                >
+                  <Smartphone size={20} />
+                </button>
+                <button 
+                  onClick={handleSendReceiptMailto}
+                  className="p-3 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 rounded-xl hover:bg-indigo-200 transition-colors"
+                  title="Envoyer par Email (Direct)"
+                >
+                  <Mail size={20} />
+                </button>
+                <button 
                   onClick={handleSendReceiptEmail}
                   disabled={submitting}
                   className="p-3 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-xl hover:bg-blue-200 transition-colors"
-                  title={t('students.send_by_email')}
+                  title={t('students.send_by_email') + " (Serveur)"}
                 >
                   {submitting ? <div className="animate-spin rounded-full h-5 w-5 border-2 border-current border-t-transparent" /> : <Send size={20} />}
                 </button>
@@ -1228,9 +1372,10 @@ export default function StudentManagement() {
                         <img 
                           src="/logo.png" 
                           alt="DIA Logo" 
-                          className="h-10 w-10 object-contain mb-1 bg-white" 
+                          className="h-10 w-10 object-contain mb-1 bg-white opacity-100" 
                           onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = 'none';
+                            (e.target as HTMLImageElement).style.visibility = 'hidden';
+                            (e.target as HTMLImageElement).style.position = 'absolute';
                             (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
                           }}
                         />

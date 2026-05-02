@@ -125,25 +125,22 @@ export default function LoginPage() {
 
       <div className="w-full max-w-[440px] relative z-10 animate-in fade-in zoom-in duration-300">
         <div className="text-center mb-10">
-          <div className="relative w-20 h-20 mx-auto mb-4">
-            {!logoError ? (
+            <div className="relative w-20 h-20 mx-auto mb-4">
               <img 
                 src="/logo.png" 
                 alt="DIA Logo" 
-                className="w-20 h-20 rounded-2xl shadow-xl shadow-dia-red/20 object-contain bg-white" 
+                className={cn(
+                  "w-20 h-20 rounded-2xl shadow-xl shadow-dia-red/20 object-contain bg-white transition-opacity duration-300",
+                  logoError ? "opacity-0 invisible absolute" : "opacity-100"
+                )}
                 onError={() => setLogoError(true)}
-                onLoad={(e) => {
-                  if ((e.target as HTMLImageElement).naturalWidth === 0) {
-                    setLogoError(true);
-                  }
-                }}
               />
-            ) : (
-              <div className="w-20 h-20 rounded-2xl bg-dia-red flex items-center justify-center text-white font-bold text-4xl shadow-xl">
-                D
-              </div>
-            )}
-          </div>
+              {logoError && (
+                <div className="w-20 h-20 rounded-2xl bg-dia-red flex items-center justify-center text-white font-bold text-4xl shadow-xl">
+                  D
+                </div>
+              )}
+            </div>
           <h1 className={cn(
             "text-2xl font-bold tracking-tight transition-colors duration-500",
             theme === 'dark' ? "text-white" : "text-neutral-900"

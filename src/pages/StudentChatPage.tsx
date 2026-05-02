@@ -16,6 +16,7 @@ const StudentChatPage: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [errorStatus, setErrorStatus] = useState<string | null>(null);
   const [showEmojis, setShowEmojis] = useState(false);
   const emojiRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -42,12 +43,26 @@ const StudentChatPage: React.FC = () => {
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedMessages = snapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        ...doc.data() 
-      } as ChatMessage));
+      const fetchedMessages = snapshot.docs.map(doc => {
+        const data = doc.data();
+        // Convert Firestore Timestamp to ISO string if needed for compatibility
+        let timestamp = data.timestamp;
+        if (timestamp && typeof timestamp.toDate === 'function') {
+          timestamp = timestamp.toDate().toISOString();
+        } else if (!timestamp) {
+          timestamp = new Date().toISOString();
+        }
+        
+        return { 
+          id: doc.id, 
+          ...data,
+          timestamp 
+        };
+      }) as ChatMessage[];
+      
       setMessages(fetchedMessages);
       setLoading(false);
+      setErrorStatus(null);
       
       // Auto scroll to bottom
       setTimeout(() => {
@@ -56,8 +71,10 @@ const StudentChatPage: React.FC = () => {
         }
       }, 100);
     }, (error) => {
+      console.error("Chat fetch error:", error);
       setLoading(false);
-      handleFirestoreError(error, OperationType.LIST, 'chat_eleves');
+      setErrorStatus(error.message);
+      toast.error("Erreur d'accès au chat. Vérifiez vos permissions.");
     });
 
     return () => unsubscribe();
@@ -76,17 +93,19 @@ const StudentChatPage: React.FC = () => {
     try {
       const messageData = {
         uid_auteur: user.uid,
-        nom_auteur: `${user.firstName} ${user.lastName}`, // Admins will see this
+        nom_auteur: `${user.firstName} ${user.lastName}`, 
         alias: generateAlias(user.uid),
         message: newMessage.trim(),
-        timestamp: new Date().toISOString(), // Using ISO for types, can use serverTimestamp in firestore
+        timestamp: serverTimestamp(),
         supprime: false
       };
 
       await addDoc(collection(db, 'chat_eleves'), messageData);
       setNewMessage('');
+      setShowEmojis(false);
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'chat_eleves');
+      toast.error("Échec de l'envoi du message");
+      console.error(error);
     }
   };
 
@@ -137,11 +156,26 @@ const StudentChatPage: React.FC = () => {
 
       <div 
         ref={scrollRef}
-        className="flex-1 bg-neutral-50/50 dark:bg-neutral-900/50 border border-neutral-200 dark:border-neutral-800 rounded-3xl overflow-y-auto p-4 space-y-3 shadow-inner custom-scrollbar"
+        className="flex-1 bg-neutral-50/50 dark:bg-neutral-900/50 border border-neutral-200 dark:border-neutral-800 rounded-3xl overflow-y-auto p-4 space-y-2 shadow-inner custom-scrollbar"
       >
         {loading ? (
-          <div className="flex items-center justify-center h-full">
+          <div className="flex flex-col items-center justify-center h-full gap-3">
             <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-dia-red"></div>
+            <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Chargement des messages...</p>
+          </div>
+        ) : errorStatus ? (
+          <div className="flex flex-col items-center justify-center h-full text-center p-6 space-y-4">
+            <Shield className="text-dia-red/20" size={48} />
+            <div>
+              <p className="font-bold text-sm text-neutral-700">Accès restreint</p>
+              <p className="text-xs text-neutral-500 mt-1 max-w-[200px]">Vous n'avez pas les permissions pour voir cette discussion ou vous êtes hors ligne.</p>
+            </div>
+            <button 
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-dia-red text-white text-[10px] font-bold uppercase rounded-xl"
+            >
+              Réessayer
+            </button>
           </div>
         ) : (
           messages.map((msg, index) => {

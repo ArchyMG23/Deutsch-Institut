@@ -86,7 +86,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       console.log("AuthProvider: Auth state changed:", firebaseUser?.email || "No user");
-      clearTimeout(safetyTimeout);
       
       if (firebaseUser) {
         try {
@@ -100,26 +99,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             // Fetch additional profile data if it's a student or teacher
             if (userData.role === 'student') {
-              const studentDoc = await getDoc(doc(db, 'students', firebaseUser.uid));
-              if (studentDoc.exists()) {
-                fullProfileData = { ...fullProfileData, ...studentDoc.data() };
+              try {
+                const studentDoc = await getDoc(doc(db, 'students', firebaseUser.uid));
+                if (studentDoc.exists()) {
+                  fullProfileData = { ...fullProfileData, ...studentDoc.data() };
+                }
+              } catch (e) {
+                console.warn("Could not fetch student extra data", e);
               }
             } else if (userData.role === 'teacher') {
-              const teacherDoc = await getDoc(doc(db, 'teachers', firebaseUser.uid));
-              if (teacherDoc.exists()) {
-                fullProfileData = { ...fullProfileData, ...teacherDoc.data() };
+              try {
+                const teacherDoc = await getDoc(doc(db, 'teachers', firebaseUser.uid));
+                if (teacherDoc.exists()) {
+                  fullProfileData = { ...fullProfileData, ...teacherDoc.data() };
+                }
+              } catch (e) {
+                console.warn("Could not fetch teacher extra data", e);
               }
             }
 
             const deviceInfo = getDeviceInfo();
             
-            // Update status and device info if needed
+            // Update status and device info (non-blocking)
             if (userData.status !== 'online' || userData.lastActiveDevice !== deviceInfo) {
-              await setDoc(doc(db, 'users', firebaseUser.uid), { 
+              setDoc(doc(db, 'users', firebaseUser.uid), { 
                 status: 'online',
                 lastActiveDevice: deviceInfo,
                 lastLoginAt: serverTimestamp()
-              }, { merge: true });
+              }, { merge: true }).catch(err => console.warn("Failed to update status:", err));
+              
               fullProfileData.status = 'online';
               fullProfileData.lastActiveDevice = deviceInfo;
             }
@@ -128,28 +136,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(firebaseUser);
             setProfile(fullProfileData);
 
-            // Register for Push Notifications if supported
+            // Register for Push Notifications (non-blocking)
             if (messaging && typeof window !== 'undefined') {
-              try {
-                const permission = await Notification.requestPermission();
-                if (permission === 'granted') {
-                  const token = await getToken(messaging).catch(e => {
-                    console.warn("FCM Token fetch failed:", e);
-                    return null;
-                  });
-                  
-                  if (token && userData.fcmToken !== token) {
-                    await setDoc(doc(db, 'users', firebaseUser.uid), { fcmToken: token }, { merge: true });
-                    console.log("AuthProvider: FCM Token updated");
+              (async () => {
+                try {
+                  // Only request if not already granted/denied
+                  if (Notification.permission === 'default') {
+                    // We don't await here in the main flow to avoid hanging UI
+                    const permission = await Notification.requestPermission();
+                    if (permission === 'granted') {
+                      const token = await getToken(messaging);
+                      if (token) {
+                        await setDoc(doc(db, 'users', firebaseUser.uid), { fcmToken: token }, { merge: true });
+                      }
+                    }
+                  } else if (Notification.permission === 'granted') {
+                    const token = await getToken(messaging);
+                    if (token) {
+                      await setDoc(doc(db, 'users', firebaseUser.uid), { fcmToken: token }, { merge: true });
+                    }
                   }
+                } catch (err) {
+                  console.warn("AuthProvider: Messaging registration error:", err);
                 }
-              } catch (err) {
-                console.warn("AuthProvider: Push permission request error:", err);
-              }
+              })();
             }
           } else {
-            console.warn("AuthProvider: User exists in Auth but no Firestore profile found for UID:", firebaseUser.uid);
-            console.log("AuthProvider: This might mean the server bootstrap hasn't finished or failed.");
+            console.warn("AuthProvider: No Firestore profile found for UID:", firebaseUser.uid);
             setUser(firebaseUser);
             setProfile(null);
           }
@@ -162,7 +175,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         setProfile(null);
       }
+      
       console.log("AuthProvider: Loading complete.");
+      clearTimeout(safetyTimeout);
       setLoading(false);
     }, (error) => {
       console.error("AuthProvider: onAuthStateChanged error:", (error as any).code, error.message);

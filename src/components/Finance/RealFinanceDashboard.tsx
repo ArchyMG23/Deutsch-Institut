@@ -163,7 +163,10 @@ export default function RealFinanceDashboard() {
         <button 
           onClick={() => {
             const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n💰 *BILAN FINANCIER*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\n📅 *Période* : Année ${selectedYear}\n\n🟢 *Revenus* : ${formatCurrency(data.revenus)}\n🔴 *Charges* : ${formatCurrency(totalCharges)}\n\n💎 *RÉSULTAT NET* : *${formatCurrency(resultatNet)}*\n\nDocument généré le ${new Date().toLocaleDateString()}\n━━━━━━━━━━━━━━━━━━━━━━━`;
-            window.open(generateWhatsAppLink('', msg), '_blank');
+            const a = document.createElement('a');
+            a.href = generateWhatsAppLink('', msg);
+            a.target = '_blank';
+            a.click();
           }}
           className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors"
           title="Partager via WhatsApp"

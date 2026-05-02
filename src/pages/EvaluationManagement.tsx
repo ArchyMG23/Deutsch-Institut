@@ -373,7 +373,10 @@ export default function EvaluationManagement() {
                               const grade = getGoetheGrade(ev.total);
                               const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n📊 *RELEVÉ DE NOTES*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\nFélicitations ! Les résultats de l'évaluation sont disponibles.\n\n👤 *Étudiant* : ${ev.studentName}\n📝 *Module* : ${ev.moduleName || 'Examen'}\n\n⭐ *SCORE FINAL* : *${ev.total}/100*\n🏆 *Mention* : ${grade.label}\n\nContinuez vos efforts ! 💪\n━━━━━━━━━━━━━━━━━━━━━━━`;
                               const student = students.find(s => s.uid === ev.studentId);
-                              window.open(generateWhatsAppLink(student?.parentPhone || student?.phone || '', msg), '_blank');
+                              const a = document.createElement('a');
+                              a.href = generateWhatsAppLink(student?.parentPhone || student?.phone || '', msg);
+                              a.target = '_blank';
+                              a.click();
                             }}
                             className="p-2 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg text-green-600 transition-colors"
                             title="Share via WhatsApp"

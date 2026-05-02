@@ -7,35 +7,28 @@ export const NotificationService = {
    * Envoie une requête au backend pour envoyer un email et éventuellement une notification push.
    */
   async _triggerEmail(fetchWithAuth: any, to: string, subject: string, text: string, html?: string, pushTitle?: string, pushBody?: string, cc?: string) {
-    try {
-      const res = await fetchWithAuth('/api/notifications/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, cc, subject, text, html, pushTitle, pushBody })
-      });
-      return res.ok;
-    } catch (err) {
-      console.error("NotificationService: Error triggering email:", err);
-      return false;
+    console.log(`[LOCAL EMAIL SIMULATION] to ${to}: ${subject}`);
+    // We still call the backend ONLY for Push Notifications if title/body provided
+    if (pushTitle && pushBody) {
+      try {
+        await fetchWithAuth('/api/notifications/send-push', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to, pushTitle, pushBody })
+        });
+      } catch (e) {
+        console.warn("Push failed:", e);
+      }
     }
+    return true; 
   },
 
   /**
-   * Envoie une requête au backend pour envoyer un message WhatsApp.
+   * Simulation WhatsApp locale (car l'API serveur est supprimée)
    */
   async _triggerWhatsApp(fetchWithAuth: any, phone: string, message: string) {
-    if (!phone) return false;
-    try {
-      const res = await fetchWithAuth('/api/notifications/send-whatsapp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, message })
-      });
-      return res.ok;
-    } catch (err) {
-      console.error("NotificationService: Error triggering WhatsApp:", err);
-      return false;
-    }
+    console.log(`[LOCAL WHATSAPP SIMULATION] to ${phone}: ${message}`);
+    return true;
   },
 
   /**
