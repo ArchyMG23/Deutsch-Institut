@@ -375,7 +375,14 @@ export default function StudentManagement() {
     const studentToRemind = targetStudent || selectedStudent;
     if (!studentToRemind) return;
     
-    const level = levels.find(l => l.id === studentToRemind.levelId);
+    // Robust matching: Try ID first, then try name as fallback (in case data was imported with names as IDs)
+    let level = levels.find(l => l.id === studentToRemind.levelId);
+    
+    if (!level && studentToRemind.levelId) {
+      // Try matching by name (case insensitive)
+      level = levels.find(l => l.name.toLowerCase() === studentToRemind.levelId.toLowerCase());
+    }
+
     if (!level) {
       toast.error(t('students.level_not_found'));
       return;
@@ -666,7 +673,10 @@ export default function StudentManagement() {
                               <Smartphone size={18} />
                             </button>
                             <button 
-                              onClick={() => handleResetCredentials(student.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleResetCredentials(student.id);
+                              }}
                               className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-dia-yellow"
                               title={t('students.resend_credentials')}
                             >
@@ -684,7 +694,8 @@ export default function StudentManagement() {
                               <Bell size={18} />
                             </button>
                             <button 
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setSelectedStudent(student);
                                 setIsReceiptModalOpen(true);
                               }}
@@ -694,10 +705,14 @@ export default function StudentManagement() {
                               <CreditCard size={18} />
                             </button>
                             <button 
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 const subject = `🔐 VOS IDENTIFIANTS - ${APP_NAME_FOR_LINKS}`;
                                 const body = `-----------------------------------------------------------\nACCÈS PLATEFORME - ${APP_NAME_FOR_LINKS}\n-----------------------------------------------------------\n\nBonjour ${student.firstName},\n\nNous sommes ravis de vous compter parmi nous. Voici vos accès personnels pour consulter vos cours, notes et situations financières :\n\n🔹 Matricule : ${student.matricule}\n🔹 Mot de passe : ${student.password || 'Inconnu'}\n\n🌐 Lien d'accès : ${window.location.origin}\n\nNote : Nous vous conseillons de changer votre mot de passe dès votre première connexion.\n\nBonne formation !\nCordialement,\nL'administration.`;
-                                window.location.href = generateMailtoLink(student.email || student.parentEmail || '', subject, body);
+                                const mailto = generateMailtoLink(student.email || student.parentEmail || '', subject, body);
+                                const a = document.createElement('a');
+                                a.href = mailto;
+                                a.click();
                               }}
                               className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-indigo-600"
                               title="Send Credentials"
@@ -705,7 +720,8 @@ export default function StudentManagement() {
                               <Mail size={18} />
                             </button>
                             <button 
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setSelectedStudent(student);
                                 setIsEditModalOpen(true);
                               }}
@@ -715,14 +731,20 @@ export default function StudentManagement() {
                               <Edit size={18} />
                             </button>
                             <button 
-                              onClick={() => handleArchiveStudent(student.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleArchiveStudent(student.id);
+                              }}
                               className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-orange-600"
                               title={t('common.archive')}
                             >
                               <X size={18} />
                             </button>
                             <button 
-                              onClick={() => handleHardDeleteStudent(student.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleHardDeleteStudent(student.id);
+                              }}
                               className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-red-600 font-bold"
                               title={t('common.delete_forever')}
                             >

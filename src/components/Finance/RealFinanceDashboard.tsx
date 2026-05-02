@@ -174,7 +174,10 @@ export default function RealFinanceDashboard() {
           onClick={() => {
             const subject = `📊 Rapport Financier Annuel ${selectedYear} - ${APP_NAME_FOR_LINKS}`;
             const body = `-----------------------------------------------------------\nBILAN FINANCIER - ${APP_NAME_FOR_LINKS}\n-----------------------------------------------------------\n\nVoici le résumé financier pour l'année ${selectedYear} :\n\n- Revenus globaux : ${formatCurrency(data.revenus)}\n- Charges totales : ${formatCurrency(totalCharges)}\n\n=> RÉSULTAT NET : ${formatCurrency(resultatNet)}\n\nRapport généré le ${new Date().toLocaleString()}.\n\nCordialement,\nService Comptabilité.`;
-            window.location.href = generateMailtoLink('', subject, body);
+            const mailto = generateMailtoLink('', subject, body);
+            const a = document.createElement('a');
+            a.href = mailto;
+            a.click();
           }}
           className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
           title="Partager par Email"

@@ -447,7 +447,10 @@ export default function CommuniqueManagement() {
                         onClick={() => {
                           const subject = `📢 COMMUNIQUÉ : ${c.title}`;
                           const body = `-----------------------------------------------------------\nCOMMUNIQUÉ - ${APP_NAME_FOR_LINKS}\n-----------------------------------------------------------\n\n${c.content}\n\nConsultez l'intégralité sur votre espace personnel : ${window.location.origin}`;
-                          window.location.href = generateMailtoLink('', subject, body);
+                          const mailto = generateMailtoLink('', subject, body);
+                          const a = document.createElement('a');
+                          a.href = mailto;
+                          a.click();
                         }}
                         className="p-2 hover:bg-neutral-50 rounded-xl text-blue-500 transition-colors"
                         title="Partager par Email"

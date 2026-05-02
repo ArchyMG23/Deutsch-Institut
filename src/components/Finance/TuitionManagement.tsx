@@ -349,7 +349,10 @@ const TuitionManagement: React.FC = () => {
                         onClick={() => {
                           const subject = `[REÇU] Paiement Scolarité - ${targetStudent.firstName} ${targetStudent.lastName}`;
                           const body = `-----------------------------------------------------------\nREÇU DE PAIEMENT - ${APP_NAME_FOR_LINKS}\n-----------------------------------------------------------\n\nBonjour,\n\nNous vous confirmons la réception d'un versement de ${formatCurrency(v.montant)} pour l'élève ${targetStudent.firstName} ${targetStudent.lastName}.\n\nDétails du versement :\n- Reçu N° : ${v.recu_numero}\n- Date : ${new Date(v.date).toLocaleDateString()}\n- Mode de paiement : ${v.mode_paiement}\n\nSITUATION ACTUELLE :\n- Total versé à ce jour : ${formatCurrency(scolarite.total_verse)}\n- RESTE À PAYER : ${formatCurrency(scolarite.reste)}\n\nMerci de votre confiance.\n\nCordialement,\nL'administration de ${APP_NAME_FOR_LINKS}`;
-                          window.location.href = generateMailtoLink(targetStudent.email || targetStudent.parentEmail || '', subject, body);
+                          const mailto = generateMailtoLink(targetStudent.email || targetStudent.parentEmail || '', subject, body);
+                          const a = document.createElement('a');
+                          a.href = mailto;
+                          a.click();
                         }}
                         className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-blue-500 hover:scale-110 transition-transform"
                         title="Envoyer par Email"
@@ -422,7 +425,10 @@ const TuitionManagement: React.FC = () => {
                       onClick={() => {
                         const subject = `Rappel de paiement scolarité - ${APP_NAME_FOR_LINKS}`;
                         const body = `Bonjour,\n\nNous vous informons qu'il reste un solde de ${formatCurrency(scolarite.reste)} à régler sur la scolarité de ${targetStudent.firstName} ${targetStudent.lastName}.\n\nNous vous prions de bien vouloir régulariser cette situation dès que possible.\n\nCordialement,\nL'administration.`;
-                        window.location.href = generateMailtoLink(targetStudent.email || targetStudent.parentEmail || '', subject, body);
+                        const mailto = generateMailtoLink(targetStudent.email || targetStudent.parentEmail || '', subject, body);
+                        const a = document.createElement('a');
+                        a.href = mailto;
+                        a.click();
                       }}
                       className="w-full py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold hover:bg-blue-100 transition-colors flex items-center justify-center gap-2"
                     >

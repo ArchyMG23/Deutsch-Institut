@@ -269,7 +269,10 @@ export default function TeacherManagement() {
                   onClick={() => {
                     const subject = `🔐 Vos Identifiants Enseignant - ${APP_NAME_FOR_LINKS}`;
                     const body = `-----------------------------------------------------------\nESPACE ENSEIGNANT - ${APP_NAME_FOR_LINKS}\n-----------------------------------------------------------\n\nBonjour ${teacher.firstName},\n\nVoici vos identifiants pour accéder à votre espace de gestion pédagogique :\n\n- Matricule : ${teacher.matricule}\n- Mot de passe : ${teacher.password || 'Inconnu'}\n\n🌐 Lien : ${window.location.origin}\n\nCordialement,\nLa Direction Académique.`;
-                    window.location.href = generateMailtoLink(teacher.email || '', subject, body);
+                    const mailto = generateMailtoLink(teacher.email || '', subject, body);
+                    const a = document.createElement('a');
+                    a.href = mailto;
+                    a.click();
                   }}
                   className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors text-indigo-500"
                   title="Send Credentials"
@@ -280,7 +283,10 @@ export default function TeacherManagement() {
                   onClick={() => {
                     const subject = `Message de l'administration - ${APP_NAME_FOR_LINKS}`;
                     const body = `Bonjour M/Mme ${teacher.lastName},\n\n`;
-                    window.location.href = generateMailtoLink(teacher.email || '', subject, body);
+                    const mailto = generateMailtoLink(teacher.email || '', subject, body);
+                    const a = document.createElement('a');
+                    a.href = mailto;
+                    a.click();
                   }}
                   className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors text-blue-500"
                   title="Email"
