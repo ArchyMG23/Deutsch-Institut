@@ -144,33 +144,34 @@ export default function EvaluationManagement() {
     }
   };
 
-  const sendEmail = async (evaluation: Evaluation) => {
+  const sendEmailDirect = (evaluation: Evaluation) => {
     const student = students.find(s => s.uid === evaluation.studentId);
     if (!student || (!student.email && !student.parentEmail)) {
       toast.error(t('evaluations.no_email_found'));
       return;
     }
 
-    const email = student.parentEmail || student.email;
+    const email = student.parentEmail || student.email || '';
+    const grade = getGoetheGrade(evaluation.total);
     
-    try {
-      toast.loading(t('common.sending'));
-      const res = await fetchWithAuth('/api/evaluations/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          evaluation,
-          recipientEmail: email,
-          studentName: evaluation.studentName
-        })
-      });
-      toast.dismiss();
-      if (res.ok) {
-        toast.success(`${t('evaluations.report_sent')} ${email}`);
-      }
-    } catch (err) {
-      toast.dismiss();
-    }
+    const subject = `[RÉSULTATS] Évaluation Goethe - ${evaluation.studentName}`;
+    const body = `-----------------------------------------------\nRELEVÉ DE NOTES - ${APP_NAME_FOR_LINKS}\n-----------------------------------------------\n\n` +
+      `Bonjour,\n\n` +
+      `Voici les résultats de l'évaluation Goethe pour ${evaluation.studentName} :\n\n` +
+      `- Module LESEN : ${evaluation.modules.lesen}/25\n` +
+      `- Module HÖREN : ${evaluation.modules.horen}/25\n` +
+      `- Module SCHREIBEN : ${evaluation.modules.schreiben}/25\n` +
+      `- Module SPRECHEN : ${evaluation.modules.sprechen}/25\n\n` +
+      `SCORE TOTAL : ${evaluation.total}/100\n` +
+      `MENTION : ${grade.label}\n` +
+      `RÉSULTAT : ${evaluation.total >= 60 ? 'RÉUSSI' : 'ÉCHEC'}\n\n` +
+      `${evaluation.comments ? `Commentaires: ${evaluation.comments}\n\n` : ''}` +
+      `Félicitations pour vos efforts !\n\nCordialement,\nL'administration de ${APP_NAME_FOR_LINKS}`;
+
+    const a = document.createElement('a');
+    a.href = generateMailtoLink(email, subject, body);
+    a.click();
+    toast.success(`${t('evaluations.report_sent')} ${email}`);
   };
 
   const generatePDF = (evaluation: Evaluation) => {
@@ -275,7 +276,7 @@ export default function EvaluationManagement() {
               
               toast.info(`${t('evaluations.preparing_reports')} ${classEvals.length}...`);
               for (const ev of classEvals) {
-                await sendEmail(ev);
+                sendEmailDirect(ev);
               }
               toast.success(t('evaluations.group_sent_finished'));
             }}
@@ -383,8 +384,8 @@ export default function EvaluationManagement() {
                           >
                             <Smartphone size={16} />
                           </button>
-                          <button onClick={() => sendEmail(ev)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-500 hover:text-blue-600 transition-colors" title={t('common.send_email')}>
-                            <Send size={16} />
+                          <button onClick={() => sendEmailDirect(ev)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-500 hover:text-blue-600 transition-colors" title={t('common.send_email')}>
+                            <Mail size={16} />
                           </button>
                           <button onClick={() => generatePDF(ev)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-500 hover:text-dia-red transition-colors" title={t('evaluations.print_report')}>
                             <Printer size={16} />

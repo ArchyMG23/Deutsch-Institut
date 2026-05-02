@@ -309,28 +309,6 @@ export default function StudentManagement() {
     }
   };
 
-  const handleSendReceiptEmail = async () => {
-    if (!selectedStudent || !receiptRef.current) return;
-    
-    try {
-      setSubmitting(true);
-      const html = receiptRef.current.innerHTML;
-      const res = await fetchWithAuth('/api/students/send-receipt-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId: selectedStudent.id, html })
-      });
-      if (res.ok) {
-        toast.success(t('students.receipt_sent'));
-      }
-    } catch (err) {
-      console.error("Error sending receipt email:", err);
-      toast.error(t('common.error'));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const handleSendReceiptWhatsApp = () => {
     if (!selectedStudent) return;
     
@@ -786,7 +764,7 @@ export default function StudentManagement() {
                               className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-indigo-600 disabled:opacity-30"
                               title="Rappel Email"
                             >
-                              <Bell size={18} />
+                              <Mail size={18} />
                             </button>
                             <button 
                               onClick={(e) => {
@@ -1308,17 +1286,9 @@ export default function StudentManagement() {
                 <button 
                   onClick={handleSendReceiptMailto}
                   className="p-3 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 rounded-xl hover:bg-indigo-200 transition-colors"
-                  title="Envoyer par Email (Direct)"
+                  title={t('common.send_email')}
                 >
                   <Mail size={20} />
-                </button>
-                <button 
-                  onClick={handleSendReceiptEmail}
-                  disabled={submitting}
-                  className="p-3 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-xl hover:bg-blue-200 transition-colors"
-                  title={t('students.send_by_email') + " (Serveur)"}
-                >
-                  {submitting ? <div className="animate-spin rounded-full h-5 w-5 border-2 border-current border-t-transparent" /> : <Send size={20} />}
                 </button>
                 <button 
                   onClick={handleDownloadPDFReceipt}

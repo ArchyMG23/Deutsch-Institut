@@ -38,7 +38,6 @@ export default function AdminDashboard() {
   const { t } = useTranslation();
   const [configStatus, setConfigStatus] = useState<any>(null);
   const [logs, setLogs] = useState<any[]>([]);
-  const [testingEmail, setTestingEmail] = useState(false);
   const [diagMatricule, setDiagMatricule] = useState('');
   const [diagResult, setDiagResult] = useState<any>(null);
   const [checkingDiag, setCheckingDiag] = useState(false);
@@ -70,23 +69,6 @@ export default function AdminDashboard() {
       }
     } catch (err) {
       console.error("Error checking config:", err);
-    }
-  };
-
-  const handleTestEmail = async () => {
-    setTestingEmail(true);
-    try {
-      const res = await fetchWithAuth('/api/health/test-email', { method: 'POST' });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success(data.message);
-      } else {
-        toast.error(data.message);
-      }
-    } catch (err) {
-      toast.error(t('dashboard.email_test_error'));
-    } finally {
-      setTestingEmail(false);
     }
   };
 
@@ -282,37 +264,18 @@ export default function AdminDashboard() {
             </div>
             <div className="p-4 rounded-2xl bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">{t('dashboard.emails')} (SMTP)</span>
-                {configStatus.smtp ? <CheckCircle2 size={16} className="text-green-500" /> : <AlertTriangle size={16} className="text-amber-500" />}
+                <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">{t('dashboard.emails') || 'Notifications Email'}</span>
+                <CheckCircle2 size={16} className="text-green-500" />
               </div>
               <p className="text-sm">
-                {configStatus.smtp 
-                  ? t('dashboard.smtp_ok') 
-                  : (configStatus.smtpConfigured 
-                      ? t('dashboard.smtp_error') 
-                      : t('dashboard.smtp_missing'))
-                }
+                {t('dashboard.direct_email_active') || 'Envoi direct via mailto: activé. Vos notifications s\'ouvriront directement dans votre logiciel de messagerie (Outlook, Gmail) pour une fiabilité maximale.'}
               </p>
-              {configStatus.smtpError && !configStatus.smtp && (
-                <div className="mt-2 p-2 bg-red-50 dark:bg-red-950/20 rounded border border-red-100 dark:border-red-900/30">
-                  <p className="text-[10px] uppercase font-bold text-red-500 mb-1">{t('dashboard.raw_error')} :</p>
-                  <p className="text-xs font-mono break-all text-red-600 dark:text-red-400 mb-2">{configStatus.smtpError}</p>
-                  {configStatus.smtpError.includes('ENETUNREACH') && (
-                    <p className="text-[10px] text-amber-600 font-bold leading-tight">
-                      ℹ️ {t('dashboard.ipv6_note')}
-                    </p>
-                  )}
+              <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-700">
+                <div className="flex items-center gap-2 text-[10px] text-green-600 font-bold">
+                  <CheckCircle2 size={12} />
+                  <span>{t('dashboard.client_side_ready') || 'PRÊT (CÔTÉ CLIENT)'}</span>
                 </div>
-              )}
-              {configStatus.smtpConfigured && (
-                <button 
-                  onClick={handleTestEmail}
-                  disabled={testingEmail}
-                  className="mt-3 text-xs font-bold text-dia-red hover:underline flex items-center gap-1 disabled:opacity-50"
-                >
-                  {testingEmail ? t('dashboard.sending_test') : `${t('dashboard.test_email_btn')} ❯`}
-                </button>
-              )}
+              </div>
             </div>
           </div>
           
