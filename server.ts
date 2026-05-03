@@ -558,13 +558,14 @@ async function startServer() {
         addLog('INFO', `Collection ${collName} vidée`);
       }
 
-      // Handle users collection: delete all except super admins
+      // Handle users collection: delete all except admins
       const usersSnapshot = await dbAdmin.collection('users').get();
       const usersBatch = dbAdmin.batch();
       let deletedUsersCount = 0;
       usersSnapshot.docs.forEach((doc) => {
         const data = doc.data();
-        if (!data.isSuperAdmin) {
+        // Preserve all admins (including regular admins and super admins)
+        if (data.role !== 'admin') {
           usersBatch.delete(doc.ref);
           deletedUsersCount++;
         }
@@ -587,7 +588,7 @@ async function startServer() {
       }
       addLog('INFO', `Niveaux réinitialisés aux valeurs d'origine`);
 
-      res.json({ message: 'Système réinitialisé avec succès. Les données ont été formatées mais les comptes Super Admin ont été conservés.' });
+      res.json({ message: 'Système réinitialisé avec succès. Les données ont été formatées mais les comptes Administrateurs ont été conservés.' });
     } catch (err: any) {
       addLog('ERROR', `Échec de la réinitialisation système`, err.message);
       res.status(500).json({ message: err.message });

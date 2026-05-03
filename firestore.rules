@@ -63,7 +63,7 @@ service cloud.firestore {
       return isSignedIn() && (
         request.auth.token.email == "yombivictor@gmail.com" ||
         request.auth.token.email == "gabrielyombi311@gmail.com" || 
-        request.auth.uid == "ODbaguDQ7GRMDmGLo8SzsH46u2E2" || // Reported User UID
+        request.auth.uid == "ODbaguDQ7GRMDmGLo8SzsH46u2E2" ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       );
@@ -180,6 +180,11 @@ service cloud.firestore {
       allow write: if isAdmin() && isValidFinance(incoming());
     }
 
+    match /charges/{chargeId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
     match /scolarites/{eleveId} {
       allow read: if isAdmin() || isOwner(eleveId);
       allow write: if isAdmin();
@@ -189,6 +194,11 @@ service cloud.firestore {
         allow create: if isAdmin();
         allow update, delete: if isAdmin();
       }
+    }
+
+    // Collection Group for Versements
+    match /{path=**}/versements/{versementId} {
+      allow read: if isAdmin();
     }
 
     // Reports & Communiques

@@ -53,8 +53,14 @@ export default function RealFinanceDashboard() {
     setLoading(true);
     try {
       // 1. Aggreger les REVENUS (Versements scolarités)
-      // On utilise collectionGroup car les versements sont dans des sous-collections
-      const versementsSnap = await getDocs(collectionGroup(db, 'versements'));
+      const pathVersements = 'versements (collectionGroup)';
+      let versementsSnap;
+      try {
+        versementsSnap = await getDocs(collectionGroup(db, 'versements'));
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, pathVersements);
+      }
+
       let totalRevenu = 0;
       const monthlyRevenu: Record<string, number> = {};
 
@@ -69,8 +75,21 @@ export default function RealFinanceDashboard() {
       });
 
       // 2. Aggreger les CHARGES SALARIALES (Rapports soumis)
-      const reportsSnap = await getDocs(query(collection(db, 'rapports_journaliers'), where('statut', '==', 'soumis')));
-      const teachersSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'teacher')));
+      const pathReports = 'rapports_journaliers';
+      let reportsSnap;
+      try {
+        reportsSnap = await getDocs(query(collection(db, 'rapports_journaliers'), where('statut', '==', 'soumis')));
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, pathReports);
+      }
+
+      const pathTeachers = 'users (teachers)';
+      let teachersSnap;
+      try {
+        teachersSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'teacher')));
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, pathTeachers);
+      }
       
       const teacherRates: Record<string, number> = {};
       teachersSnap.forEach(doc => {
@@ -93,8 +112,15 @@ export default function RealFinanceDashboard() {
         }
       });
 
-      // 3. Aggreger les CHARGES FIXES
-      const chargesSnap = await getDocs(collection(db, 'charges'));
+      // 3. Aggregger les CHARGES FIXES (Manual charges)
+      const pathCharges = 'charges';
+      let chargesSnap;
+      try {
+        chargesSnap = await getDocs(collection(db, 'charges'));
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, pathCharges);
+      }
+
       let totalChargesFixes = 0;
       const monthlyCharges: Record<string, number> = {};
 
@@ -105,6 +131,36 @@ export default function RealFinanceDashboard() {
           totalChargesFixes += c.montant;
           const mKey = date.getMonth();
           monthlyCharges[mKey] = (monthlyCharges[mKey] || 0) + c.montant;
+        }
+      });
+
+      // 4. Aggregger les TRANSACTIONS DU GRAND LIVRE (finances)
+      const pathFinances = 'finances';
+      let financesSnap;
+      try {
+        financesSnap = await getDocs(collection(db, 'finances'));
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, pathFinances);
+      }
+
+      financesSnap.forEach(doc => {
+        const f = doc.data();
+        if (!f.date) return;
+        
+        const date = new Date(f.date);
+        if (date.getFullYear() === selectedYear) {
+          const mKey = date.getMonth();
+          const amount = Number(f.amount || 0);
+
+          if (f.type === 'income') {
+            if (f.category !== 'Tuition') {
+              totalRevenu += amount;
+              monthlyRevenu[mKey] = (monthlyRevenu[mKey] || 0) + amount;
+            }
+          } else {
+            totalChargesFixes += amount;
+            monthlyCharges[mKey] = (monthlyCharges[mKey] || 0) + amount;
+          }
         }
       });
 
@@ -123,11 +179,45 @@ export default function RealFinanceDashboard() {
         history
       });
     } catch (err) {
-      console.error("Erreur Dashboard Financier:", err);
+      console.error("Erreur Dashboard Financier (Détails):", err);
     } finally {
       setLoading(false);
     }
   };
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error Detailed: ', JSON.stringify(errInfo));
+  // We throw a standardized error so the system can catch it if needed, or simple logging
+  throw new Error(JSON.stringify(errInfo));
+}
 
   useEffect(() => {
     fetchFinanceStats();
