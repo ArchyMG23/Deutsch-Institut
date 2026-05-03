@@ -23,8 +23,8 @@ import { toast } from 'sonner';
 import { collection, query, orderBy, getDocs, addDoc, serverTimestamp, where, updateDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { CommuniqueRead } from '../types';
-import { generateWhatsAppLink, generateMailtoLink, APP_NAME_FOR_LINKS } from '../utils/contactLinks';
-import { Smartphone, Mail as MailIcon } from 'lucide-react';
+import { generateWhatsAppLink, APP_NAME_FOR_LINKS } from '../utils/contactLinks';
+import { Smartphone } from 'lucide-react';
 
 export default function CommuniqueManagement() {
   const { t } = useTranslation();
@@ -159,7 +159,7 @@ export default function CommuniqueManagement() {
     };
 
     try {
-      // Use the backend API to handle distribution (emails + push)
+      // Use the backend API to handle distribution (push)
       const res = await fetchWithAuth('/api/communiques', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -446,24 +446,10 @@ export default function CommuniqueManagement() {
                       >
                         <Smartphone size={18} />
                       </button>
-                      <button 
-                        onClick={() => {
-                          const subject = `📢 COMMUNIQUÉ : ${c.title}`;
-                          const body = `-----------------------------------------------------------\nCOMMUNIQUÉ - ${APP_NAME_FOR_LINKS}\n-----------------------------------------------------------\n\n${c.content}\n\nConsultez l'intégralité sur votre espace personnel : ${window.location.origin}`;
-                          const mailto = generateMailtoLink('', subject, body);
-                          const a = document.createElement('a');
-                          a.href = mailto;
-                          a.click();
-                        }}
-                        className="p-2 hover:bg-neutral-50 rounded-xl text-blue-500 transition-colors"
-                        title="Partager par Email"
-                      >
-                        <MailIcon size={18} />
-                      </button>
                       {isAdmin && (
                         <button 
                           onClick={() => toggleArchive(c)}
-                          className="p-2 hover:bg-neutral-50 rounded-xl text-neutral-400 hover:text-amber-600 transition-colors tooltip"
+                          className="p-2 hover:bg-neutral-100 rounded-xl text-neutral-400 hover:text-amber-600 transition-colors tooltip"
                           title={c.isArchived ? t('communiques.unarchive') : t('communiques.archive')}
                         >
                           <Archive size={18} />

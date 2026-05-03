@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   User, 
-  Mail, 
   Lock, 
   Shield, 
   Check, 
@@ -34,7 +33,6 @@ export default function AdminProfile() {
   // Profile state
   const [firstName, setFirstName] = useState(profile?.firstName || user?.firstName || '');
   const [lastName, setLastName] = useState(profile?.lastName || user?.lastName || '');
-  const [email, setEmail] = useState(profile?.email || user?.email || '');
 
   // School Config state
   const [schoolConfig, setSchoolConfig] = useState<SchoolConfig>({
@@ -49,7 +47,6 @@ export default function AdminProfile() {
     if (profile) {
       setFirstName(profile.firstName || '');
       setLastName(profile.lastName || '');
-      setEmail(profile.email || '');
     }
 
     const fetchSchoolConfig = async () => {
@@ -90,7 +87,7 @@ export default function AdminProfile() {
       const res = await fetchWithAuth(`/api/users/${user.uid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ firstName, lastName, email })
+        body: JSON.stringify({ firstName, lastName })
       });
 
       if (res.ok) {
@@ -339,19 +336,6 @@ export default function AdminProfile() {
                     required 
                     type="text" 
                     className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" 
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('profile.email')}</label>
-                <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
-                  <input 
-                    value={email} 
-                    onChange={e => setEmail(e.target.value)} 
-                    required 
-                    type="email" 
-                    className="w-full pl-12 pr-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" 
                   />
                 </div>
               </div>

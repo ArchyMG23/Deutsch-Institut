@@ -9,7 +9,6 @@ import {
   ShieldAlert,
   X,
   Plus,
-  Mail,
   User,
   Hash,
   AlertTriangle,
@@ -55,7 +54,6 @@ export default function AdminManagement() {
 
     const formData = new FormData(e.currentTarget);
     const newAdmin = {
-      email: formData.get('email'),
       password: formData.get('password'),
       firstName: formData.get('firstName'),
       lastName: formData.get('lastName'),
@@ -117,7 +115,7 @@ export default function AdminManagement() {
   };
 
   const filteredAdmins = admins.filter(a => 
-    `${a.firstName} ${a.lastName} ${a.matricule} ${a.email}`.toLowerCase().includes(searchQuery.toLowerCase())
+    `${a.firstName} ${a.lastName} ${a.matricule}`.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleResetSystem = async () => {
@@ -202,7 +200,6 @@ export default function AdminManagement() {
               </div>
               <div className="flex-1 min-w-0">
                 <h4 className="font-bold text-sm truncate">{admin.firstName} {admin.lastName}</h4>
-                <p className="text-xs text-neutral-500 truncate">{admin.email}</p>
                 <div className="flex items-center gap-2 mt-2">
                   <span className="text-[10px] font-mono bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 rounded">
                     {admin.matricule}
@@ -304,13 +301,6 @@ export default function AdminManagement() {
                 <div className="relative">
                   <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
                   <input name="matricule" required type="text" placeholder="ADMIN_EXAM" className="w-full pl-12 pr-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Email</label>
-                <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
-                  <input name="email" required type="email" className="w-full pl-12 pr-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
                 </div>
               </div>
               <div className="space-y-2">

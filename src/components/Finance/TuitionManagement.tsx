@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
 import { collection, query, where, getDocs, doc, setDoc, updateDoc, getDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { Student, StudentScolarite, Versement, SchoolConfig } from '../../types';
-import { Search, CreditCard, Printer, History, AlertCircle, CheckCircle2, User, Landmark, Share2, Send, MessageCircle, Mail as MailIcon } from 'lucide-react';
+import { Search, CreditCard, Printer, History, AlertCircle, CheckCircle2, User, Landmark, Share2, Send, MessageCircle } from 'lucide-react';
 import { formatCurrency, cn } from '../../utils';
 import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
 import { addAuditLog } from '../../utils/auditLogger';
 import { useAuth } from '../../context/AuthContext';
-import { generateWhatsAppLink, generateMailtoLink, APP_NAME_FOR_LINKS } from '../../utils/contactLinks';
+import { generateWhatsAppLink, APP_NAME_FOR_LINKS } from '../../utils/contactLinks';
 
 const TuitionManagement: React.FC = () => {
   const { user } = useAuth();
@@ -348,20 +348,6 @@ const TuitionManagement: React.FC = () => {
                       >
                         <MessageCircle size={18} />
                       </button>
-                      <button 
-                        onClick={() => {
-                          const subject = `[REÇU] Paiement Scolarité - ${targetStudent.firstName} ${targetStudent.lastName}`;
-                          const body = `-----------------------------------------------------------\nREÇU DE PAIEMENT - ${APP_NAME_FOR_LINKS}\n-----------------------------------------------------------\n\nBonjour,\n\nNous vous confirmons la réception d'un versement de ${formatCurrency(v.montant)} pour l'élève ${targetStudent.firstName} ${targetStudent.lastName}.\n\nDétails du versement :\n- Reçu N° : ${v.recu_numero}\n- Date : ${new Date(v.date).toLocaleDateString()}\n- Mode de paiement : ${v.mode_paiement}\n\nSITUATION ACTUELLE :\n- Total versé à ce jour : ${formatCurrency(scolarite.total_verse)}\n- RESTE À PAYER : ${formatCurrency(scolarite.reste)}\n\nMerci de votre confiance.\n\nCordialement,\nL'administration de ${APP_NAME_FOR_LINKS}`;
-                          const mailto = generateMailtoLink(targetStudent.parentEmail || targetStudent.email || '', subject, body);
-                          const a = document.createElement('a');
-                          a.href = mailto;
-                          a.click();
-                        }}
-                        className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-blue-500 hover:scale-110 transition-transform"
-                        title="Envoyer par Email"
-                      >
-                        <MailIcon size={18} />
-                      </button>
                     </div>
                   </div>
                 ))}
@@ -426,19 +412,6 @@ const TuitionManagement: React.FC = () => {
                       className="w-full py-2 bg-green-50 text-green-700 border border-green-200 rounded-xl text-xs font-bold hover:bg-green-100 transition-colors flex items-center justify-center gap-2"
                     >
                       <MessageCircle size={14} /> Rappeler par WhatsApp
-                    </button>
-                    <button 
-                      onClick={() => {
-                        const subject = `Rappel de paiement scolarité - ${APP_NAME_FOR_LINKS}`;
-                        const body = `Bonjour,\n\nNous vous informons qu'il reste un solde de ${formatCurrency(scolarite.reste)} à régler sur la scolarité de ${targetStudent.firstName} ${targetStudent.lastName}.\n\nNous vous prions de bien vouloir régulariser cette situation dès que possible.\n\nCordialement,\nL'administration.`;
-                        const mailto = generateMailtoLink(targetStudent.parentEmail || targetStudent.email || '', subject, body);
-                        const a = document.createElement('a');
-                        a.href = mailto;
-                        a.click();
-                      }}
-                      className="w-full py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold hover:bg-blue-100 transition-colors flex items-center justify-center gap-2"
-                    >
-                      <MailIcon size={14} /> Rappeler par Email
                     </button>
                   </div>
                 )}

@@ -10,10 +10,6 @@ export const generateWhatsAppLink = (phone: string, message: string) => {
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
 };
 
-export const generateMailtoLink = (email: string, subject: string, body: string) => {
-  return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-};
-
 export const generateSMSLink = (phone: string, message: string) => {
   const cleanPhone = phone.replace(/[^\d+]/g, '');
   return `sms:${cleanPhone}?body=${encodeURIComponent(message)}`;

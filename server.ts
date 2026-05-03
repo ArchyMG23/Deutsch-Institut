@@ -32,7 +32,7 @@ try {
 
 // Global Server Logs for diagnostics
 const serverLogs: any[] = [];
-function addLog(type: 'INFO' | 'ERROR' | 'EMAIL' | 'AUTH', message: string, details?: any) {
+function addLog(type: 'INFO' | 'ERROR' | 'AUTH', message: string, details?: any) {
   const log = {
     timestamp: new Date().toISOString(),
     type,
@@ -93,11 +93,7 @@ if (!admin.apps.length) {
   dbAdmin.settings({ ignoreUndefinedProperties: true });
 }
 
-// Email simulation (since we use client-side links)
-async function sendEmailSimulated(to: string, subject: string, text: string) {
-  console.log(`[EMAIL SIMULATION] to ${to}: ${subject}\n${text}`);
-}
-
+// Push Notifications
 async function sendPushNotification(tokens: string[], title: string, body: string, data: any = {}) {
   if (!isFirebaseAdminInitialized || tokens.length === 0) return;
   
@@ -314,7 +310,7 @@ async function startServer() {
   // Auth Routes
   app.post('/api/auth/login', async (req, res) => {
     const { matricule, password } = req.body;
-    addLog('AUTH', `Tentative de recherche d'email pour: ${matricule}`);
+    addLog('AUTH', `Tentative de connexion pour: ${matricule}`);
     
     if (!isFirebaseAdminInitialized) {
       addLog('ERROR', "Login: Firebase Admin non initialisé");
@@ -327,7 +323,6 @@ async function startServer() {
       let userDoc = userQuery.docs[0];
       
       if (!userDoc) {
-        addLog('INFO', `Matricule ${matricule} non trouvé, essai par email...`);
         const emailQuery = await dbAdmin.collection('users').where('email', '==', matricule.toLowerCase()).get();
         userDoc = emailQuery.docs[0];
       }
@@ -338,7 +333,7 @@ async function startServer() {
       }
 
       const userData = userDoc.data();
-      addLog('AUTH', `Email trouvé pour ${matricule}: ${userData.email}`);
+      addLog('AUTH', `Profil trouvé pour ${matricule}`);
       res.json({ user: userData });
     } catch (err: any) {
       addLog('ERROR', `Erreur lors du login/lookup pour ${matricule}`, err.message);
@@ -523,10 +518,6 @@ async function startServer() {
     }
   });
 
-  app.post('/api/students/send-receipt-email', authenticate, async (req: any, res) => {
-    res.json({ message: 'Fonctionnalité désactivée (SMTP non configuré)' });
-  });
-
   app.post('/api/system/reset', authenticate, async (req: any, res) => {
     try {
       const currentUserDoc = await dbAdmin.collection('users').doc(req.user.id).get();
@@ -706,14 +697,14 @@ async function startServer() {
         }
       }
       
-      console.log(`[BOOTSTRAP] Student created: ${studentData.email}. Credentials would be sent via client.`);
+      console.log(`[BOOTSTRAP] Student created: ${studentData.matricule}. Credentials would be sent via client.`);
       
       res.json(newStudent);
     } catch (err: any) {
       console.error("Error creating student in Firebase:", err);
       if (err.code === 'auth/operation-not-allowed') {
         return res.status(500).json({ 
-          message: "L'authentification par Email/Mot de passe n'est pas activée dans votre console Firebase. Veuillez l'activer dans 'Authentication' > 'Sign-in method'." 
+          message: "L'authentification n'est pas activée dans votre console Firebase. Veuillez l'activer dans 'Authentication' > 'Sign-in method'." 
         });
       }
       if (err.code === 'auth/email-already-in-use') {
@@ -794,33 +785,6 @@ async function startServer() {
     }
   });
 
-  app.post('/api/students/resend-credentials/:id', authenticate, async (req: any, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Interdit' });
-    
-    try {
-      const studentDoc = await dbAdmin.collection('students').doc(req.params.id).get();
-      if (!studentDoc.exists) return res.status(404).json({ message: 'Étudiant non trouvé' });
-      const studentData = studentDoc.data() as any;
-      
-      const newPassword = 'DIA' + Math.floor(1000 + Math.random() * 9000) + '.';
-      
-      await authAdmin.updateUser(req.params.id, {
-        password: newPassword
-      });
-
-      console.log(`[CREDENTIALS] Password reset for: ${studentData.email}. Credentials would be handle by client.`);
-      
-      res.json({ message: 'Mot de passe réinitialisé. Les nouveaux identifiants doivent être communiqués par l\'administrateur.', password: newPassword });
-    } catch (err: any) {
-      console.error("Resend credentials error:", err);
-      res.status(500).json({ message: err.message });
-    }
-  });
-
-  app.post('/api/students/send-receipt-email', authenticate, async (req: any, res) => {
-    res.json({ message: 'Cette fonctionnalité serveur est désactivée. Veuillez utiliser l\'envoi direct via WhatsApp/Email depuis le navigateur.' });
-  });
-
   // Teachers API
   app.get('/api/teachers', authenticate, async (req, res) => {
     try {
@@ -881,14 +845,14 @@ async function startServer() {
       await dbAdmin.collection('users').doc(userRecord.uid).set(newUser);
       await dbAdmin.collection('teachers').doc(userRecord.uid).set(newTeacher);
 
-      console.log(`[BOOTSTRAP] Teacher created: ${teacherData.email}. Credentials would be handle by client.`);
+      console.log(`[BOOTSTRAP] Teacher created: ${teacherData.matricule}. Credentials would be handle by client.`);
 
       res.json(newTeacher);
     } catch (err: any) {
       console.error("Error creating teacher in Firebase:", err);
       if (err.code === 'auth/operation-not-allowed') {
         return res.status(500).json({ 
-          message: "L'authentification par Email/Mot de passe n'est pas activée dans votre console Firebase. Veuillez l'activer dans 'Authentication' > 'Sign-in method'." 
+          message: "L'authentification par identifiants n'est pas activée dans votre console Firebase. Veuillez l'activer dans 'Authentication' > 'Sign-in method'." 
         });
       }
       if (err.code === 'auth/email-already-in-use') {
@@ -1331,11 +1295,6 @@ async function startServer() {
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
-  });
-
-  app.post('/api/evaluations/send-email', authenticate, async (req: any, res) => {
-    if (req.user.role === 'student') return res.status(403).json({ message: 'Permission refusée' });
-    res.json({ message: 'Fonctionnalité désactivée (SMTP non configuré)' });
   });
 
   // Serve uploaded files

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
   User, 
-  Mail, 
   Phone, 
   MapPin, 
   Camera, 
@@ -294,19 +293,6 @@ export default function TeacherProfile() {
                   <input 
                     name="lastName"
                     value={formData.lastName || ''}
-                    onChange={handleChange}
-                    className="w-full pl-12 pr-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" 
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('teachers.professional_email')}</label>
-                <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={18} />
-                  <input 
-                    name="email"
-                    type="email"
-                    value={formData.email || ''}
                     onChange={handleChange}
                     className="w-full pl-12 pr-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" 
                   />

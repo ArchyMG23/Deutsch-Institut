@@ -3,7 +3,6 @@ import {
   Search, 
   Plus, 
   MoreVertical, 
-  Mail, 
   Phone, 
   X, 
   Edit, 
@@ -26,7 +25,7 @@ import { useData } from '../context/DataContext';
 import { toast } from 'sonner';
 
 import { useTranslation } from 'react-i18next';
-import { generateWhatsAppLink, generateMailtoLink, APP_NAME_FOR_LINKS } from '../utils/contactLinks';
+import { generateWhatsAppLink, APP_NAME_FOR_LINKS } from '../utils/contactLinks';
 
 export default function TeacherManagement() {
   const { t } = useTranslation();
@@ -58,7 +57,6 @@ export default function TeacherManagement() {
       password,
       firstName: formData.get('firstName'),
       lastName: formData.get('lastName'),
-      email: formData.get('email'),
       phone: formData.get('phone'),
       cni: formData.get('cni'),
       hourlyRate: parseInt(formData.get('hourlyRate') as string),
@@ -113,7 +111,6 @@ export default function TeacherManagement() {
       ...selectedTeacher,
       firstName: formData.get('firstName'),
       lastName: formData.get('lastName'),
-      email: formData.get('email'),
       phone: formData.get('phone'),
       cni: formData.get('cni'),
       hourlyRate: parseInt(formData.get('hourlyRate') as string),
@@ -270,34 +267,6 @@ export default function TeacherManagement() {
                 </button>
                 <button 
                   onClick={() => {
-                    const subject = `🔐 Vos Identifiants Enseignant - ${APP_NAME_FOR_LINKS}`;
-                    const body = `-----------------------------------------------------------\nESPACE ENSEIGNANT - ${APP_NAME_FOR_LINKS}\n-----------------------------------------------------------\n\nBonjour ${teacher.firstName},\n\nVoici vos identifiants pour accéder à votre espace de gestion pédagogique :\n\n- Matricule : ${teacher.matricule}\n- Mot de passe : ${teacher.password || 'Inconnu'}\n\n🌐 Lien : ${window.location.origin}\n\nCordialement,\nLa Direction Académique.`;
-                    const mailto = generateMailtoLink(teacher.email || '', subject, body);
-                    const a = document.createElement('a');
-                    a.href = mailto;
-                    a.click();
-                  }}
-                  className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors text-indigo-500"
-                  title="Send Credentials"
-                >
-                  <Mail size={16} />
-                </button>
-                <button 
-                  onClick={() => {
-                    const subject = `Message de l'administration - ${APP_NAME_FOR_LINKS}`;
-                    const body = `Bonjour M/Mme ${teacher.lastName},\n\n`;
-                    const mailto = generateMailtoLink(teacher.email || '', subject, body);
-                    const a = document.createElement('a');
-                    a.href = mailto;
-                    a.click();
-                  }}
-                  className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors text-blue-500"
-                  title="Email"
-                >
-                  <Mail size={16} />
-                </button>
-                <button 
-                  onClick={() => {
                     setSelectedTeacher(teacher);
                     setIsEditModalOpen(true);
                   }}
@@ -351,9 +320,6 @@ export default function TeacherManagement() {
                 ))}
               </div>
               <p className="text-sm flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
-                <Mail size={14} /> {teacher.email}
-              </p>
-              <p className="text-sm flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
                 <Phone size={14} /> {teacher.phone}
               </p>
             </div>
@@ -381,10 +347,6 @@ export default function TeacherManagement() {
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.last_name')}</label>
                   <input name="lastName" required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('login.email') || 'Email'}</label>
-                  <input name="email" required type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.phone')}</label>
@@ -503,10 +465,6 @@ export default function TeacherManagement() {
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.last_name')}</label>
                   <input name="lastName" defaultValue={selectedTeacher.lastName} required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('login.email') || 'Email'}</label>
-                  <input name="email" defaultValue={selectedTeacher.email} required type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.phone')}</label>

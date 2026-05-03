@@ -129,10 +129,10 @@ export default function ClassManagement() {
           const message = t('classes.sublevel_notification', { name: cls.name });
           
           if (teacher) {
-             await NotificationService._triggerEmail(fetchWithAuth, teacher.email, t('classes.level_change_subject', { name: cls.name }), message, `<h2>${message}</h2>`);
+             await NotificationService.sendNotification(fetchWithAuth, teacher, t('classes.level_change_subject', { name: cls.name }), message, t('classes.level_change_subject', { name: cls.name }), message);
           }
           for (const student of classStudents) {
-             await NotificationService._triggerEmail(fetchWithAuth, student.email, t('classes.level_progression_subject', { name: cls.name }), message, `<div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 12px; text-align: center;"><h2 style="color: #E31E24;">${t('common.congratulations')} !</h2><p>${message}</p></div>`, t('classes.level_progression'), message, student.parentEmail);
+             await NotificationService.sendNotification(fetchWithAuth, student, t('classes.level_progression_subject', { name: cls.name }), message, t('classes.level_progression'), message);
           }
           
           refreshClasses();
@@ -205,23 +205,13 @@ export default function ClassManagement() {
             
             // Notify student & parent
             const message = t('classes.promotion_notification', { level: level?.name, name: cls.name, nextLevel: nextLevel.name });
-            await NotificationService._triggerEmail(fetchWithAuth, student.email, t('classes.promotion_email_subject', { nextLevel: nextLevel.name, name: cls.name }), message, `
-              <div style="font-family: sans-serif; padding: 30px; border: 2px solid #E31E24; border-radius: 20px; text-align: center;">
-                <h1 style="color: #E31E24;">${t('common.bravo')} !</h1>
-                <p style="font-size: 1.2em;">${t('classes.promotion_email_body_1', { level: level?.name })}</p>
-                <div style="background: #f9f9f9; padding: 20px; border-radius: 12px; margin: 20px 0;">
-                  <p>${t('classes.promotion_email_body_2', { name: cls.name })} :</p>
-                  <p style="font-size: 2em; font-weight: bold; color: #E31E24; margin: 10px 0;">${nextLevel.name}</p>
-                </div>
-                <p>${t('classes.promotion_email_body_3')}</p>
-              </div>
-            `, t('classes.level_promotion'), t('classes.level_reached', { nextLevel: nextLevel.name }), student.parentEmail);
+            await NotificationService.sendNotification(fetchWithAuth, student, t('classes.promotion_subject', { nextLevel: nextLevel.name, name: cls.name }), message, t('classes.level_promotion'), t('classes.level_reached', { nextLevel: nextLevel.name }));
           }
 
           // 3. Notify teacher
           if (teacher) {
             const message = t('classes.teacher_promotion_notification', { name: cls.name, nextLevel: nextLevel.name });
-            await NotificationService._triggerEmail(fetchWithAuth, teacher.email, t('classes.class_promotion_subject', { name: cls.name }), message, `<h2>${t('classes.class_promotion_title')}</h2><p>${message}</p>`);
+            await NotificationService.sendNotification(fetchWithAuth, teacher, t('classes.class_promotion_subject', { name: cls.name }), message, t('classes.class_promotion_title'), message);
           }
 
           toast.success(t('classes.level_promoted', { name: nextLevel.name }));

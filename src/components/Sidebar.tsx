@@ -176,7 +176,7 @@ export function Sidebar() {
                 {(profile?.photoURL || user?.photoURL) ? (
                   <img src={profile?.photoURL || user?.photoURL} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
-                  <>{profile?.firstName?.[0] || user?.email?.[0]?.toUpperCase()}{profile?.lastName?.[0] || user?.email?.[1]?.toUpperCase()}</>
+                  <>{profile?.firstName?.[0] || profile?.matricule?.[0]?.toUpperCase()}{profile?.lastName?.[0] || profile?.matricule?.[1]?.toUpperCase()}</>
                 )}
               </div>
               <div className="overflow-hidden">

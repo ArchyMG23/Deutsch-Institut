@@ -264,16 +264,19 @@ export default function AdminDashboard() {
             </div>
             <div className="p-4 rounded-2xl bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">{t('dashboard.emails') || 'Notifications Email'}</span>
-                <CheckCircle2 size={16} className="text-green-500" />
+                <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">{t('dashboard.notifications') || 'Notifications Push'}</span>
+                <CheckCircle2 size={16} className={configStatus.pushOk ? "text-green-500" : "text-dia-red"} />
               </div>
               <p className="text-sm">
-                {t('dashboard.direct_email_active') || 'Envoi direct via mailto: activé. Vos notifications s\'ouvriront directement dans votre logiciel de messagerie (Outlook, Gmail) pour une fiabilité maximale.'}
+                {t('dashboard.push_status_desc') || 'Service de notifications instantanées via Firebase Cloud Messaging (FCM).'}
               </p>
               <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-700">
-                <div className="flex items-center gap-2 text-[10px] text-green-600 font-bold">
-                  <CheckCircle2 size={12} />
-                  <span>{t('dashboard.client_side_ready') || 'PRÊT (CÔTÉ CLIENT)'}</span>
+                <div className={cn(
+                  "flex items-center gap-2 text-[10px] font-bold",
+                  configStatus.pushOk ? "text-green-600" : "text-dia-red"
+                )}>
+                  {configStatus.pushOk ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
+                  <span>{configStatus.pushOk ? (t('dashboard.push_ok') || 'ACTIF') : (t('dashboard.push_error') || 'INACTIF')}</span>
                 </div>
               </div>
             </div>
@@ -311,7 +314,6 @@ export default function AdminDashboard() {
                     <span className={cn(
                       "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase",
                       log.type === 'ERROR' ? "bg-red-100 text-red-600" : 
-                      log.type === 'EMAIL' ? "bg-blue-100 text-blue-600" :
                       log.type === 'AUTH' ? "bg-purple-100 text-purple-600" :
                       "bg-green-100 text-green-600"
                     )}>

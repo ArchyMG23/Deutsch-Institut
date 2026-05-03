@@ -4,7 +4,7 @@ import { db } from '../firebase';
 import { collection, query, where, getDocs, addDoc, updateDoc, doc, serverTimestamp, orderBy, onSnapshot } from 'firebase/firestore';
 import { DailyReport, ClassRoom } from '../types';
 import { useTranslation } from 'react-i18next';
-import { Calendar, FileText, Plus, Search, Filter, Printer, Mail, CheckCircle, Clock } from 'lucide-react';
+import { Calendar, FileText, Plus, Search, Filter, Printer, CheckCircle, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import { OperationType, handleFirestoreError } from '../services/firestoreUtils';

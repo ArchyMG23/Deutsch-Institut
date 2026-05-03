@@ -7,7 +7,6 @@ import {
   Printer, 
   Download,
   UserPlus,
-  Mail,
   Phone,
   Calendar,
   X,
@@ -35,7 +34,7 @@ import { NotificationService } from '../services/NotificationService';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { toast } from 'sonner';
-import { generateWhatsAppLink, generateMailtoLink, generateSMSLink, APP_NAME_FOR_LINKS } from '../utils/contactLinks';
+import { generateWhatsAppLink, generateSMSLink, APP_NAME_FOR_LINKS } from '../utils/contactLinks';
 
 export default function StudentManagement() {
   const { t } = useTranslation();
@@ -90,7 +89,6 @@ export default function StudentManagement() {
       doc.setFont('helvetica', 'normal');
       doc.text(`${t('students.lastName')} : ${selectedStudent.firstName} ${selectedStudent.lastName}`, 20, 70);
       doc.text(`${t('students.matricule')} : ${selectedStudent.matricule}`, 20, 75);
-      doc.text(`${t('students.email')} : ${selectedStudent.email}`, 20, 80);
       doc.text(`${t('students.level')} : ${levels.find(l => l.id === selectedStudent.levelId)?.name || 'N/A'}`, 20, 85);
 
       // Payments Table
@@ -157,7 +155,6 @@ export default function StudentManagement() {
       password, // On stocke le mot de passe pour l'envoyer
       firstName: formData.get('firstName'),
       lastName: formData.get('lastName'),
-      email: formData.get('email'),
       phone: formData.get('phone'),
       birthDate: formData.get('birthDate'),
       birthPlace: formData.get('birthPlace'),
@@ -165,7 +162,6 @@ export default function StudentManagement() {
       cni: formData.get('cni'),
       parentName: formData.get('parentName'),
       parentPhone: formData.get('parentPhone'),
-      parentEmail: formData.get('parentEmail'),
       levelId,
       classId,
       role: 'student',
@@ -214,7 +210,6 @@ export default function StudentManagement() {
       ...selectedStudent,
       firstName: formData.get('firstName'),
       lastName: formData.get('lastName'),
-      email: formData.get('email'),
       phone: formData.get('phone'),
       birthDate: formData.get('birthDate'),
       birthPlace: formData.get('birthPlace'),
@@ -222,7 +217,6 @@ export default function StudentManagement() {
       cni: formData.get('cni'),
       parentName: formData.get('parentName'),
       parentPhone: formData.get('parentPhone'),
-      parentEmail: formData.get('parentEmail'),
       levelId: formData.get('levelId'),
       classId: formData.get('classId'),
     };
@@ -294,7 +288,7 @@ export default function StudentManagement() {
       if (res.ok) {
         const { password } = await res.json();
         
-        // Send email with new credentials
+        // Send WhatsApp with new credentials
         const cls = classes.find(c => c.id === student.classId);
         const scheduleStr = cls?.schedule?.map(s => `${s.day} (${s.startTime}-${s.endTime})`).join(', ');
         await NotificationService.sendCredentials(fetchWithAuth, student, password, cls?.name, scheduleStr);
@@ -335,34 +329,6 @@ export default function StudentManagement() {
     a.target = '_blank';
     a.click();
     toast.success("Lien WhatsApp généré");
-  };
-
-  const handleSendReceiptMailto = () => {
-    if (!selectedStudent) return;
-    
-    const totalPaid = (selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
-    const level = levels.find(l => l.id === selectedStudent.levelId);
-    const tuition = level?.tuition || 0;
-    const balance = tuition - totalPaid;
-    
-    const paidTranches = selectedStudent.payments
-      .filter(p => p.amount > 0)
-      .map(p => `- Tranche ${p.tranche}: ${formatCurrency(p.amount)}`)
-      .join('\n');
-
-    const subject = `REÇU DE PAIEMENT - ${selectedStudent.firstName} ${selectedStudent.lastName}`;
-    const body = `-----------------------------------------------\nREÇU DE PAIEMENT - ${APP_NAME_FOR_LINKS}\n-----------------------------------------------\n\n` +
-      `Bonjour ${selectedStudent.firstName} ${selectedStudent.lastName},\n\n` +
-      `Nous confirmons la situation de vos paiements :\n\n` +
-      `${paidTranches}\n\n` +
-      `TOTAL PAYÉ : ${formatCurrency(totalPaid)}\n` +
-      `SOLDE RESTANT : ${formatCurrency(balance)}\n\n` +
-      `Merci pour votre confiance.\nCordialement,\nL'administration ${APP_NAME_FOR_LINKS}.`;
-      
-    const a = document.createElement('a');
-    a.href = generateMailtoLink(selectedStudent.parentEmail || selectedStudent.email || '', subject, body);
-    a.click();
-    toast.success("Lien Email généré");
   };
 
   const handleRestoreStudent = async (id: string) => {
@@ -431,12 +397,11 @@ export default function StudentManagement() {
   };
 
   const exportToCSV = () => {
-    const headers = ['Matricule', 'Nom', 'Prénom', 'Email', 'Téléphone', 'Niveau', 'Classe', 'Statut'];
+    const headers = ['Matricule', 'Nom', 'Prénom', 'Téléphone', 'Niveau', 'Classe', 'Statut'];
     const rows = students.map(s => [
       s.matricule,
       s.lastName,
       s.firstName,
-      s.email,
       s.phone,
       levels.find(l => l.id === s.levelId)?.name || 'N/A',
       classes.find(c => c.id === s.classId)?.name || 'N/A',
@@ -658,7 +623,6 @@ export default function StudentManagement() {
                         </div>
                         <div>
                           <p className="font-bold text-sm">{student.firstName} {student.lastName}</p>
-                          <p className="text-xs text-neutral-500">{student.email}</p>
                         </div>
                       </div>
                     </td>
@@ -744,31 +708,6 @@ export default function StudentManagement() {
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const level = levels.find(l => l.id === student.levelId) || 
-                                              levels.find(l => l.name.toLowerCase() === student.levelId?.toLowerCase());
-                                const tuition = level?.tuition || 0;
-                                const totalPaid = (student.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
-                                const balance = tuition - totalPaid;
-
-                                const subject = `RAPPEL DE PAIEMENT - ${APP_NAME_FOR_LINKS}`;
-                                const body = `Bonjour ${student.firstName} ${student.lastName},\n\n` +
-                                  `Ceci est un rappel concernant votre scolarité (Niveau : ${level?.name || 'N/A'}).\n\n` +
-                                  `Il reste un solde de ${formatCurrency(balance)} à régulariser.\n\n` +
-                                  `Cordialement,\nL'administration de ${APP_NAME_FOR_LINKS}`;
-
-                                const a = document.createElement('a');
-                                a.href = generateMailtoLink(student.parentEmail || student.email || '', subject, body);
-                                a.click();
-                              }}
-                              disabled={isFullyPaid}
-                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-indigo-600 disabled:opacity-30"
-                              title="Rappel Email"
-                            >
-                              <Mail size={18} />
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
                                 setSelectedStudent(student);
                                 setIsReceiptModalOpen(true);
                               }}
@@ -780,17 +719,24 @@ export default function StudentManagement() {
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const subject = `🔐 VOS IDENTIFIANTS - ${APP_NAME_FOR_LINKS}`;
-                                const body = `-----------------------------------------------------------\nACCÈS PLATEFORME - ${APP_NAME_FOR_LINKS}\n-----------------------------------------------------------\n\nBonjour ${student.firstName},\n\nNous sommes ravis de vous compter parmi nous. Voici vos accès personnels pour consulter vos cours, notes et situations financières :\n\n🔹 Matricule : ${student.matricule}\n🔹 Mot de passe : ${student.password || 'Inconnu'}\n\n🌐 Lien d'accès : ${window.location.origin}\n\nNote : Nous vous conseillons de changer votre mot de passe dès votre première connexion.\n\nBonne formation !\nCordialement,\nL'administration.`;
-                                const mailto = generateMailtoLink(student.email || student.parentEmail || '', subject, body);
+                                const msg = `🔐 *VOS IDENTIFIANTS - ${APP_NAME_FOR_LINKS}*\n\n` +
+                                  `Bonjour ${student.firstName},\n\n` +
+                                  `Voici vos accès personnels pour consulter vos cours et notes :\n\n` +
+                                  `🔹 Matricule : ${student.matricule}\n` +
+                                  `🔹 Mot de passe : ${student.password || '********'}\n\n` +
+                                  `🌐 Lien d'accès : ${window.location.origin}\n\n` +
+                                  `Bonne formation !\n_Cordialement, l'administration._`;
+
                                 const a = document.createElement('a');
-                                a.href = mailto;
+                                a.href = generateWhatsAppLink(student.phone || student.parentPhone || '', msg);
+                                a.target = '_blank';
                                 a.click();
+                                toast.success("Lien WhatsApp (Identifiants) généré");
                               }}
-                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-indigo-600"
-                              title="Send Credentials"
+                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-dia-yellow"
+                              title="Envoyer Identifiants (WhatsApp)"
                             >
-                              <Mail size={18} />
+                              <Smartphone size={18} />
                             </button>
                             <button 
                               onClick={(e) => {
@@ -901,10 +847,6 @@ export default function StudentManagement() {
                   <input name="lastName" required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.email')}</label>
-                  <input name="email" required type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
-                </div>
-                <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.phone')}</label>
                   <input name="phone" required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
@@ -961,10 +903,6 @@ export default function StudentManagement() {
                   <input name="parentPhone" required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.parent_email')}</label>
-                  <input name="parentEmail" type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
-                </div>
-                <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('login.password')}</label>
                   <input name="password" type="text" defaultValue="DIA2026." className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                   <p className="text-[10px] text-neutral-500 mt-1">{t('students.password_hint') || "L'étudiant pourra le modifier après sa première connexion."}</p>
@@ -1015,10 +953,6 @@ export default function StudentManagement() {
                   <input name="lastName" defaultValue={selectedStudent.lastName} required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.email')}</label>
-                  <input name="email" defaultValue={selectedStudent.email} required type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
-                </div>
-                <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.phone')}</label>
                   <input name="phone" defaultValue={selectedStudent.phone} required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
@@ -1061,10 +995,6 @@ export default function StudentManagement() {
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.guardianPhone')}</label>
                   <input name="parentPhone" defaultValue={selectedStudent.parentPhone} required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.parent_email')}</label>
-                  <input name="parentEmail" defaultValue={selectedStudent.parentEmail} type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
               </div>
             </div>
@@ -1171,7 +1101,6 @@ export default function StudentManagement() {
                 </div>
                 <div>
                   <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">{t('students.contact') || 'Contact'}</p>
-                  <p className="text-sm flex items-center gap-2 font-medium"><Mail size={14} className="text-dia-red" /> {selectedStudent.email}</p>
                   <p className="text-sm flex items-center gap-2 font-medium"><Phone size={14} className="text-dia-red" /> {selectedStudent.phone}</p>
                 </div>
                 <div>
@@ -1183,7 +1112,6 @@ export default function StudentManagement() {
                   <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">{t('students.parent_info')}</p>
                   <p className="text-sm font-bold">{selectedStudent.parentName}</p>
                   <p className="text-sm">{selectedStudent.parentPhone}</p>
-                  {selectedStudent.parentEmail && <p className="text-sm">{selectedStudent.parentEmail}</p>}
                 </div>
                 <div>
                   <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">{t('students.tuition_status') || 'Statut Scolarité'}</p>
@@ -1237,29 +1165,6 @@ export default function StudentManagement() {
                   <Smartphone size={16} />
                   WhatsApp
                 </button>
-                <button 
-                  onClick={() => {
-                    const level = levels.find(l => l.id === selectedStudent.levelId) || 
-                                  levels.find(l => l.name.toLowerCase() === selectedStudent.levelId?.toLowerCase());
-                    const tuition = level?.tuition || 0;
-                    const totalPaid = (selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
-                    const balance = tuition - totalPaid;
-
-                    const subject = `RAPPEL DE PAIEMENT - ${APP_NAME_FOR_LINKS}`;
-                    const body = `Bonjour ${selectedStudent.firstName} ${selectedStudent.lastName},\n\n` +
-                      `Ceci est un rappel concernant le solde de votre scolarité qui s'élève à ${formatCurrency(balance)}.\n\n` +
-                      `Nous vous remercions de régulariser cette situation.\n\nCordialement,\nL'administration de ${APP_NAME_FOR_LINKS}`;
-
-                    const a = document.createElement('a');
-                    a.href = generateMailtoLink(selectedStudent.parentEmail || selectedStudent.email || '', subject, body);
-                    a.click();
-                  }}
-                  disabled={((selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0) >= (levels.find(l => l.id === selectedStudent.levelId)?.tuition || 0))}
-                  className="flex-1 min-w-[120px] bg-indigo-100 text-indigo-600 py-3 rounded-2xl font-bold hover:bg-indigo-200 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50"
-                >
-                  <Bell size={16} />
-                  Email
-                </button>
               </div>
             </div>
           </div>
@@ -1282,13 +1187,6 @@ export default function StudentManagement() {
                   title="Envoyer par WhatsApp"
                 >
                   <Smartphone size={20} />
-                </button>
-                <button 
-                  onClick={handleSendReceiptMailto}
-                  className="p-3 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 rounded-xl hover:bg-indigo-200 transition-colors"
-                  title={t('common.send_email')}
-                >
-                  <Mail size={20} />
                 </button>
                 <button 
                   onClick={handleDownloadPDFReceipt}

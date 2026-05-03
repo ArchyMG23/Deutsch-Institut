@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { 
   User, 
-  Mail, 
   Phone, 
   MapPin, 
   Calendar, 
@@ -34,7 +33,6 @@ export default function StudentProfile() {
   const [formData, setFormData] = useState({
     firstName: student?.firstName || '',
     lastName: student?.lastName || '',
-    email: student?.email || '',
     phone: student?.phone || '',
     parentName: student?.parentName || '',
     parentPhone: student?.parentPhone || '',
@@ -52,7 +50,6 @@ export default function StudentProfile() {
       setFormData({
         firstName: profile.firstName || '',
         lastName: profile.lastName || '',
-        email: profile.email || '',
         phone: (profile as Student).phone || '',
         parentName: (profile as Student).parentName || '',
         parentPhone: (profile as Student).parentPhone || '',
@@ -278,16 +275,6 @@ export default function StudentProfile() {
                   value={formData.lastName}
                   disabled={!isEditing}
                   onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                  className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-900 border-none focus:ring-2 focus:ring-dia-red transition-all disabled:opacity-70"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 px-1">{t('students.email')}</label>
-                <input 
-                  type="email" 
-                  value={formData.email}
-                  disabled={!isEditing}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-900 border-none focus:ring-2 focus:ring-dia-red transition-all disabled:opacity-70"
                 />
               </div>

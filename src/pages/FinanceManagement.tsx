@@ -8,7 +8,6 @@ import {
   Plus,
   X,
   Printer,
-  Mail,
   ChevronUp,
   ChevronDown,
   Calendar,

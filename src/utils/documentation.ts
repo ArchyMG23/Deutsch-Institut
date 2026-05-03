@@ -59,13 +59,13 @@ export async function generateTechnicalDocumentation() {
     addText('Le système intègre une "Corbeille de Sécurité". Toute transaction supprimée est archivée de façon permanente avec l\'horodatage de suppression, l\'ID de l\'auteur et le motif de suppression. Le solde de l\'école est recalculé en temps réel en fonction des revenus (scolarité) et d\'épenses (salaires, charges).');
 
     addTitle('2.3 Automatisation Pédagogique', 12, [50, 50, 50]);
-    addText('Le passage de niveau des classes est automatisé. Lors de la promotion, le système génère automatiquement les écritures comptables liées aux salaires des professeurs et notifie les parents via email/push.');
+    addText('Le passage de niveau des classes est automatisé. Lors de la promotion, le système génère automatiquement les écritures comptables liées aux salaires des professeurs et notifie les parents via push.');
 
     // --- SECTION 3: ARCHITECTURE TECHNIQUE ---
     addTitle('3. Architecture Technique');
     addText('Le projet repose sur une architecture "Cloud Serverless" robuste :');
     addText('• Frontend : React 18 utilisant Vite pour des performances optimales. UI basée sur Tailwind CSS pour un design "mobile-first" et réactif.');
-    addText('• Backend : Node.js (Express) agissant comme middleware de sécurité et de gestion des emails (SMTP Gmail).');
+    addText('• Backend : Node.js (Express) agissant comme middleware de sécurité.');
     addText('• Base de Données : Firebase Cloud Firestore (NoSQL) pour la synchronisation en temps réel.');
     addText('• Authentification : Firebase Auth sécurisant les accès par jetons JWT.');
     
@@ -78,8 +78,7 @@ export async function generateTechnicalDocumentation() {
       body: [
         ['Réinitialisation Totale', 'RESET_FACTORY', 'Efface tous les modules sauf le Super Admin'],
         ['Accès Support Doc', 'vyombi_dia_2026', 'Code d\'extraction de ce document'],
-        ['Correction Financière', 'Via Corbeille', 'Permet de tracer une erreur de doublon de salaire'],
-        ['Config SMTP', 'App Password Google', 'Nécessaire pour l\'envoi des reçus de scolarité']
+        ['Correction Financière', 'Via Corbeille', 'Permet de tracer une erreur de doublon de salaire']
       ],
       theme: 'grid',
       headStyles: { fillColor: [227, 30, 36] }

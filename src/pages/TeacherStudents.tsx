@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, 
   Search, 
-  Mail, 
+  Phone, 
   ChevronRight,
   GraduationCap,
   Filter
@@ -112,8 +112,8 @@ export default function TeacherStudents() {
                     <span>Classe: <span className="font-bold text-neutral-900">{studentClass?.name || 'Non affecté'}</span></span>
                   </div>
                   <div className="flex items-center gap-3 text-sm text-neutral-600">
-                    <Mail size={16} className="text-neutral-400" />
-                    <span className="truncate">{student.email}</span>
+                    <Phone size={16} className="text-neutral-400" />
+                    <span className="truncate">{student.phone || 'Non renseigné'}</span>
                   </div>
                 </div>
 

@@ -22,8 +22,8 @@ import { cn, formatCurrency } from '../utils';
 import { Evaluation, Student, ClassRoom } from '../types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { generateWhatsAppLink, generateMailtoLink, APP_NAME_FOR_LINKS } from '../utils/contactLinks';
-import { Smartphone, Mail } from 'lucide-react';
+import { generateWhatsAppLink, APP_NAME_FOR_LINKS } from '../utils/contactLinks';
+import { Smartphone } from 'lucide-react';
 
 export default function EvaluationManagement() {
   const { t } = useTranslation();
@@ -144,36 +144,6 @@ export default function EvaluationManagement() {
     }
   };
 
-  const sendEmailDirect = (evaluation: Evaluation) => {
-    const student = students.find(s => s.uid === evaluation.studentId);
-    if (!student || (!student.email && !student.parentEmail)) {
-      toast.error(t('evaluations.no_email_found'));
-      return;
-    }
-
-    const email = student.parentEmail || student.email || '';
-    const grade = getGoetheGrade(evaluation.total);
-    
-    const subject = `[RÉSULTATS] Évaluation Goethe - ${evaluation.studentName}`;
-    const body = `-----------------------------------------------\nRELEVÉ DE NOTES - ${APP_NAME_FOR_LINKS}\n-----------------------------------------------\n\n` +
-      `Bonjour,\n\n` +
-      `Voici les résultats de l'évaluation Goethe pour ${evaluation.studentName} :\n\n` +
-      `- Module LESEN : ${evaluation.modules.lesen}/25\n` +
-      `- Module HÖREN : ${evaluation.modules.horen}/25\n` +
-      `- Module SCHREIBEN : ${evaluation.modules.schreiben}/25\n` +
-      `- Module SPRECHEN : ${evaluation.modules.sprechen}/25\n\n` +
-      `SCORE TOTAL : ${evaluation.total}/100\n` +
-      `MENTION : ${grade.label}\n` +
-      `RÉSULTAT : ${evaluation.total >= 60 ? 'RÉUSSI' : 'ÉCHEC'}\n\n` +
-      `${evaluation.comments ? `Commentaires: ${evaluation.comments}\n\n` : ''}` +
-      `Félicitations pour vos efforts !\n\nCordialement,\nL'administration de ${APP_NAME_FOR_LINKS}`;
-
-    const a = document.createElement('a');
-    a.href = generateMailtoLink(email, subject, body);
-    a.click();
-    toast.success(`${t('evaluations.report_sent')} ${email}`);
-  };
-
   const generatePDF = (evaluation: Evaluation) => {
     const doc = new jsPDF();
     const student = students.find(s => s.uid === evaluation.studentId);
@@ -274,16 +244,24 @@ export default function EvaluationManagement() {
               const classEvals = evaluations.filter(e => e.classId === selectedClass.id);
               if (classEvals.length === 0) return toast.error(t('evaluations.no_evaluations'));
               
-              toast.info(`${t('evaluations.preparing_reports')} ${classEvals.length}...`);
+              toast.info(`📤 Envoi des résultats WhatsApp pour ${classEvals.length} étudiants...`);
               for (const ev of classEvals) {
-                sendEmailDirect(ev);
+                const grade = getGoetheGrade(ev.total);
+                const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n📊 *RELEVÉ DE NOTES*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\nFélicitations ! Les résultats de l'évaluation sont disponibles.\n\n👤 *Étudiant* : ${ev.studentName}\n📝 *Module* : ${ev.moduleName || 'Examen'}\n\n⭐ *SCORE FINAL* : *${ev.total}/100*\n🏆 *Mention* : ${grade.label}\n\nContinuez vos efforts ! 💪\n━━━━━━━━━━━━━━━━━━━━━━━`;
+                const student = students.find(s => s.uid === ev.studentId);
+                const a = document.createElement('a');
+                a.href = generateWhatsAppLink(student?.parentPhone || student?.phone || '', msg);
+                a.target = '_blank';
+                a.click();
+                // We add a small delay to not overloard browser with tabs
+                await new Promise(r => setTimeout(r, 1000));
               }
-              toast.success(t('evaluations.group_sent_finished'));
+              toast.success("Opération terminée");
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-all shadow-md"
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-xl text-xs font-bold hover:bg-green-700 transition-all shadow-md"
           >
-            <Send size={14} />
-            <span>{t('evaluations.send_reports_class')}</span>
+            <Smartphone size={14} />
+            <span>{t('evaluations.send_reports_class')} (WhatsApp)</span>
           </button>
           <button 
             onClick={() => {
@@ -380,12 +358,9 @@ export default function EvaluationManagement() {
                               a.click();
                             }}
                             className="p-2 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg text-green-600 transition-colors"
-                            title="Share via WhatsApp"
+                            title="Partager par WhatsApp"
                           >
                             <Smartphone size={16} />
-                          </button>
-                          <button onClick={() => sendEmailDirect(ev)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-500 hover:text-blue-600 transition-colors" title={t('common.send_email')}>
-                            <Mail size={16} />
                           </button>
                           <button onClick={() => generatePDF(ev)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-500 hover:text-dia-red transition-colors" title={t('evaluations.print_report')}>
                             <Printer size={16} />
