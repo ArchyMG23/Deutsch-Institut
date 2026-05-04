@@ -12,12 +12,15 @@ import {
   User,
   Hash,
   AlertTriangle,
-  RotateCcw
+  RotateCcw,
+  Smartphone,
+  Pencil
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { UserProfile } from '../types';
 import { cn } from '../utils';
 import { toast } from 'sonner';
+import { NotificationService } from '../services/NotificationService';
 
 export default function AdminManagement() {
   const { t } = useTranslation();
@@ -27,6 +30,8 @@ export default function AdminManagement() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [editingAdmin, setEditingAdmin] = useState<UserProfile | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const fetchAdmins = async () => {
     try {
@@ -58,6 +63,7 @@ export default function AdminManagement() {
       firstName: formData.get('firstName'),
       lastName: formData.get('lastName'),
       matricule: formData.get('matricule'),
+      phone: formData.get('phone'),
     };
 
     try {
@@ -72,8 +78,7 @@ export default function AdminManagement() {
         setIsAddModalOpen(false);
         fetchAdmins();
       } else {
-        const error = await res.json();
-        toast.error(error.message || t('common.error'));
+        // fetchWithAuth already displays error toast
       }
     } catch (err) {
       console.error("Error adding admin:", err);
@@ -81,6 +86,85 @@ export default function AdminManagement() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleEditAdmin = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (submitting || !editingAdmin) return;
+    setSubmitting(true);
+
+    const formData = new FormData(e.currentTarget);
+    const updatedData = {
+      firstName: formData.get('firstName'),
+      lastName: formData.get('lastName'),
+      matricule: formData.get('matricule'),
+      phone: formData.get('phone'),
+    };
+
+    try {
+      const res = await fetchWithAuth(`/api/admins/${editingAdmin.uid}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedData)
+      });
+
+      if (res.ok) {
+        toast.success(t('common.updated'));
+        setIsEditModalOpen(false);
+        setEditingAdmin(null);
+        fetchAdmins();
+      } else {
+        // Error toast already shown by fetchWithAuth
+      }
+    } catch (err) {
+      console.error("Error updating admin:", err);
+      toast.error(t('common.error'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleToggleSuperAdmin = async (admin: UserProfile) => {
+    if (!isSuperAdmin) return;
+    
+    // Safety check: Don't let someone demote themselves if they are the only super admin
+    // (though system keeps original super admins in reset logic, it's good UX)
+    if (admin.uid === currentUser?.uid) {
+      toast.error("Vous ne pouvez pas modifier votre propre statut de Super Admin.");
+      return;
+    }
+
+    const action = admin.isSuperAdmin ? "rétrograder" : "promouvoir";
+    if (!window.confirm(`Êtes-vous sûr de vouloir ${action} ${admin.firstName} au rang de Super Administrateur ?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetchWithAuth(`/api/admins/${admin.uid}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isSuperAdmin: !admin.isSuperAdmin })
+      });
+
+      if (res.ok) {
+        toast.success(t('common.updated'));
+        fetchAdmins();
+      } else {
+        // fetchWithAuth already handles error toast
+      }
+    } catch (err) {
+      toast.error(t('common.error'));
+    }
+  };
+
+  const handleNotifyAdmin = (admin: UserProfile) => {
+    if (!admin.phone) {
+      toast.error("Aucun numéro de téléphone enregistré pour cet admin.");
+      return;
+    }
+
+    const message = `Bonjour ${admin.firstName},\nVoici vos accès pour le système DIA_SAAS :\n\n- Rôle: Administrateur\n- Matricule: ${admin.matricule}\n- Mot de passe: Admin.1234 (temporaire)\n- Lien d'accès: ${window.location.origin}\n\nVeuillez changer votre mot de passe dès votre première connexion.`;
+    NotificationService._triggerWhatsApp(fetchWithAuth, admin.phone, message);
   };
 
   const handleDeleteAdmin = async (adminId: string) => {
@@ -105,8 +189,7 @@ export default function AdminManagement() {
         toast.success(t('common.deleted'));
         fetchAdmins();
       } else {
-        const error = await res.json();
-        toast.error(error.message || t('common.error'));
+        // Redundant toast removed
       }
     } catch (err) {
       console.error("Error deleting admin:", err);
@@ -138,8 +221,7 @@ export default function AdminManagement() {
         toast.success(t('admins.reset_success'));
         window.location.reload(); // Reload to clear all data in context
       } else {
-        const error = await res.json();
-        toast.error(error.message || t('admins.reset_failed'));
+        // Redundant toast removed
       }
     } catch (err) {
       console.error("Error resetting system:", err);
@@ -149,7 +231,9 @@ export default function AdminManagement() {
     }
   };
 
-  const isSuperAdmin = (currentUser as any)?.isSuperAdmin;
+  const isSuperAdmin = (currentUser as any)?.isSuperAdmin || 
+                      currentUser?.email === 'yombivictor@gmail.com' || 
+                      currentUser?.email === 'gabrielyombi311@gmail.com';
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-dia-red"></div></div>;
 
@@ -213,22 +297,57 @@ export default function AdminManagement() {
               </div>
             </div>
 
-            <div className="mt-6 pt-6 border-t border-neutral-100 dark:border-neutral-800 flex justify-end gap-2">
-              {isSuperAdmin && !admin.isSuperAdmin && (
+            <div className="mt-6 pt-6 border-t border-neutral-100 dark:border-neutral-800 flex justify-between items-center">
+              <div className="text-[10px] text-neutral-400 font-medium">
+                {admin.phone && (
+                  <span className="flex items-center gap-1">
+                    <Smartphone size={10} />
+                    {admin.phone}
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-2">
                 <button 
-                  onClick={() => handleDeleteAdmin(admin.uid)}
-                  className="p-2 hover:bg-red-50 dark:hover:bg-red-950/20 text-red-500 rounded-lg transition-colors"
-                  title={t('admins.delete_admin')}
+                  onClick={() => handleNotifyAdmin(admin)}
+                  className="p-2 hover:bg-green-50 dark:hover:bg-green-950/20 text-green-500 rounded-lg transition-colors"
+                  title="Notifier par WhatsApp"
                 >
-                  <Trash2 size={18} />
+                  <Smartphone size={18} />
                 </button>
-              )}
-              {admin.isSuperAdmin && (
-                <div className="p-2 text-dia-red flex items-center gap-2 text-xs font-bold bg-dia-red/5 rounded-lg border border-dia-red/10">
-                  <ShieldAlert size={14} />
-                  {t('admins.protected')}
-                </div>
-              )}
+                {isSuperAdmin && (
+                  <>
+                    <button 
+                      onClick={() => {
+                        setEditingAdmin(admin);
+                        setIsEditModalOpen(true);
+                      }}
+                      className="p-2 hover:bg-blue-50 dark:hover:bg-blue-950/20 text-blue-500 rounded-lg transition-colors"
+                      title={t('common.edit')}
+                    >
+                      <Pencil size={18} />
+                    </button>
+                    <button 
+                      onClick={() => handleToggleSuperAdmin(admin)}
+                      className={cn(
+                        "p-2 rounded-lg transition-colors",
+                        admin.isSuperAdmin ? "text-dia-red hover:bg-dia-red/10" : "text-neutral-400 hover:bg-neutral-100"
+                      )}
+                      title={admin.isSuperAdmin ? "Rétrograder l'admin" : "Promouvoir en Super Admin"}
+                    >
+                      <Shield size={18} />
+                    </button>
+                  </>
+                )}
+                {isSuperAdmin && !admin.isSuperAdmin && (
+                  <button 
+                    onClick={() => handleDeleteAdmin(admin.uid)}
+                    className="p-2 hover:bg-red-50 dark:hover:bg-red-950/20 text-red-500 rounded-lg transition-colors"
+                    title={t('admins.delete_admin')}
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         ))}
@@ -304,6 +423,13 @@ export default function AdminManagement() {
                 </div>
               </div>
               <div className="space-y-2">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('admins.phone')}</label>
+                <div className="relative">
+                  <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
+                  <input name="phone" type="tel" placeholder="2376..." className="w-full pl-12 pr-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
+                </div>
+              </div>
+              <div className="space-y-2">
                 <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('admins.temp_password')}</label>
                 <input name="password" required type="text" defaultValue="Admin.1234" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
               </div>
@@ -316,6 +442,51 @@ export default function AdminManagement() {
                   className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
                 >
                   {submitting ? t('common.processing') : t('admins.create_account')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Admin Modal */}
+      {isEditModalOpen && editingAdmin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-neutral-900 w-full max-w-lg rounded-[32px] shadow-2xl overflow-hidden">
+            <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
+              <h3 className="text-2xl font-bold tracking-tight">{t('common.edit')}</h3>
+              <button onClick={() => setIsEditModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
+                <X size={24} />
+              </button>
+            </div>
+            <form onSubmit={handleEditAdmin} className="p-8 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.firstName')}</label>
+                  <input name="firstName" required type="text" defaultValue={editingAdmin.firstName} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.lastName')}</label>
+                  <input name="lastName" required type="text" defaultValue={editingAdmin.lastName} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.matricule')}</label>
+                <input name="matricule" required type="text" defaultValue={editingAdmin.matricule} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('admins.phone')}</label>
+                <input name="phone" type="tel" defaultValue={editingAdmin.phone} placeholder="2376..." className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
+              </div>
+
+              <div className="pt-4 flex gap-4">
+                <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold">{t('common.cancel')}</button>
+                <button 
+                  type="submit" 
+                  disabled={submitting}
+                  className="flex-1 btn-primary py-4"
+                >
+                  {submitting ? t('common.processing') : t('common.save')}
                 </button>
               </div>
             </form>

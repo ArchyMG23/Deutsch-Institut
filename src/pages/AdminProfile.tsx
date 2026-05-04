@@ -13,7 +13,8 @@ import {
   Camera,
   School,
   FileText,
-  CalendarDays
+  CalendarDays,
+  Smartphone
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../utils';
@@ -33,6 +34,7 @@ export default function AdminProfile() {
   // Profile state
   const [firstName, setFirstName] = useState(profile?.firstName || user?.firstName || '');
   const [lastName, setLastName] = useState(profile?.lastName || user?.lastName || '');
+  const [phone, setPhone] = useState(profile?.phone || user?.phone || '');
 
   // School Config state
   const [schoolConfig, setSchoolConfig] = useState<SchoolConfig>({
@@ -47,6 +49,7 @@ export default function AdminProfile() {
     if (profile) {
       setFirstName(profile.firstName || '');
       setLastName(profile.lastName || '');
+      setPhone(profile.phone || '');
     }
 
     const fetchSchoolConfig = async () => {
@@ -87,7 +90,7 @@ export default function AdminProfile() {
       const res = await fetchWithAuth(`/api/users/${user.uid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ firstName, lastName })
+        body: JSON.stringify({ firstName, lastName, phone })
       });
 
       if (res.ok) {
@@ -337,6 +340,18 @@ export default function AdminProfile() {
                     type="text" 
                     className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" 
                   />
+                </div>
+                <div className="space-y-2 col-span-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.phone')}</label>
+                  <div className="relative">
+                    <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
+                    <input 
+                      value={phone} 
+                      onChange={e => setPhone(e.target.value)} 
+                      type="tel" 
+                      className="w-full pl-12 pr-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" 
+                    />
+                  </div>
                 </div>
               </div>
               <div className="pt-4">

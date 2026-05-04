@@ -121,10 +121,10 @@ const TransactionTable = React.memo(({
                   <div className="flex items-center justify-end gap-2">
                     <button onClick={async (e) => {
                       e.stopPropagation();
-                      const msg = `DIA_SAAS: Paiement de ${formatCurrency(record.amount)} enregistré.`;
-                      toast.info("Notification Zap simulée");
-                      await NotificationService._triggerWhatsApp(fetchWithAuth, "654491319", msg); 
-                    }} className="p-2 text-green-500 hover:bg-green-50 rounded-lg transition-all" title="WhatsApp">
+                      const msg = `DIA_SAAS: Transaction de ${formatCurrency(record.amount)} enregistrée.\nDescription: ${record.description}\nDate: ${record.date ? new Date(record.date).toLocaleDateString() : ''}`;
+                      toast.info("Ouverture de WhatsApp...");
+                      await NotificationService._triggerWhatsApp(fetchWithAuth, "", msg); 
+                    }} className="p-2 text-green-500 hover:bg-green-50 rounded-lg transition-all" title="Partager sur WhatsApp">
                       <Smartphone size={16} />
                     </button>
                     <button onClick={() => onDelete?.(record.id)} className="p-2 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title={t('finances.delete_tooltip')}>

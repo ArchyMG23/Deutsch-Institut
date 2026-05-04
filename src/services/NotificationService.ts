@@ -21,11 +21,28 @@ export const NotificationService = {
   },
 
   /**
-   * Simulation WhatsApp locale (car l'API serveur est supprimée)
+   * Redirection WhatsApp réelle via lien wa.me
    */
   async _triggerWhatsApp(fetchWithAuth: any, phone: string, message: string) {
-    console.log(`[LOCAL WHATSAPP SIMULATION] to ${phone}: ${message}`);
-    // In a real app, this would open a WhatsApp link or call a gateway API
+    let waUrl = '';
+    
+    if (phone) {
+      // Nettoyer le numéro (enlever les espaces, +, etc. pour wa.me)
+      const cleanPhone = phone.replace(/\D/g, '');
+      
+      let finalPhone = cleanPhone;
+      if (cleanPhone.length === 9) {
+        finalPhone = '237' + cleanPhone; // Par défaut Cameroun si 9 chiffres
+      }
+      waUrl = `https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`;
+    } else {
+      // Si pas de téléphone, on propose le partage général
+      waUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    }
+    
+    // Ouvrir dans un nouvel onglet
+    window.open(waUrl, '_blank');
+    
     return true;
   },
 

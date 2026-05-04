@@ -170,7 +170,7 @@ async function startServer() {
       // Bootstrap Admins
       const admins = [
         { email: 'yombivictor@gmail.com', firstName: 'Victor', lastName: 'Yombi', matricule: 'SUPERADMIN', isSuperAdmin: true },
-        { email: 'gabrielyombi311@gmail.com', firstName: 'Gabriel', lastName: 'Yombi', matricule: 'ADMIN_GABRIEL', isSuperAdmin: false }
+        { email: 'gabrielyombi311@gmail.com', firstName: 'Gabriel', lastName: 'Yombi', matricule: 'ADMIN_GABRIEL', isSuperAdmin: true }
       ];
 
       for (const adminData of admins) {
@@ -447,13 +447,14 @@ async function startServer() {
       return res.status(403).json({ message: 'Droits insuffisants' });
     }
 
-    const { email, password, firstName, lastName, matricule } = req.body;
+    const { email, password, firstName, lastName, matricule, phone } = req.body;
     
     try {
       const userRecord = await authAdmin.createUser({
         email,
         password: password || 'Admin.1234',
         displayName: `${firstName} ${lastName}`,
+        phoneNumber: phone || undefined,
       });
 
       const newAdmin = {
@@ -462,6 +463,7 @@ async function startServer() {
         firstName,
         lastName,
         matricule: matricule.toUpperCase(),
+        phone: phone || '',
         role: 'admin',
         isSuperAdmin: false,
         status: 'offline',
@@ -475,10 +477,51 @@ async function startServer() {
     }
   });
 
+  app.put('/api/admins/:id', authenticate, async (req: any, res) => {
+    try {
+      const currentUserDoc = await dbAdmin.collection('users').doc(req.user.id).get();
+      const userData = currentUserDoc.data();
+      const isSuperAdmin = userData?.isSuperAdmin || 
+                         req.user.email === 'yombivictor@gmail.com' || 
+                         req.user.email === 'gabrielyombi311@gmail.com';
+
+      if (!isSuperAdmin) {
+        return res.status(403).json({ message: 'Seul le Super Administrateur peut modifier d\'autres administrateurs' });
+      }
+
+      const { firstName, lastName, matricule, phone, isSuperAdmin: promoteToSuper } = req.body;
+      
+      const updateData: any = {};
+      if (firstName) updateData.firstName = firstName;
+      if (lastName) updateData.lastName = lastName;
+      if (matricule) updateData.matricule = matricule.toUpperCase();
+      if (phone !== undefined) updateData.phone = phone;
+      if (promoteToSuper !== undefined) updateData.isSuperAdmin = promoteToSuper;
+
+      await dbAdmin.collection('users').doc(req.params.id).update(updateData);
+      
+      // Update auth as well
+      const authUpdate: any = {};
+      if (firstName && lastName) authUpdate.displayName = `${firstName} ${lastName}`;
+      if (phone) authUpdate.phoneNumber = phone;
+      
+      if (Object.keys(authUpdate).length > 0) {
+        await authAdmin.updateUser(req.params.id, authUpdate);
+      }
+
+      res.json({ message: 'Administrateur mis à jour' });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.delete('/api/admins/:id', authenticate, async (req: any, res) => {
     try {
       const currentUserDoc = await dbAdmin.collection('users').doc(req.user.id).get();
-      const isSuperAdmin = currentUserDoc.data()?.isSuperAdmin;
+      const userData = currentUserDoc.data();
+      const isSuperAdmin = userData?.isSuperAdmin || 
+                         req.user.email === 'yombivictor@gmail.com' || 
+                         req.user.email === 'gabrielyombi311@gmail.com';
 
       if (!isSuperAdmin) {
         return res.status(403).json({ message: 'Seul le Super Administrateur peut supprimer d\'autres administrateurs' });

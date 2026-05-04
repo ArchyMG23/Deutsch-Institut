@@ -288,7 +288,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const response = await fetch(url, { ...options, headers });
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        const clonedResponse = response.clone();
+        const errorData = await clonedResponse.json().catch(() => ({}));
         const message = errorData.message || `Erreur ${response.status}: ${response.statusText}`;
         toast.error(message);
       }

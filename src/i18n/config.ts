@@ -544,7 +544,8 @@ i18n
             reset_warning: "Vous êtes sur le point de réinitialiser l'accès de cet administrateur.",
             reset_btn: "Réinitialiser les Identifiants",
             temp_password: "Mot de passe temporaire",
-            create_account: "Créer le compte"
+            create_account: "Créer le compte",
+            phone: "Téléphone (WhatsApp)"
           }
         }
       },
