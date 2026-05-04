@@ -59,6 +59,7 @@ export default function AdminManagement() {
 
     const formData = new FormData(e.currentTarget);
     const newAdmin = {
+      email: formData.get('email'),
       password: formData.get('password'),
       firstName: formData.get('firstName'),
       lastName: formData.get('lastName'),
@@ -95,6 +96,7 @@ export default function AdminManagement() {
 
     const formData = new FormData(e.currentTarget);
     const updatedData = {
+      email: formData.get('email'),
       firstName: formData.get('firstName'),
       lastName: formData.get('lastName'),
       matricule: formData.get('matricule'),
@@ -385,22 +387,26 @@ export default function AdminManagement() {
               </button>
             </div>
             <form onSubmit={handleAddAdmin} className="p-8 space-y-6">
-              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.firstName')}</label>
-                  <div className="relative">
-                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
-                    <input name="firstName" required type="text" className="w-full pl-12 pr-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Email *</label>
+                  <input name="email" required type="email" placeholder="admin@example.com" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
+                </div>
+                <div className="space-y-2 flex gap-4">
+                  <div className="flex-1 space-y-2">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.firstName')}</label>
+                    <div className="relative">
+                      <User className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
+                      <input name="firstName" required type="text" className="w-full pl-12 pr-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
+                    </div>
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.lastName')}</label>
+                    <div className="relative">
+                      <User className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
+                      <input name="lastName" required type="text" className="w-full pl-12 pr-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
+                    </div>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.lastName')}</label>
-                  <div className="relative">
-                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
-                    <input name="lastName" required type="text" className="w-full pl-12 pr-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
-                  </div>
-                </div>
-              </div>
               <div className="space-y-2">
                 <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.matricule')}</label>
                 <div className="relative">
@@ -446,16 +452,20 @@ export default function AdminManagement() {
               </button>
             </div>
             <form onSubmit={handleEditAdmin} className="p-8 space-y-6">
-              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.firstName')}</label>
-                  <input name="firstName" required type="text" defaultValue={editingAdmin.firstName} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Email *</label>
+                  <input name="email" required type="email" defaultValue={editingAdmin.email} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.lastName')}</label>
-                  <input name="lastName" required type="text" defaultValue={editingAdmin.lastName} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.firstName')}</label>
+                    <input name="firstName" required type="text" defaultValue={editingAdmin.firstName} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.lastName')}</label>
+                    <input name="lastName" required type="text" defaultValue={editingAdmin.lastName} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />
+                  </div>
                 </div>
-              </div>
               <div className="space-y-2">
                 <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.matricule')}</label>
                 <input name="matricule" required type="text" defaultValue={editingAdmin.matricule} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl outline-none focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red transition-all" />

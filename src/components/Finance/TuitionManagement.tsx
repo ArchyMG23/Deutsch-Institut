@@ -1,22 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
 import { collection, query, where, getDocs, doc, setDoc, updateDoc, getDoc, addDoc, serverTimestamp } from 'firebase/firestore';
-import { Student, StudentScolarite, Versement, SchoolConfig } from '../../types';
+import { Student, StudentScolarite, Versement, SchoolConfig, Level } from '../../types';
 import { Search, CreditCard, Printer, History, AlertCircle, CheckCircle2, User, Landmark, Share2, Send, MessageCircle } from 'lucide-react';
 import { formatCurrency, cn } from '../../utils';
 import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
 import { addAuditLog } from '../../utils/auditLogger';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth, OperationType, FirestoreErrorInfo } from '../../context/AuthContext';
+import { auth } from '../../firebase';
 import { generateWhatsAppLink, APP_NAME_FOR_LINKS } from '../../utils/contactLinks';
 
 const TuitionManagement: React.FC = () => {
   const { user } = useAuth();
+  
+  const handleFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
+    const errInfo: FirestoreErrorInfo = {
+      error: error instanceof Error ? error.message : String(error),
+      authInfo: {
+        userId: auth.currentUser?.uid,
+        email: auth.currentUser?.email,
+      },
+      operationType,
+      path
+    };
+    console.error('Firestore Error Detailed (Tuition): ', JSON.stringify(errInfo));
+    throw new Error(JSON.stringify(errInfo));
+  };
   const [matricule, setMatricule] = useState('');
   const [targetStudent, setTargetStudent] = useState<Student | null>(null);
   const [scolarite, setScolarite] = useState<StudentScolarite | null>(null);
   const [versements, setVersements] = useState<Versement[]>([]);
   const [loading, setLoading] = useState(false);
+  const [studentsList, setStudentsList] = useState<Student[]>([]);
+  const [levels, setLevels] = useState<Level[]>([]);
   const [schoolConfig, setSchoolConfig] = useState<SchoolConfig>({
     id: 'current',
     nom: 'DIA DEUTSCH INSTITUT',
@@ -28,65 +45,156 @@ const TuitionManagement: React.FC = () => {
   // Form state
   const [amount, setAmount] = useState<number>(0);
   const [paymentMode, setPaymentMode] = useState<Versement['mode_paiement']>('Espèces');
+  const [paymentCategory, setPaymentCategory] = useState<Versement['categorie']>('scolarite');
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
-    const fetchConfig = async () => {
-      const snap = await getDoc(doc(db, 'ecole', 'current'));
-      if (snap.exists()) setSchoolConfig(snap.data() as SchoolConfig);
+    const fetchData = async () => {
+      try {
+        const configSnap = await getDoc(doc(db, 'ecole', 'current'));
+        if (configSnap.exists()) setSchoolConfig(configSnap.data() as SchoolConfig);
+      } catch (e) {
+        handleFirestoreError(e, OperationType.GET, 'ecole/current');
+      }
+
+      try {
+        const levelsSnap = await getDocs(collection(db, 'levels'));
+        setLevels(levelsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Level)));
+      } catch (e) {
+        handleFirestoreError(e, OperationType.LIST, 'levels');
+      }
+
+      try {
+        const studentsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student')));
+        setStudentsList(studentsSnap.docs.map(d => ({ uid: d.id, ...d.data() } as Student)));
+      } catch (e) {
+        handleFirestoreError(e, OperationType.LIST, 'users (students query)');
+      }
     };
-    fetchConfig();
+    fetchData();
   }, []);
+
+  const selectStudent = async (student: Student) => {
+    setLoading(true);
+    setTargetStudent(student);
+    setMatricule(student.matricule);
+    
+    try {
+      // Fetch level info
+      const studentLevel = levels.find(l => l.id === student.levelId);
+      const defaultTuition = studentLevel?.tuition || 150000;
+
+      // Fetch scolarite master record
+      let scolariteSnap;
+      try {
+        scolariteSnap = await getDoc(doc(db, 'scolarites', student.uid));
+      } catch (e) {
+        handleFirestoreError(e, OperationType.GET, `scolarites/${student.uid}`);
+      }
+      
+      if (scolariteSnap!.exists()) {
+        const data = scolariteSnap!.data() as StudentScolarite;
+        // Verify if total due matches level tuition, update if necessary
+        if (data.montant_total_du !== defaultTuition && data.total_verse === 0) {
+          const updated = { ...data, montant_total_du: defaultTuition, reste: defaultTuition };
+          await updateDoc(doc(db, 'scolarites', student.uid), updated);
+          setScolarite(updated);
+        } else {
+          setScolarite(data);
+        }
+      } else {
+        // Initialize if not exists
+        const initialScolarite: StudentScolarite = {
+          id: student.uid,
+          eleve_id: student.uid,
+          matricule: student.matricule,
+          nom_eleve: `${student.firstName} ${student.lastName}`,
+          classe_id: student.classId || 'N/A',
+          montant_total_du: defaultTuition,
+          total_verse: 0,
+          reste: defaultTuition,
+          surplus: 0,
+          statut_paiement: 'EN COURS'
+        };
+        try {
+          await setDoc(doc(db, 'scolarites', student.uid), initialScolarite);
+        } catch (e) {
+          handleFirestoreError(e, OperationType.WRITE, `scolarites/${student.uid}`);
+        }
+        setScolarite(initialScolarite);
+      }
+
+      // Fetch versements subcollection
+      let versemntsSnap;
+      try {
+        versemntsSnap = await getDocs(collection(db, 'scolarites', student.uid, 'versements'));
+      } catch (e) {
+        handleFirestoreError(e, OperationType.LIST, `scolarites/${student.uid}/versements`);
+      }
+      
+      const vList = versemntsSnap!.docs.map(d => ({ id: d.id, ...d.data() } as Versement)).sort((a,b) => b.date.localeCompare(a.date));
+      
+      // --- ROBUST AUTO-HEALING: Sync payments from user profile if missing in finance module ---
+      const totalInFinance = vList.reduce((acc, v) => acc + (Number(v.montant) || 0), 0);
+      const totalInProfile = (student.payments || []).reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
+
+      if (totalInProfile > totalInFinance) {
+        const diff = totalInProfile - totalInFinance;
+        // Create a record for the missing amount
+        const healingVersement = {
+          montant: diff,
+          date: new Date().toISOString(),
+          mode_paiement: 'Autre' as const,
+          categorie: 'scolarite' as const,
+          recu_numero: `SYNC-${student.matricule}-${Date.now().toString().slice(-4)}`,
+          caissier_id: 'System',
+          notes: 'Synchronisation automatique depuis le profil inscription'
+        };
+        const vRef = await addDoc(collection(db, 'scolarites', student.uid, 'versements'), healingVersement);
+        vList.push({ id: vRef.id, ...healingVersement } as Versement);
+        toast.info("Paiements synchronisés avec le profil d'inscription (" + formatCurrency(diff) + ")");
+      }
+      // -----------------------------------------------------------------------------------------
+
+      setVersements(vList);
+
+      // --- DYNAMIC RE-CALCULATION ---
+      const totalPaid = vList.reduce((acc, v) => acc + (Number(v.montant) || 0), 0);
+      const updatedScolarite = {
+        ...(scolariteSnap!.exists() ? scolariteSnap!.data() as StudentScolarite : {
+          id: student.uid,
+          eleve_id: student.uid,
+          matricule: student.matricule,
+          nom_eleve: `${student.firstName} ${student.lastName}`,
+          classe_id: student.classId || 'N/A',
+        }),
+        montant_total_du: defaultTuition,
+        total_verse: totalPaid,
+        reste: Math.max(0, defaultTuition - totalPaid),
+        surplus: Math.max(0, totalPaid - defaultTuition),
+        statut_paiement: totalPaid >= defaultTuition ? 'SOLDÉ' : (totalPaid > 0 ? 'EN COURS' : 'NON PAYÉ')
+      } as StudentScolarite;
+
+      setScolarite(updatedScolarite);
+      
+      // Update Firestore with fresh totals
+      await setDoc(doc(db, 'scolarites', student.uid), updatedScolarite);
+      // -------------------------------
+    } catch (err) {
+      console.error(err);
+      toast.error("Erreur de chargement");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSearch = async () => {
     if (!matricule.trim()) return;
-    setLoading(true);
-    setTargetStudent(null);
-    setScolarite(null);
-    setVersements([]);
-
-    try {
-      const q = query(collection(db, 'users'), where('matricule', '==', matricule.trim()), where('role', '==', 'student'));
-      const snap = await getDocs(q);
-      
-      if (snap.empty) {
-        toast.error("Aucun élève trouvé avec ce matricule");
-      } else {
-        const docSnap = snap.docs[0];
-        const studentData = { uid: docSnap.id, ...docSnap.data() } as Student;
-        setTargetStudent(studentData);
-
-        // Fetch scolarite master record
-        const scolariteSnap = await getDoc(doc(db, 'scolarites', studentData.uid));
-        if (scolariteSnap.exists()) {
-          setScolarite(scolariteSnap.data() as StudentScolarite);
-        } else {
-          // Initialize if not exists
-          const initialScolarite: StudentScolarite = {
-            id: studentData.uid,
-            eleve_id: studentData.uid,
-            matricule: studentData.matricule,
-            nom_eleve: `${studentData.firstName} ${studentData.lastName}`,
-            classe_id: studentData.classId || 'N/A',
-            montant_total_du: 150000, // Default or fetch from class
-            total_verse: 0,
-            reste: 150000,
-            surplus: 0,
-            statut_paiement: 'EN COURS'
-          };
-          setScolarite(initialScolarite);
-        }
-
-        // Fetch deployments
-        const versemntsSnap = await getDocs(collection(db, 'scolarites', studentData.uid, 'versements'));
-        const vList = versemntsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Versement)).sort((a,b) => b.date.localeCompare(a.date));
-        setVersements(vList);
-      }
-    } catch (error) {
-      console.error(error);
-      toast.error("Erreur lors de la recherche");
-    } finally {
-      setLoading(false);
+    const student = studentsList.find(s => s.matricule.toLowerCase() === matricule.trim().toLowerCase());
+    if (student) {
+      selectStudent(student);
+    } else {
+      toast.error("Aucun élève trouvé avec ce matricule");
     }
   };
 
@@ -106,6 +214,7 @@ const TuitionManagement: React.FC = () => {
         montant: amount,
         date: new Date().toISOString(),
         mode_paiement: paymentMode,
+        categorie: paymentCategory,
         recu_numero: recNumber,
         caissier_id: user?.uid || 'Unknown',
         notes: notes,
@@ -139,7 +248,7 @@ const TuitionManagement: React.FC = () => {
       setVersements([{ id: vRef.id, ...versementData }, ...versements]);
       
       // 3. Add to Audit Log
-      addAuditLog("VERSEMENT_AJOUTÉ", targetStudent.uid, { montant: amount, recu: recNumber });
+      addAuditLog("VERSEMENT_AJOUTÉ", targetStudent.uid, { montant: amount, recu: recNumber, categorie: paymentCategory });
 
       toast.success("Versement enregistré !");
       handleGeneratePDF({ id: vRef.id, ...versementData });
@@ -259,6 +368,40 @@ const TuitionManagement: React.FC = () => {
         </div>
       </div>
 
+      <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 overflow-x-auto">
+        <div className="flex gap-4 min-w-max pb-2">
+          {studentsList.length === 0 ? (
+            <p className="text-xs text-neutral-400 italic">Chargement des élèves...</p>
+          ) : (
+            studentsList.slice(0, 15).map(s => (
+              <button 
+                key={s.uid}
+                onClick={() => selectStudent(s)}
+                className={cn(
+                  "flex flex-col items-center gap-2 p-3 rounded-2xl border transition-all min-w-[100px]",
+                  targetStudent?.uid === s.uid 
+                    ? "bg-dia-red/5 border-dia-red text-dia-red" 
+                    : "bg-neutral-50 dark:bg-neutral-800 border-neutral-100 dark:border-neutral-700 hover:border-dia-red/30"
+                )}
+              >
+                <div className="w-10 h-10 bg-neutral-200 dark:bg-neutral-700 rounded-full flex items-center justify-center">
+                  <User size={18} />
+                </div>
+                <div className="text-center">
+                  <p className="text-[10px] font-bold truncate max-w-[80px]">{s.firstName}</p>
+                  <p className="text-[8px] opacity-60">{s.matricule}</p>
+                </div>
+              </button>
+            ))
+          )}
+          {studentsList.length > 15 && (
+            <div className="flex items-center px-4 text-xs font-bold text-neutral-400">
+              +{studentsList.length - 15} autres...
+            </div>
+          )}
+        </div>
+      </div>
+
       {targetStudent && scolarite && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
@@ -267,7 +410,7 @@ const TuitionManagement: React.FC = () => {
               <h3 className="text-lg font-black uppercase mb-6 flex items-center gap-2">
                 <CreditCard size={20} className="text-dia-red" /> Nouveau Versement
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-neutral-400 uppercase">Montant (FCFA) *</label>
                   <input 
@@ -276,6 +419,18 @@ const TuitionManagement: React.FC = () => {
                     onChange={(e) => setAmount(Number(e.target.value))}
                     className="w-full p-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl font-black text-2xl"
                   />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-neutral-400 uppercase">Type de Paiement *</label>
+                  <select 
+                    value={paymentCategory}
+                    onChange={(e) => setPaymentCategory(e.target.value as any)}
+                    className="w-full p-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl font-bold"
+                  >
+                    <option value="scolarite">Scolarité</option>
+                    <option value="inscription">Inscription</option>
+                    <option value="autre">Autre</option>
+                  </select>
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-neutral-400 uppercase">Mode de paiement *</label>

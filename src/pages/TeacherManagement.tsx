@@ -56,6 +56,7 @@ export default function TeacherManagement() {
     
     const newTeacher = {
       matricule,
+      email: formData.get('email'),
       password,
       firstName: formData.get('firstName'),
       lastName: formData.get('lastName'),
@@ -113,6 +114,7 @@ export default function TeacherManagement() {
     const formData = new FormData(e.currentTarget);
     const updatedTeacher = {
       ...selectedTeacher,
+      email: formData.get('email'),
       firstName: formData.get('firstName'),
       lastName: formData.get('lastName'),
       phone: formData.get('phone'),
@@ -451,6 +453,10 @@ export default function TeacherManagement() {
               <div className="flex-1 overflow-y-auto p-8 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Email *</label>
+                  <input name="email" required type="email" placeholder="prof@example.com" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
+                <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.first_name')}</label>
                   <input name="firstName" required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
@@ -577,6 +583,10 @@ export default function TeacherManagement() {
               </div>
               <div className="flex-1 overflow-y-auto p-8 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Email *</label>
+                  <input name="email" defaultValue={selectedTeacher.email} required type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.first_name')}</label>
                   <input name="firstName" defaultValue={selectedTeacher.firstName} required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />

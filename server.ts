@@ -242,11 +242,13 @@ async function startServer() {
           role: decodedToken.role || 'user'
         };
         
-        // Fetch role from Firestore if not in token
-        if (!decodedToken.role) {
+        // Fetch missing info from Firestore if needed
+        if (!req.user.email || !decodedToken.role) {
           const userDoc = await dbAdmin.collection('users').doc(decodedToken.uid).get();
           if (userDoc.exists) {
-            req.user.role = userDoc.data()?.role || 'user';
+            const userData = userDoc.data();
+            if (!req.user.email) req.user.email = userData?.email;
+            if (req.user.role === 'user') req.user.role = userData?.role || 'user';
           }
         }
         
@@ -334,7 +336,11 @@ async function startServer() {
 
       const userData = userDoc.data();
       addLog('AUTH', `Profil trouvé pour ${matricule}`);
-      res.json({ user: userData });
+      res.json({ 
+        email: userData.email, 
+        role: userData.role,
+        uid: userDoc.id 
+      });
     } catch (err: any) {
       addLog('ERROR', `Erreur lors du login/lookup pour ${matricule}`, err.message);
       res.status(500).json({ message: err.message });
@@ -588,13 +594,16 @@ async function startServer() {
         }
       }
 
-      // 2. Delete ALL Auth Users except super-admins (to fix "number already used" issue)
+      // 2. Delete ALL Auth Users except super-admins
       const defaultEmails = ['yombivictor@gmail.com', 'gabrielyombi311@gmail.com'];
       
       const listAndDeleteUsers = async (nextPageToken?: string) => {
         const listUsersResult = await authAdmin.listUsers(1000, nextPageToken);
         for (const userRecord of listUsersResult.users) {
-          if (!defaultEmails.includes(userRecord.email || '')) {
+          const email = (userRecord.email || '').toLowerCase();
+          const isSuper = defaultEmails.some(de => de.toLowerCase() === email);
+          
+          if (!isSuper) {
             try {
               await authAdmin.deleteUser(userRecord.uid);
             } catch (e: any) {
@@ -616,7 +625,10 @@ async function startServer() {
       let userCount = 0;
       for (const userDoc of usersSnap.docs) {
         const u = userDoc.data();
-        if (!defaultEmails.includes(u.email)) {
+        const email = (u.email || '').toLowerCase();
+        const isSuper = defaultEmails.some(de => de.toLowerCase() === email) || u.isSuperAdmin === true;
+        
+        if (!isSuper) {
           userBatch.delete(userDoc.ref);
           userCount++;
           if (userCount >= 400) {

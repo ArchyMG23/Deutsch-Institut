@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { db } from '../firebase';
+import { collection, doc, setDoc, addDoc } from 'firebase/firestore';
 import { 
   Search, 
   Plus, 
@@ -152,6 +154,7 @@ export default function StudentManagement() {
 
     const newStudent = {
       matricule,
+      email: formData.get('email'),
       password, // On stocke le mot de passe pour l'envoyer
       firstName: formData.get('firstName'),
       lastName: formData.get('lastName'),
@@ -183,6 +186,41 @@ export default function StudentManagement() {
       if (res.ok) {
         const student = await res.json();
         
+        // --- SYNC WITH FINANCE MODULE ---
+        // Calculate total initial payment from tranches
+        const initialPayment = (Number(formData.get('tranche1')) || 0) + 
+                              (Number(formData.get('tranche2')) || 0) + 
+                              (Number(formData.get('tranche3')) || 0);
+
+        if (initialPayment > 0) {
+          const studentLevel = levels.find(l => l.id === levelId);
+          const tuitionAmount = studentLevel?.tuition || 150000;
+          
+          await setDoc(doc(db, 'scolarites', student.uid), {
+            id: student.uid,
+            eleve_id: student.uid,
+            matricule: student.matricule,
+            nom_eleve: `${student.firstName} ${student.lastName}`,
+            classe_id: classId || 'N/A',
+            montant_total_du: tuitionAmount,
+            total_verse: initialPayment,
+            reste: Math.max(0, tuitionAmount - initialPayment),
+            surplus: Math.max(0, initialPayment - tuitionAmount),
+            statut_paiement: initialPayment >= tuitionAmount ? 'SOLDÉ' : 'EN COURS'
+          });
+
+          await addDoc(collection(db, 'scolarites', student.uid, 'versements'), {
+            montant: initialPayment,
+            date: new Date().toISOString(),
+            mode_paiement: 'Espèces',
+            categorie: 'inscription',
+            recu_numero: `INS-${Date.now().toString().slice(-6)}`,
+            caissier_id: 'System',
+            notes: 'Paiement initial (inscription)'
+          });
+        }
+        // --------------------------------
+
         const scheduleStr = cls?.schedule?.map(s => `${s.day} (${s.startTime}-${s.endTime})`).join(', ');
         await NotificationService.sendCredentials(fetchWithAuth, student, password, cls?.name, scheduleStr);
 
@@ -210,6 +248,7 @@ export default function StudentManagement() {
       ...selectedStudent,
       firstName: formData.get('firstName'),
       lastName: formData.get('lastName'),
+      email: formData.get('email'),
       phone: formData.get('phone'),
       birthDate: formData.get('birthDate'),
       birthPlace: formData.get('birthPlace'),
@@ -849,6 +888,10 @@ export default function StudentManagement() {
               <div className="flex-1 overflow-y-auto p-8 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Email *</label>
+                  <input name="email" required type="email" placeholder="example@gmail.com" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
+                <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.firstName')}</label>
                   <input name="firstName" required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
@@ -954,6 +997,10 @@ export default function StudentManagement() {
               </div>
               <div className="flex-1 overflow-y-auto p-8 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Email *</label>
+                  <input name="email" defaultValue={selectedStudent.email} required type="email" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.firstName')}</label>
                   <input name="firstName" defaultValue={selectedStudent.firstName} required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />

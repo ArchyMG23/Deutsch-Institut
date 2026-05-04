@@ -23,6 +23,32 @@ import { getToken } from 'firebase/messaging';
 import { getDeviceInfo } from '../utils';
 import i18n from '../i18n/config';
 
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  }
+}
+
 interface AuthContextType {
   user: any | null;
   profile: UserProfile | null;
@@ -215,7 +241,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         
         const data = await response.json();
-        email = data.user.email;
+        email = data.email;
       } catch (err: any) {
         console.error("Matricule lookup error:", err);
         throw err;

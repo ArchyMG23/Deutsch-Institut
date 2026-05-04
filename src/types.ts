@@ -191,6 +191,7 @@ export interface Versement {
   mode_paiement: 'Espèces' | 'Mobile Money' | 'Virement' | 'Autre';
   recu_numero: string;
   caissier_id: string;
+  categorie?: 'scolarite' | 'inscription' | 'autre';
   notes?: string;
   recu_genere_at?: string;
   recu_genere_par?: string;

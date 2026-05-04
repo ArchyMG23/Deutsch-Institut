@@ -20,7 +20,7 @@ import {
   History,
   UserCheck
 } from 'lucide-react';
-import { cn, formatCurrency } from '../utils';
+import { cn, formatCurrency, generateMatricule } from '../utils';
 import { FinanceRecord, Student, StudentScolarite, Versement } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -153,11 +153,12 @@ const TransactionTable = React.memo(({
 
 export default function FinanceManagement() {
   const { t, i18n } = useTranslation();
-  const { finances: allRecords, trashFinances, refreshFinances, refreshTrash } = useData();
+  const { finances: allRecords, trashFinances, refreshFinances, refreshTrash, levels, classes } = useData();
   const { user, fetchWithAuth } = useAuth();
   
   const [viewMode, setViewMode] = useState<'active' | 'trash' | 'tuition' | 'dashboard' | 'charges'>('dashboard');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isQuickAddModalOpen, setIsQuickAddModalOpen] = useState(false);
   
   // Modal Form State
   const [formType, setFormType] = useState<'income' | 'expense'>('income');
@@ -393,6 +394,101 @@ export default function FinanceManagement() {
     }
   };
 
+  const handleQuickInscription = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    
+    const formData = new FormData(e.currentTarget);
+    const matricule = generateMatricule('student');
+    const role = 'student';
+    const email = formData.get('email') as string;
+    const password = 'DIA2026.'; // Default password
+    
+    const newStudent = {
+      matricule,
+      email,
+      password,
+      firstName: formData.get('firstName'),
+      lastName: formData.get('lastName'),
+      phone: formData.get('phone'),
+      levelId: formData.get('levelId'),
+      classId: '', // Unassigned by default in quick add
+      role,
+      status: 'offline',
+      createdAt: new Date().toISOString(),
+      payments: [
+        { tranche: 1, amount: Number(formData.get('amount')) || 0, date: new Date().toISOString() },
+        { tranche: 2, amount: 0, date: null },
+        { tranche: 3, amount: 0, date: null }
+      ]
+    };
+
+    try {
+      const res = await fetchWithAuth('/api/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newStudent)
+      });
+      
+      if (res.ok) {
+        const student = await res.json();
+        
+        // --- Consistency Sync with TuitionManagement ---
+        const amount = Number(formData.get('amount')) || 0;
+        if (amount > 0) {
+          const studentLevel = levels.find(l => l.id === formData.get('levelId'));
+          const tuitionAmount = studentLevel?.tuition || 150000;
+          
+          await setDoc(doc(db, 'scolarites', student.uid), {
+            id: student.uid,
+            eleve_id: student.uid,
+            matricule: student.matricule,
+            nom_eleve: `${student.firstName} ${student.lastName}`,
+            classe_id: 'N/A',
+            montant_total_du: tuitionAmount,
+            total_verse: amount,
+            reste: Math.max(0, tuitionAmount - amount),
+            surplus: Math.max(0, amount - tuitionAmount),
+            statut_paiement: amount >= tuitionAmount ? 'SOLDÉ' : 'EN COURS'
+          });
+
+          await addDoc(collection(db, 'scolarites', student.uid, 'versements'), {
+            montant: amount,
+            date: new Date().toISOString(),
+            mode_paiement: 'Espèces',
+            categorie: 'inscription',
+            recu_numero: `INS-${Date.now().toString().slice(-6)}`,
+            caissier_id: user?.uid || 'System',
+            notes: 'Inscription Rapide'
+          });
+        }
+        // -----------------------------------------------
+
+        // Send credentials
+        await NotificationService.sendCredentials(fetchWithAuth, student, password);
+        
+        setIsQuickAddModalOpen(false);
+        refreshFinances();
+        toast.success(`Élève ${newStudent.firstName} inscrit avec succès ! Matricule: ${matricule}`);
+        
+        // Also refresh everything
+        if (typeof window !== 'undefined') {
+          // Force a full refresh after a small delay to sync all contexts
+          setTimeout(() => window.location.reload(), 1500);
+        }
+      } else {
+        const err = await res.json();
+        toast.error(err.message || "Erreur d'inscription");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Échec de l'inscription rapide");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -408,10 +504,18 @@ export default function FinanceManagement() {
             <button onClick={() => setViewMode('active')} className={cn("px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap", viewMode === 'active' ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" : "text-neutral-500")}>Archives Transaction</button>
             <button onClick={() => setViewMode('trash')} className={cn("px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap", viewMode === 'trash' ? "bg-white dark:bg-neutral-700 text-dia-red shadow-sm" : "text-neutral-500")}><Trash2 size={14} /> Corbeille</button>
           </div>
-          {['active', 'trash'].includes(viewMode) && (
-            <button onClick={() => setIsAddModalOpen(true)} className="btn-primary flex items-center gap-2 px-6">
-              <Plus size={18} /> {t('finances.transaction')}
-            </button>
+          {['active', 'trash', 'tuition'].includes(viewMode) && (
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setIsQuickAddModalOpen(true)} 
+                className="px-4 py-2 bg-orange-100 text-orange-600 rounded-xl text-xs font-bold hover:bg-orange-200 transition-all flex items-center gap-2"
+              >
+                <UserCheck size={16} /> Inscription Rapide
+              </button>
+              <button onClick={() => setIsAddModalOpen(true)} className="btn-primary flex items-center gap-2 px-6">
+                <Plus size={18} /> {t('finances.transaction')}
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -530,6 +634,7 @@ export default function FinanceManagement() {
                   className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl"
                 >
                   <option value="tuition">Scolarité</option>
+                  <option value="registration">Inscription</option>
                   <option value="salary">Salaire</option>
                   <option value="rent">Loyer</option>
                   <option value="utilities">Charges</option>
@@ -558,8 +663,13 @@ export default function FinanceManagement() {
                     </button>
                   </div>
                   {verifiedStudent && (
-                    <div className="mt-2 text-[10px] font-bold text-green-600 uppercase flex items-center gap-1">
-                      <Plus size={10} /> {verifiedStudent.firstName} {verifiedStudent.lastName}
+                    <div className="mt-2 p-2 bg-white dark:bg-neutral-800 rounded-lg flex flex-col gap-1">
+                      <div className="text-[10px] font-black text-green-600 uppercase flex items-center gap-1">
+                        <Plus size={10} /> {verifiedStudent.firstName} {verifiedStudent.lastName}
+                      </div>
+                      <div className="text-[9px] font-bold text-neutral-400 uppercase">
+                        Niveau: {levels.find(l => l.id === verifiedStudent.levelId)?.name || 'Non défini'}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -620,6 +730,55 @@ export default function FinanceManagement() {
                 </button>
               </div>
             </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Quick Add Student Modal */}
+      {isQuickAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsQuickAddModalOpen(false)} />
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="relative bg-white dark:bg-neutral-900 rounded-[32px] w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="p-8 bg-orange-600 text-white">
+              <h4 className="text-2xl font-black uppercase tracking-tight">Inscription Rapide</h4>
+              <p className="text-white/80 text-sm font-medium">Créez un compte élève et encaissez en une étape.</p>
+            </div>
+            <form onSubmit={handleQuickInscription} className="p-8 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Nom *</label>
+                  <input name="lastName" required className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Prénom *</label>
+                  <input name="firstName" required className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Email (Pour connexion) *</label>
+                <input name="email" type="email" required placeholder="eleve@example.com" className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Téléphone</label>
+                <input name="phone" placeholder="6..." className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Niveau d'Étude *</label>
+                <select name="levelId" required className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20">
+                  {levels.map(l => <option key={l.id} value={l.id}>{l.name} - {formatCurrency(l.tuition)}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Montant Versé (Tranche 1) *</label>
+                <input name="amount" type="number" required placeholder="Ex: 50000" className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-orange-200 dark:border-orange-900 rounded-xl font-bold text-orange-600 outline-none focus:ring-2 focus:ring-orange-500/20" />
+              </div>
+              <div className="pt-4 flex gap-4">
+                <button type="button" onClick={() => setIsQuickAddModalOpen(false)} className="flex-1 py-3 text-sm font-bold text-neutral-500">Annuler</button>
+                <button type="submit" disabled={submitting} className="flex-1 py-3 bg-orange-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-orange-600/30 hover:scale-105 transition-all disabled:opacity-50">
+                  {submitting ? 'Création...' : 'Créer & Encaisser'}
+                </button>
+              </div>
+            </form>
           </motion.div>
         </div>
       )}

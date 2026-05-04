@@ -178,15 +178,17 @@ export default function AdminProfile() {
   const [resetCode, setResetCode] = useState('');
 
   const handleSystemReset = async () => {
-    if (resetCode !== 'RESET') {
-      toast.error("Veuillez taper 'RESET' pour confirmer.");
+    if (resetCode !== 'RESET_FACTORY') {
+      toast.error("Veuillez taper 'RESET_FACTORY' pour confirmer.");
       return;
     }
 
     setLoading(true);
     try {
       const res = await fetchWithAuth('/api/system/reset', {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmation: 'RESET_FACTORY' })
       });
 
       if (res.ok) {
@@ -517,21 +519,21 @@ export default function AdminProfile() {
                   <h3 className="text-xl font-bold">Action Irréversible</h3>
                   <p className="text-sm text-neutral-500">
                     Cela supprimera TOUTES les données (Etudiants, Finances, Classes, Rapports).
-                    Veuillez taper <span className="font-black text-red-600">RESET</span> pour confirmer.
+                    Veuillez taper <span className="font-black text-red-600">RESET_FACTORY</span> pour confirmer.
                   </p>
                 </div>
                 <input 
                   type="text"
                   value={resetCode}
                   onChange={(e) => setResetCode(e.target.value.toUpperCase())}
-                  placeholder="Tapez RESET ici"
+                  placeholder="Tapez RESET_FACTORY ici"
                   className="w-full px-5 py-3 bg-neutral-100 dark:bg-neutral-800 border-2 border-neutral-200 dark:border-neutral-700 rounded-2xl text-center font-black tracking-widest outline-none focus:border-red-600 transition-all"
                 />
                 <div className="flex gap-4">
                   <button onClick={() => setIsResetModalOpen(false)} className="flex-1 py-3 bg-neutral-100 dark:bg-neutral-800 rounded-xl font-bold">Annuler</button>
                   <button 
                     onClick={handleSystemReset}
-                    disabled={resetCode !== 'RESET' || loading}
+                    disabled={resetCode !== 'RESET_FACTORY' || loading}
                     className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Confirmer

@@ -38,6 +38,25 @@ import {
   Line
 } from 'recharts';
 
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+  }
+}
+
 export default function RealFinanceDashboard() {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
@@ -53,77 +72,148 @@ export default function RealFinanceDashboard() {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
+  const handleFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
+    const errInfo: FirestoreErrorInfo = {
+      error: error instanceof Error ? error.message : String(error),
+      authInfo: {
+        userId: auth.currentUser?.uid,
+        email: auth.currentUser?.email,
+      },
+      operationType,
+      path
+    };
+    console.error('Firestore Error Detailed: ', JSON.stringify(errInfo));
+    throw new Error(JSON.stringify(errInfo));
+  };
+
   const fetchFinanceStats = async () => {
     setLoading(true);
     try {
       // 1. Aggreger les REVENUS (Versements scolarités)
-      const versementsSnap = await getDocs(collectionGroup(db, 'versements'));
-      const levelsSnap = await getDocs(collection(db, 'levels'));
-      const classesSnap = await getDocs(collection(db, 'classes'));
+      let levelsSnap;
+      try {
+        levelsSnap = await getDocs(collection(db, 'levels'));
+      } catch (e) {
+        handleFirestoreError(e, OperationType.LIST, 'levels');
+      }
+
+      let classesSnap;
+      try {
+        classesSnap = await getDocs(collection(db, 'classes'));
+      } catch (e) {
+        handleFirestoreError(e, OperationType.LIST, 'classes');
+      }
       
       const levelsMap: Record<string, any> = {};
-      levelsSnap.forEach(doc => levelsMap[doc.id] = doc.data());
+      levelsSnap!.forEach(doc => levelsMap[doc.id] = doc.data());
       
       const classesMap: Record<string, any> = {};
-      classesSnap.forEach(doc => classesMap[doc.id] = doc.data());
+      classesSnap!.forEach(doc => classesMap[doc.id] = doc.data());
 
+      // ... rest of the logic ...
       let totalRevenu = 0;
       const revenusDetails: Record<string, number> = {
-        scolarite_allemand: 0,
-        scolarite_anglais: 0,
+        scolarite: 0,
         inscription: 0,
-        vorbereitung: 0,
-        connexion: 0,
         autre: 0
       };
       
       const monthlyRevenu: Record<string, number> = {};
 
-      const studentsSnap = await getDocs(collection(db, 'students'));
-      studentsSnap.forEach(doc => {
-        const s = doc.data();
-        if (s.payments) {
-          s.payments.forEach((p: any) => {
-            if (p.amount > 0) {
-              const amount = Number(p.amount);
-              const date = p.date ? new Date(p.date) : new Date();
-              
-              totalRevenu += amount;
-              const cat = p.category || 'scolarite_allemand';
-              if (revenusDetails[cat] !== undefined) {
-                revenusDetails[cat] += amount;
-              } else {
-                revenusDetails.autre += amount;
-              }
-              
-              if (date.getFullYear() === selectedYear) {
-                const mKey = date.getMonth();
-                monthlyRevenu[mKey] = (monthlyRevenu[mKey] || 0) + amount;
-              }
-            }
-          });
+      // A. Versements from scolarités subcollections
+      let versementsSnap;
+      try {
+        versementsSnap = await getDocs(collectionGroup(db, 'versements'));
+      } catch (e) {
+        handleFirestoreError(e, OperationType.LIST, 'versements (collection group)');
+      }
+
+      versementsSnap!.forEach(doc => {
+        const v = doc.data();
+        const amount = Number(v.montant) || 0;
+        
+        // Robust date parsing
+        let txDate: Date;
+        if (v.date) {
+          txDate = new Date(v.date);
+        } else if (v.createdAt) {
+          txDate = new Date(v.createdAt);
+        } else {
+          txDate = new Date();
+        }
+        
+        if (txDate.getFullYear() === selectedYear) {
+          totalRevenu += amount;
+          const cat = (v.categorie || 'scolarite').toLowerCase();
+          if (cat === 'inscription' || cat === 'registration' || cat.includes('inscrip')) {
+            revenusDetails.inscription += amount;
+          } else {
+            revenusDetails.scolarite += amount;
+          }
+
+          const mKey = txDate.getMonth();
+          monthlyRevenu[mKey] = (monthlyRevenu[mKey] || 0) + amount;
         }
       });
 
-      // 2. Aggreger les CHARGES SALARIALES (Rapports soumis)
-      const pathReports = 'rapports_journaliers';
+      // B. Students payments array
+      let studentsSnap;
+      try {
+        studentsSnap = await getDocs(collection(db, 'students'));
+      } catch (e) {
+        handleFirestoreError(e, OperationType.LIST, 'students');
+      }
+
+      // C. General Finance Records (Other Incomes)
+      let financesSnap;
+      try {
+        financesSnap = await getDocs(collection(db, 'finances'));
+      } catch (e) {
+        handleFirestoreError(e, OperationType.LIST, 'finances');
+      }
+      
+      financesSnap!.forEach(doc => {
+        const f = doc.data();
+        if (f.type === 'income') {
+          const amount = Number(f.amount) || 0;
+          const date = f.date ? new Date(f.date) : new Date();
+          
+          if (date.getFullYear() === selectedYear) {
+            const cat = (f.category || 'other').toLowerCase();
+            
+            // Skip if it's tuition to avoid double counting with versements subcollection
+            if (cat === 'tuition' || cat === 'scolarité' || cat === 'scolarite') {
+              // We already counted these via versements subcollection sync in FinanceManagement
+              return;
+            }
+
+            totalRevenu += amount;
+            if (cat.includes('inscrip')) revenusDetails.inscription += amount;
+            else revenusDetails.autre += amount;
+
+            const mKey = date.getMonth();
+            monthlyRevenu[mKey] = (monthlyRevenu[mKey] || 0) + amount;
+          }
+        }
+      });
+
+      // 3. Aggreger les CHARGES SALARIALES (Rapports soumis)
       let reportsSnap;
       try {
         reportsSnap = await getDocs(query(collection(db, 'rapports_journaliers'), where('statut', '==', 'soumis')));
       } catch (error) {
-        handleFirestoreError(error, OperationType.GET, pathReports);
+        handleFirestoreError(error, OperationType.LIST, 'rapports_journaliers');
       }
 
-      const pathTeachers = 'teachers';
-      let teachersSnap;
+      let teachersSnap: any;
       try {
         teachersSnap = await getDocs(collection(db, 'teachers'));
       } catch (error) {
-        handleFirestoreError(error, OperationType.GET, pathTeachers);
+        handleFirestoreError(error, OperationType.LIST, 'teachers');
       }
       
       const teacherSettings: Record<string, { hourlyRate: number, minStudents?: number }> = {};
-      teachersSnap.forEach(doc => {
+      teachersSnap!.forEach((doc: any) => {
         const t = doc.data();
         teacherSettings[doc.id] = {
           hourlyRate: t.hourlyRate || 3000,
@@ -137,7 +227,7 @@ export default function RealFinanceDashboard() {
       const sessionDetails: any[] = [];
 
       // Sort reports by date to calculate cumulative hours
-      const sortedReports = reportsSnap.docs
+      const sortedReports = reportsSnap!.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as DailyReport))
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -214,11 +304,11 @@ export default function RealFinanceDashboard() {
 
       // 3. Aggregger les CHARGES FIXES (Manual charges)
       const pathCharges = 'charges';
-      let chargesSnap;
+      let chargesSnap: any;
       try {
         chargesSnap = await getDocs(collection(db, 'charges'));
       } catch (error) {
-        handleFirestoreError(error, OperationType.GET, pathCharges);
+        console.error("Error fetching charges:", error);
       }
 
       let totalChargesFixes = 0;
@@ -234,15 +324,8 @@ export default function RealFinanceDashboard() {
         }
       });
 
-      // 4. Aggregger les TRANSACTIONS DU GRAND LIVRE (finances)
-      const pathFinances = 'finances';
-      let financesSnap;
-      try {
-        financesSnap = await getDocs(collection(db, 'finances'));
-      } catch (error) {
-        handleFirestoreError(error, OperationType.GET, pathFinances);
-      }
-
+      // 4. Aggreger les TRANSACTIONS DU GRAND LIVRE (finances)
+      // This includes expenses (incomes already counted in step 2)
       financesSnap.forEach(doc => {
         const f = doc.data();
         if (!f.date) return;
@@ -252,12 +335,7 @@ export default function RealFinanceDashboard() {
           const mKey = date.getMonth();
           const amount = Number(f.amount || 0);
 
-          if (f.type === 'income') {
-            if (f.category !== 'Tuition') {
-              totalRevenu += amount;
-              monthlyRevenu[mKey] = (monthlyRevenu[mKey] || 0) + amount;
-            }
-          } else {
+          if (f.type === 'expense') {
             totalChargesFixes += amount;
             monthlyCharges[mKey] = (monthlyCharges[mKey] || 0) + amount;
           }
@@ -288,40 +366,6 @@ export default function RealFinanceDashboard() {
     }
   };
 
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string | null;
-    email?: string | null;
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email
-    },
-    operationType,
-    path
-  };
-  console.error('Firestore Error Detailed: ', JSON.stringify(errInfo));
-  // We throw a standardized error so the system can catch it if needed, or simple logging
-  throw new Error(JSON.stringify(errInfo));
-}
-
   useEffect(() => {
     fetchFinanceStats();
   }, [selectedYear]);
@@ -348,7 +392,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
           onChange={(e) => setSelectedYear(Number(e.target.value))}
           className="bg-neutral-100 dark:bg-neutral-800 px-4 py-2 rounded-xl text-sm font-bold outline-none"
         >
-          {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+          {[2023, 2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
         </select>
         <button onClick={fetchFinanceStats} className="ml-auto p-2 bg-dia-red/5 text-dia-red rounded-lg hover:bg-dia-red/10">
           <Activity size={18} />
