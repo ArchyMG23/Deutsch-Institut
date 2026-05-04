@@ -11,6 +11,7 @@ import { OperationType, handleFirestoreError } from '../services/firestoreUtils'
 import { addAuditLog } from '../utils/auditLogger';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
+import { cn } from '../utils';
 
 const ReportManagement: React.FC = () => {
   const { user } = useAuth();
@@ -24,8 +25,11 @@ const ReportManagement: React.FC = () => {
   // Filters
   const [filterClass, setFilterClass] = useState('');
   const [filterDate, setFilterDate] = useState('');
+  const [filterStatut, setFilterStatut] = useState('');
   const [showQuotaStatus, setShowQuotaStatus] = useState(false);
   const [quotaStats, setQuotaStats] = useState<{ total: number, quota: number, diff: number, status: 'ok' | 'low' | 'high' } | null>(null);
+
+  const isAdmin = user?.role === 'admin';
 
   useEffect(() => {
     if (filterClass && classes.length > 0) {

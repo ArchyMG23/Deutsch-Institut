@@ -563,57 +563,73 @@ async function startServer() {
         'finances', 'charges', 'scolarites', 'classes', 'niveaux', 
         'rapports_journaliers', 'communiques', 'evaluations', 
         'chat_eleves', 'logs', 'notifications', 'library', 'teachers', 'rooms',
-        'students', 'levels', 'exams', 'messages', 'attendances', 'system'
+        'students', 'levels', 'exams', 'messages', 'attendances', 'system',
+        'inscriptions', 'receptions'
       ];
 
       addLog('INFO', `Démarrage de la réinitialisation système par ${userData?.email}`);
 
-      // Delete all documents in these collections
+      // 1. Delete all documents in collections
       for (const collName of collectionsToClear) {
-        const snapshot = await dbAdmin.collection(collName).get();
-        if (snapshot.empty) continue;
+        try {
+          const snapshot = await dbAdmin.collection(collName).get();
+          if (snapshot.empty) continue;
 
-        // Firestore batch limit is 500
-        const docs = snapshot.docs;
-        for (let i = 0; i < docs.length; i += 500) {
-          const batch = dbAdmin.batch();
-          const chunk = docs.slice(i, i + 500);
-          chunk.forEach(doc => batch.delete(doc.ref));
-          await batch.commit();
-        }
-        addLog('INFO', `Collection ${collName} vidée`);
-      }
-
-      // Delete all users EXCEPT those specified as admins in the config
-      const defaultEmails = ['yombivictor@gmail.com', 'gabrielyombi311@gmail.com'];
-      const usersSnap = await dbAdmin.collection('users').get();
-      
-      let batch = dbAdmin.batch();
-      let count = 0;
-
-      for (const doc of usersSnap.docs) {
-        const u = doc.data();
-        if (!defaultEmails.includes(u.email)) {
-          batch.delete(doc.ref);
-          count++;
-
-          // Delete from Firebase Auth as well
-          try {
-            await authAdmin.deleteUser(doc.id);
-          } catch (e: any) {
-            console.error(`Error deleting auth user ${doc.id}:`, e.message);
-          }
-
-          if (count >= 400) {
+          const docs = snapshot.docs;
+          for (let i = 0; i < docs.length; i += 500) {
+            const batch = dbAdmin.batch();
+            const chunk = docs.slice(i, i + 500);
+            chunk.forEach(doc => batch.delete(doc.ref));
             await batch.commit();
-            batch = dbAdmin.batch();
-            count = 0;
+          }
+          addLog('INFO', `Collection ${collName} vidée`);
+        } catch (e: any) {
+          console.error(`Erreur vidage collection ${collName}:`, e.message);
+        }
+      }
+
+      // 2. Delete ALL Auth Users except super-admins (to fix "number already used" issue)
+      const defaultEmails = ['yombivictor@gmail.com', 'gabrielyombi311@gmail.com'];
+      
+      const listAndDeleteUsers = async (nextPageToken?: string) => {
+        const listUsersResult = await authAdmin.listUsers(1000, nextPageToken);
+        for (const userRecord of listUsersResult.users) {
+          if (!defaultEmails.includes(userRecord.email || '')) {
+            try {
+              await authAdmin.deleteUser(userRecord.uid);
+            } catch (e: any) {
+              console.error(`Erreur suppression Auth pour ${userRecord.email}:`, e.message);
+            }
+          }
+        }
+        if (listUsersResult.pageToken) {
+          await listAndDeleteUsers(listUsersResult.pageToken);
+        }
+      };
+
+      await listAndDeleteUsers();
+      addLog('INFO', `Utilisateurs Auth (sauf super-admins) supprimés`);
+
+      // 3. Clear Users collection in Firestore
+      const usersSnap = await dbAdmin.collection('users').get();
+      let userBatch = dbAdmin.batch();
+      let userCount = 0;
+      for (const userDoc of usersSnap.docs) {
+        const u = userDoc.data();
+        if (!defaultEmails.includes(u.email)) {
+          userBatch.delete(userDoc.ref);
+          userCount++;
+          if (userCount >= 400) {
+            await userBatch.commit();
+            userBatch = dbAdmin.batch();
+            userCount = 0;
           }
         }
       }
-      await batch.commit();
+      await userBatch.commit();
+      addLog('INFO', `Profils Firestore (sauf super-admins) supprimés`);
 
-      // Ensure default admins exist in Firestore
+      // 4. Ensure Super Admins Firestore Profiles
       const defaultAdmins = [
         { email: 'yombivictor@gmail.com', firstName: 'Victor', lastName: 'Yombi', matricule: 'SUPERADMIN', isSuperAdmin: true },
         { email: 'gabrielyombi311@gmail.com', firstName: 'Gabriel', lastName: 'Yombi', matricule: 'ADMIN_GABRIEL', isSuperAdmin: true }
@@ -636,7 +652,7 @@ async function startServer() {
         }
       }
 
-      res.json({ message: 'Système réinitialisé avec succès' });
+      res.json({ message: 'Système réinitialisé avec succès. Les collections Firestore et les comptes Firebase Auth ont été nettoyés.' });
     } catch (err: any) {
       addLog('ERROR', 'System Reset Error', err.message);
       res.status(500).json({ message: err.message });
