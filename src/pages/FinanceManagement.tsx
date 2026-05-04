@@ -257,15 +257,17 @@ export default function FinanceManagement() {
           if (scolariteSnap.exists()) {
             currentScola = scolariteSnap.data() as StudentScolarite;
           } else {
+            const studentLevel = levels.find(l => l.id === verifiedStudent.levelId);
+            const tuitionAmount = studentLevel?.tuition || 110000;
             currentScola = {
               id: verifiedStudent.uid,
               eleve_id: verifiedStudent.uid,
               matricule: verifiedStudent.matricule,
               nom_eleve: `${verifiedStudent.firstName} ${verifiedStudent.lastName}`,
               classe_id: verifiedStudent.classId || 'N/A',
-              montant_total_du: 150000,
+              montant_total_du: tuitionAmount,
               total_verse: 0,
-              reste: 150000,
+              reste: tuitionAmount,
               surplus: 0,
               statut_paiement: 'EN COURS'
             };
@@ -402,7 +404,14 @@ export default function FinanceManagement() {
     const formData = new FormData(e.currentTarget);
     const matricule = generateMatricule('student');
     const role = 'student';
-    const email = formData.get('email') as string;
+    let email = formData.get('email') as string;
+    const paymentDateStr = formData.get('paymentDate') as string || new Date().toISOString().split('T')[0];
+    
+    // Fallback if email is not provided
+    if (!email || !email.trim()) {
+      email = `${matricule.toLowerCase()}@dia-saas.com`;
+    }
+
     const password = 'DIA2026.'; // Default password
     
     const newStudent = {
@@ -411,14 +420,14 @@ export default function FinanceManagement() {
       password,
       firstName: formData.get('firstName'),
       lastName: formData.get('lastName'),
-      phone: formData.get('phone'),
+      phone: formData.get('phone') || '',
       levelId: formData.get('levelId'),
       classId: '', // Unassigned by default in quick add
       role,
       status: 'offline',
       createdAt: new Date().toISOString(),
       payments: [
-        { tranche: 1, amount: Number(formData.get('amount')) || 0, date: new Date().toISOString() },
+        { tranche: 1, amount: Number(formData.get('amount')) || 0, date: paymentDateStr },
         { tranche: 2, amount: 0, date: null },
         { tranche: 3, amount: 0, date: null }
       ]
@@ -438,8 +447,13 @@ export default function FinanceManagement() {
         const amount = Number(formData.get('amount')) || 0;
         if (amount > 0) {
           const studentLevel = levels.find(l => l.id === formData.get('levelId'));
-          const tuitionAmount = studentLevel?.tuition || 150000;
+          const tuitionAmount = studentLevel?.tuition || 110000;
           
+          // Ensure time is included if it's a past date
+          const finalDate = paymentDateStr === new Date().toISOString().split('T')[0] 
+            ? new Date().toISOString() 
+            : new Date(paymentDateStr + 'T12:00:00Z').toISOString();
+
           await setDoc(doc(db, 'scolarites', student.uid), {
             id: student.uid,
             eleve_id: student.uid,
@@ -455,7 +469,7 @@ export default function FinanceManagement() {
 
           await addDoc(collection(db, 'scolarites', student.uid, 'versements'), {
             montant: amount,
-            date: new Date().toISOString(),
+            date: finalDate,
             mode_paiement: 'Espèces',
             categorie: 'inscription',
             recu_numero: `INS-${Date.now().toString().slice(-6)}`,
@@ -746,31 +760,37 @@ export default function FinanceManagement() {
             <form onSubmit={handleQuickInscription} className="p-8 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Nom *</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Nom *</label>
                   <input name="lastName" required className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20" />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Prénom *</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Prénom *</label>
                   <input name="firstName" required className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20" />
                 </div>
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Email (Pour connexion) *</label>
-                <input name="email" type="email" required placeholder="eleve@example.com" className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20" />
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Email (Facultatif)</label>
+                <input name="email" type="email" placeholder="eleve@example.com" className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Téléphone</label>
+                  <input name="phone" placeholder="6..." className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Date de versement *</label>
+                  <input name="paymentDate" type="date" required defaultValue={new Date().toISOString().split('T')[0]} className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border-2 border-orange-200 dark:border-orange-900 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20" />
+                </div>
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Téléphone</label>
-                <input name="phone" placeholder="6..." className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20" />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Niveau d'Étude *</label>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Niveau d'Étude *</label>
                 <select name="levelId" required className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20">
                   {levels.map(l => <option key={l.id} value={l.id}>{l.name} - {formatCurrency(l.tuition)}</option>)}
                 </select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Montant Versé (Tranche 1) *</label>
-                <input name="amount" type="number" required placeholder="Ex: 50000" className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-orange-200 dark:border-orange-900 rounded-xl font-bold text-orange-600 outline-none focus:ring-2 focus:ring-orange-500/20" />
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Montant Versé (Tranche 1) *</label>
+                <input name="amount" type="number" required defaultValue={10000} placeholder="Ex: 50000" className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-orange-200 dark:border-orange-900 rounded-xl font-bold text-orange-600 outline-none focus:ring-2 focus:ring-orange-500/20" />
               </div>
               <div className="pt-4 flex gap-4">
                 <button type="button" onClick={() => setIsQuickAddModalOpen(false)} className="flex-1 py-3 text-sm font-bold text-neutral-500">Annuler</button>

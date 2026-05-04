@@ -46,6 +46,7 @@ const TuitionManagement: React.FC = () => {
   const [amount, setAmount] = useState<number>(0);
   const [paymentMode, setPaymentMode] = useState<Versement['mode_paiement']>('Espèces');
   const [paymentCategory, setPaymentCategory] = useState<Versement['categorie']>('scolarite');
+  const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
@@ -82,7 +83,7 @@ const TuitionManagement: React.FC = () => {
     try {
       // Fetch level info
       const studentLevel = levels.find(l => l.id === student.levelId);
-      const defaultTuition = studentLevel?.tuition || 150000;
+      const defaultTuition = studentLevel?.tuition || 110000;
 
       // Fetch scolarite master record
       let scolariteSnap;
@@ -132,11 +133,16 @@ const TuitionManagement: React.FC = () => {
         handleFirestoreError(e, OperationType.LIST, `scolarites/${student.uid}/versements`);
       }
       
-      const vList = versemntsSnap!.docs.map(d => ({ id: d.id, ...d.data() } as Versement)).sort((a,b) => b.date.localeCompare(a.date));
+      const vList = versemntsSnap!.docs.map(d => ({ id: d.id, ...d.data() } as Versement)).sort((a,b) => {
+        const dateA = a.date ? new Date(a.date).getTime() : 0;
+        const dateB = b.date ? new Date(b.date).getTime() : 0;
+        return dateB - dateA;
+      });
       
       // --- ROBUST AUTO-HEALING: Sync payments from user profile if missing in finance module ---
       const totalInFinance = vList.reduce((acc, v) => acc + (Number(v.montant) || 0), 0);
-      const totalInProfile = (student.payments || []).reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
+      const studentPayments = student.payments || [];
+      const totalInProfile = studentPayments.reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
 
       if (totalInProfile > totalInFinance) {
         const diff = totalInProfile - totalInFinance;
@@ -150,9 +156,13 @@ const TuitionManagement: React.FC = () => {
           caissier_id: 'System',
           notes: 'Synchronisation automatique depuis le profil inscription'
         };
-        const vRef = await addDoc(collection(db, 'scolarites', student.uid, 'versements'), healingVersement);
-        vList.push({ id: vRef.id, ...healingVersement } as Versement);
-        toast.info("Paiements synchronisés avec le profil d'inscription (" + formatCurrency(diff) + ")");
+        try {
+          const vRef = await addDoc(collection(db, 'scolarites', student.uid, 'versements'), healingVersement);
+          vList.push({ id: vRef.id, ...healingVersement } as Versement);
+          toast.info("Paiements synchronisés avec le profil d'inscription (" + formatCurrency(diff) + ")");
+        } catch (healErr) {
+          console.error("Healing failed:", healErr);
+        }
       }
       // -----------------------------------------------------------------------------------------
 
@@ -210,9 +220,14 @@ const TuitionManagement: React.FC = () => {
     setLoading(true);
     try {
       const recNumber = generateReceiptNumber();
+      // Ensure the time is also included to avoid sorting issues, default to noon for manual dates
+      const finalDate = paymentDate === new Date().toISOString().split('T')[0] 
+        ? new Date().toISOString() 
+        : new Date(paymentDate + 'T12:00:00Z').toISOString();
+
       const versementData: Omit<Versement, 'id'> = {
         montant: amount,
-        date: new Date().toISOString(),
+        date: finalDate,
         mode_paiement: paymentMode,
         categorie: paymentCategory,
         recu_numero: recNumber,
@@ -410,7 +425,7 @@ const TuitionManagement: React.FC = () => {
               <h3 className="text-lg font-black uppercase mb-6 flex items-center gap-2">
                 <CreditCard size={20} className="text-dia-red" /> Nouveau Versement
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-neutral-400 uppercase">Montant (FCFA) *</label>
                   <input 
@@ -431,6 +446,15 @@ const TuitionManagement: React.FC = () => {
                     <option value="inscription">Inscription</option>
                     <option value="autre">Autre</option>
                   </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-neutral-400 uppercase">Date du versement *</label>
+                  <input 
+                    type="date"
+                    value={paymentDate}
+                    onChange={(e) => setPaymentDate(e.target.value)}
+                    className="w-full p-4 bg-neutral-50 dark:bg-neutral-800 border-dia-red/50 border-2 dark:border-neutral-700 rounded-xl font-bold"
+                  />
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-neutral-400 uppercase">Mode de paiement *</label>

@@ -155,16 +155,29 @@ async function startServer() {
       if (levelsSnapshot.empty) {
         console.log("Bootstrapping levels...");
         const initialLevels = [
-          { id: 'a1', name: 'A1', tuition: 150000, hours: 120 },
-          { id: 'a2', name: 'A2', tuition: 175000, hours: 120 },
-          { id: 'b1', name: 'B1', tuition: 200000, hours: 160 },
-          { id: 'b2', name: 'B2', tuition: 250000, hours: 180 },
-          { id: 'c1', name: 'C1', tuition: 350000, hours: 200 }
+          { id: 'a1', name: 'A1', tuition: 110000, hours: 120 },
+          { id: 'a2', name: 'A2', tuition: 110000, hours: 120 },
+          { id: 'b1', name: 'B1', tuition: 120000, hours: 160 },
+          { id: 'b2', name: 'B2', tuition: 120000, hours: 180 },
+          { id: 'c1', name: 'C1', tuition: 130000, hours: 200 }
         ];
+        // Enforce definitively
         for (const level of initialLevels) {
-          await dbAdmin.collection('levels').doc(level.id).set(level);
+          await dbAdmin.collection('levels').doc(level.id).set(level, { merge: true });
         }
-        console.log("Levels bootstrapped.");
+        console.log("Levels updated definitively.");
+      } else {
+        // Even if not empty, ensure the specified ones are correct
+        const forcedLevels = [
+          { id: 'a1', name: 'A1', tuition: 110000 },
+          { id: 'a2', name: 'A2', tuition: 110000 },
+          { id: 'b1', name: 'B1', tuition: 120000 },
+          { id: 'b2', name: 'B2', tuition: 120000 },
+          { id: 'c1', name: 'C1', tuition: 130000 }
+        ];
+        for (const level of forcedLevels) {
+          await dbAdmin.collection('levels').doc(level.id).set(level, { merge: true });
+        }
       }
 
       // Bootstrap Admins
@@ -756,25 +769,64 @@ async function startServer() {
       await dbAdmin.collection('users').doc(userRecord.uid).set(newUser);
       await dbAdmin.collection('students').doc(userRecord.uid).set(newStudent);
 
-      // Record initial payments in finances
-      if (newStudent.payments) {
-        for (const p of newStudent.payments) {
-          if (p.amount > 0) {
-            const financeId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
-            const financeRecord = {
-              id: financeId,
-              type: 'income',
-              amount: p.amount,
-              description: `Scolarité (Initial) - ${newStudent.matricule} - Tranche ${p.tranche}`,
-              category: 'Tuition',
-              date: p.date || new Date().toISOString()
-            };
-            await dbAdmin.collection('finances').doc(financeId).set(financeRecord);
+      // --- ATOMIC FINANCIAL SYNC ---
+      const initialAmount = (newStudent.payments || []).reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
+      
+      try {
+        // Fetch tuition info from levels
+        const levelDoc = await dbAdmin.collection('levels').doc(studentData.levelId || 'a1').get();
+        const tuitionTotal = levelDoc.exists ? (levelDoc.data()?.tuition || 150000) : 150000;
+
+        // Create main Tuition record
+        await dbAdmin.collection('scolarites').doc(userRecord.uid).set({
+          id: userRecord.uid,
+          eleve_id: userRecord.uid,
+          matricule: newStudent.matricule,
+          nom_eleve: `${newStudent.firstName} ${newStudent.lastName}`,
+          classe_id: newStudent.classId || 'N/A',
+          montant_total_du: tuitionTotal,
+          total_verse: initialAmount,
+          reste: Math.max(0, tuitionTotal - initialAmount),
+          surplus: Math.max(0, initialAmount - tuitionTotal),
+          statut_paiement: initialAmount >= tuitionTotal ? 'SOLDÉ' : (initialAmount > 0 ? 'EN COURS' : 'NON PAYÉ')
+        });
+
+        // Record initial payments in finances & subcollection
+        if (newStudent.payments) {
+          for (const p of newStudent.payments) {
+            if (p.amount > 0) {
+              const financeId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+              const txDate = p.date || new Date().toISOString();
+              
+              // 1. General Finance Record
+              const financeRecord = {
+                id: financeId,
+                type: 'income',
+                amount: p.amount,
+                description: `Scolarité (Inscription) - ${newStudent.matricule} - ${newStudent.firstName}`,
+                category: 'tuition',
+                date: txDate
+              };
+              await dbAdmin.collection('finances').doc(financeId).set(financeRecord);
+
+              // 2. Detailed Versement subcollection
+              await dbAdmin.collection('scolarites').doc(userRecord.uid).collection('versements').add({
+                montant: p.amount,
+                date: txDate,
+                mode_paiement: 'Espèces',
+                categorie: 'inscription',
+                recu_numero: `INS-${Date.now().toString().slice(-6)}`,
+                caissier_id: (req as any).user?.id || 'System',
+                notes: 'Enregistré via inscription rapide'
+              });
+            }
           }
         }
+      } catch (finErr) {
+        console.error("Non-blocking error during initial financial sync:", finErr);
       }
       
-      console.log(`[BOOTSTRAP] Student created: ${studentData.matricule}. Credentials would be sent via client.`);
+      console.log(`[BOOTSTRAP] Student created: ${studentData.matricule} with total paid: ${initialAmount}`);
       
       res.json(newStudent);
     } catch (err: any) {
