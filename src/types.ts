@@ -144,10 +144,14 @@ export interface DailyReport {
   contenu: string;
   presents: number;
   absents: number;
+  heure_debut?: string; // HH:mm
+  heure_fin?: string;   // HH:mm
   duree_heures: number; // For salary calculation
   observations?: string;
   devoirs?: string;
   statut: 'brouillon' | 'soumis';
+  justifie?: boolean; // For excess hours justification
+  valide_par_admin?: boolean; // If admin validates excess hours
   createdAt: string;
   updatedAt: string;
 }

@@ -16,16 +16,19 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { cn, formatCurrency } from '../utils';
-import { ClassRoom, Level, Teacher, Student } from '../types';
+import { ClassRoom, Level, Teacher, Student, DailyReport } from '../types';
 import { NotificationService } from '../services/NotificationService';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { toast } from 'sonner';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 
 export default function ClassManagement() {
   const { t } = useTranslation();
   const { fetchWithAuth } = useAuth();
   const { classes, levels, teachers, students, loading, refreshClasses, refreshTeachers, refreshLevels, refreshStudents } = useData();
+  const [reports, setReports] = useState<DailyReport[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedClass, setSelectedClass] = useState<ClassRoom | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -38,6 +41,17 @@ export default function ClassManagement() {
     refreshTeachers();
     refreshLevels();
     refreshStudents();
+
+    const fetchReports = async () => {
+      try {
+        const q = query(collection(db, 'rapports_journaliers'), where('statut', '==', 'soumis'));
+        const snap = await getDocs(q);
+        setReports(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as DailyReport)));
+      } catch (err) {
+        console.error("Error fetching reports in ClassManagement:", err);
+      }
+    };
+    fetchReports();
   }, [refreshClasses, refreshTeachers, refreshLevels, refreshStudents]);
 
   const handleAddClass = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -316,18 +330,45 @@ export default function ClassManagement() {
           const classStudents = students.filter(s => s.classId === cls.id && !s.isFormer);
 
           return (
-            <div key={cls.id} className="card p-6 hover:shadow-lg transition-shadow">
+            <div key={cls.id} className="card p-6 hover:shadow-lg transition-shadow relative overflow-hidden">
               <div className="flex justify-between items-start mb-4">
                 <div className="w-12 h-12 rounded-2xl bg-dia-red/10 text-dia-red flex items-center justify-center">
                   <Layout size={24} />
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col items-end gap-1">
                   <span className={cn(
                     "text-[10px] font-bold px-2 py-1 rounded-full uppercase",
                     cls.currentSubLevel === 1 ? "bg-blue-100 text-blue-600" : "bg-purple-100 text-purple-600"
                   )}>
                     {t('classes.sub_level')} {cls.currentSubLevel}
                   </span>
+                  
+                  {/* Quota Indicator */}
+                  {(() => {
+                    const totalHours = reports
+                      .filter(r => r.classe_id === cls.id)
+                      .reduce((acc, r) => acc + (r.duree_heures || 0), 0);
+                    const quota = level?.hours || 1;
+                    const diff = totalHours - quota;
+                    const isExcess = totalHours > quota + 10;
+                    const isInsufficient = totalHours < quota - 10;
+                    
+                    return (
+                      <div className="flex flex-col items-end mt-1">
+                        <div className="flex items-center gap-1">
+                          <Clock size={10} className="text-neutral-400" />
+                          <span className={cn(
+                            "text-[10px] font-bold",
+                            (isExcess || isInsufficient) ? "text-red-600" : "text-green-600"
+                          )}>
+                            {totalHours.toFixed(1)} / {quota}h
+                          </span>
+                        </div>
+                        {isExcess && <span className="text-[8px] font-bold text-red-500 uppercase tracking-tighter">Dépassement</span>}
+                        {isInsufficient && <span className="text-[8px] font-bold text-red-500 uppercase tracking-tighter">Insuffisant</span>}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 

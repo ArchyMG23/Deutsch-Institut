@@ -113,17 +113,20 @@ export default function EvaluationManagement() {
     }
 
     setSubmitting(true);
-    const { total, average } = calculateResults(formData.modules);
     const student = students.find(s => s.uid === formData.studentId);
-    
     const cls = classes.find(c => c.id === formData.classId);
     
+    // Modules are independent, we don't strictly need total/average but we store them for back-compat
+    const total = Object.values(formData.modules).reduce((acc: number, val: any) => acc + Number(val), 0) as number;
+    const average = total / 4;
+
     const evaluationData = {
       ...formData,
       studentName: student ? `${student.firstName} ${student.lastName}` : t('common.unknown'),
       total,
       average,
-      levelId: cls?.levelId || 'A1'
+      levelId: cls?.levelId || 'A1',
+      createdAt: new Date().toISOString()
     };
 
     try {

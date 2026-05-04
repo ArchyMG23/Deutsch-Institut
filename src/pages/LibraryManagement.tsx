@@ -92,6 +92,9 @@ export default function LibraryManagement() {
           setIsAddModalOpen(false);
           refreshLibrary();
           toast.success(t('library.item_added'));
+        } else {
+          const err = await res.json().catch(() => ({ message: t('common.error') }));
+          toast.error(err.message || t('common.error'));
         }
       }
     } catch (err) {

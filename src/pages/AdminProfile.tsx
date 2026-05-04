@@ -174,14 +174,12 @@ export default function AdminProfile() {
                       user?.email === 'yombivictor@gmail.com' || 
                       user?.email === 'gabrielyombi311@gmail.com';
 
-  const handleSystemReset = async () => {
-    if (!window.confirm("ÊTES-VOUS ABSOLUMENT SÛR ? Cela supprimera TOUTES les données de production (finances, étudiants, rapports...). Cette opération est irréversible.")) {
-      return;
-    }
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [resetCode, setResetCode] = useState('');
 
-    const confirmation = window.prompt("CONFIRMATION FINALE : Tapez 'RESET' pour confirmer la réinitialisation complète du système.");
-    if (confirmation !== 'RESET') {
-      toast.error("Réinitialisation annulée.");
+  const handleSystemReset = async () => {
+    if (resetCode !== 'RESET') {
+      toast.error("Veuillez taper 'RESET' pour confirmer.");
       return;
     }
 
@@ -192,21 +190,27 @@ export default function AdminProfile() {
       });
 
       if (res.ok) {
-        toast.success("Système réinitialisé avec succès ! Redémarrage...");
+        toast.success("Système réinitialisé avec succès ! Déconnexion...");
         setTimeout(() => {
-          window.location.href = '/';
+          logout();
         }, 2000);
+      } else {
+        const err = await res.json();
+        toast.error(err.message || "Erreur de réinitialisation");
       }
     } catch (err) {
       console.error("Error resetting system:", err);
       toast.error("Erreur lors de la réinitialisation");
     } finally {
       setLoading(false);
+      setIsResetModalOpen(false);
     }
   };
 
+  if (!user) return null;
+
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div className="max-w-4xl mx-auto space-y-8 pb-20">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-2xl font-bold">{t('sidebar.profile')}</h3>
@@ -491,12 +495,46 @@ export default function AdminProfile() {
                     <p className="text-xs text-neutral-500 mt-0.5">Efface toutes les données (Finances, Classes, Rapports) mais garde les comptes administrateurs.</p>
                   </div>
                   <button 
-                    onClick={handleSystemReset}
+                    onClick={() => setIsResetModalOpen(true)}
                     disabled={loading}
                     className="px-6 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-all shadow-lg shadow-red-600/20 flex items-center gap-2"
                   >
                     <RotateCcw size={18} className={loading ? "animate-spin" : ""} />
                     Réinitialiser le Système
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isResetModalOpen && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+              <div className="bg-white dark:bg-neutral-900 w-full max-w-md rounded-[32px] p-8 shadow-2xl space-y-6">
+                <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+                  <AlertTriangle size={32} />
+                </div>
+                <div className="text-center space-y-2">
+                  <h3 className="text-xl font-bold">Action Irréversible</h3>
+                  <p className="text-sm text-neutral-500">
+                    Cela supprimera TOUTES les données (Etudiants, Finances, Classes, Rapports).
+                    Veuillez taper <span className="font-black text-red-600">RESET</span> pour confirmer.
+                  </p>
+                </div>
+                <input 
+                  type="text"
+                  value={resetCode}
+                  onChange={(e) => setResetCode(e.target.value.toUpperCase())}
+                  placeholder="Tapez RESET ici"
+                  className="w-full px-5 py-3 bg-neutral-100 dark:bg-neutral-800 border-2 border-neutral-200 dark:border-neutral-700 rounded-2xl text-center font-black tracking-widest outline-none focus:border-red-600 transition-all"
+                />
+                <div className="flex gap-4">
+                  <button onClick={() => setIsResetModalOpen(false)} className="flex-1 py-3 bg-neutral-100 dark:bg-neutral-800 rounded-xl font-bold">Annuler</button>
+                  <button 
+                    onClick={handleSystemReset}
+                    disabled={resetCode !== 'RESET' || loading}
+                    className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Confirmer
                   </button>
                 </div>
               </div>

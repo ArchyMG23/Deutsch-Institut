@@ -361,29 +361,15 @@ export default function AdminManagement() {
       </div>
 
       {isSuperAdmin && (
-        <div className="mt-12 p-8 border-2 border-red-500/20 bg-red-50 dark:bg-red-950/10 rounded-[32px] space-y-6">
+        <div className="mt-12 p-8 border-2 border-orange-500/20 bg-orange-50 dark:bg-orange-950/10 rounded-[32px] space-y-4">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-red-500 text-white flex items-center justify-center">
-              <AlertTriangle size={24} />
+            <div className="w-10 h-10 rounded-xl bg-orange-500 text-white flex items-center justify-center">
+              <ShieldAlert size={20} />
             </div>
             <div>
-              <h4 className="text-xl font-black text-red-600 uppercase tracking-tight">{t('admins.danger_zone')}</h4>
-              <p className="text-sm text-red-500 font-medium">{t('admins.danger_zone_desc')}</p>
+              <h4 className="text-lg font-bold text-orange-700">{t('admins.admin_info')}</h4>
+              <p className="text-xs text-orange-600">{t('admins.super_admin_notice') || 'Vous avez des privilèges de Super Admin.'}</p>
             </div>
-          </div>
-          
-          <div className="p-6 bg-white dark:bg-neutral-900/50 rounded-2xl border border-red-200 dark:border-red-900/30">
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-6 leading-relaxed">
-              {t('admins.reset_warning')}
-            </p>
-            
-            <button 
-              onClick={handleResetSystem}
-              className="flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-red-600/20 active:scale-95"
-            >
-              <RotateCcw size={18} />
-              <span>{t('admins.reset_btn')}</span>
-            </button>
           </div>
         </div>
       )}

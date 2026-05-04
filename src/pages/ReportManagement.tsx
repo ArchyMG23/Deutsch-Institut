@@ -247,7 +247,7 @@ const ReportManagement: React.FC = () => {
                       >
                         <Printer size={16} />
                       </button>
-                      {!isAdmin && report.statut === 'brouillon' && (
+                      {(isAdmin || report.statut === 'brouillon') && (
                         <button 
                           onClick={() => { setSelectedReport(report); setIsModalOpen(true); }}
                           className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors text-dia-red"
@@ -302,10 +302,38 @@ const ReportModal: React.FC<{
     presents: report?.presents || 0,
     absents: report?.absents || 0,
     duree_heures: report?.duree_heures || 0,
+    heure_debut: report?.heure_debut || '08:00',
+    heure_fin: report?.heure_fin || '12:00',
     observations: report?.observations || '',
     devoirs: report?.devoirs || '',
-    statut: report?.statut || 'brouillon'
+    statut: report?.statut || 'brouillon',
+    justifie: report?.justifie || false,
+    valide_par_admin: report?.valide_par_admin || false
   });
+
+  const selectedClass = classes.find(c => c.id === formData.classe_id);
+  const totalStudentsInClass = selectedClass?.studentIds.length || 0;
+
+  useEffect(() => {
+    // If presents is changed, auto-calculate absents
+    const abs = Math.max(0, totalStudentsInClass - formData.presents);
+    if (abs !== formData.absents) {
+      setFormData(prev => ({ ...prev, absents: abs }));
+    }
+  }, [formData.presents, totalStudentsInClass]);
+
+  useEffect(() => {
+    if (formData.heure_debut && formData.heure_fin) {
+      const [h1, m1] = formData.heure_debut.split(':').map(Number);
+      const [h2, m2] = formData.heure_fin.split(':').map(Number);
+      const min1 = h1 * 60 + m1;
+      const min2 = h2 * 60 + m2;
+      const diff = min2 - min1;
+      if (diff > 0) {
+        setFormData(prev => ({ ...prev, duree_heures: parseFloat((diff / 60).toFixed(2)) }));
+      }
+    }
+  }, [formData.heure_debut, formData.heure_fin]);
 
   const handleSubmit = async (statut: 'brouillon' | 'soumis') => {
     if (!formData.classe_id || !formData.date || !formData.contenu || !formData.duree_heures) {
@@ -406,35 +434,59 @@ const ReportModal: React.FC<{
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Nombre de présents</label>
+              <label className="block text-sm font-medium mb-1">Heure de début *</label>
               <input 
-                type="number"
-                value={formData.presents}
-                onChange={(e) => setFormData({...formData, presents: parseInt(e.target.value) || 0})}
+                type="time"
+                value={formData.heure_debut}
+                onChange={(e) => setFormData({...formData, heure_debut: e.target.value})}
                 className="w-full p-2 border border-neutral-200 dark:border-neutral-800 rounded-lg bg-transparent"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Nombre d'absents</label>
+              <label className="block text-sm font-medium mb-1">Heure de fin *</label>
+              <input 
+                type="time"
+                value={formData.heure_fin}
+                onChange={(e) => setFormData({...formData, heure_fin: e.target.value})}
+                className="w-full p-2 border border-neutral-200 dark:border-neutral-800 rounded-lg bg-transparent"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Présents {formData.classe_id && `(sur ${totalStudentsInClass})`}
+              </label>
               <input 
                 type="number"
-                value={formData.absents}
-                onChange={(e) => setFormData({...formData, absents: parseInt(e.target.value) || 0})}
+                max={totalStudentsInClass}
+                value={formData.presents}
+                onChange={(e) => setFormData({...formData, presents: Math.min(totalStudentsInClass, parseInt(e.target.value) || 0)})}
                 className="w-full p-2 border border-neutral-200 dark:border-neutral-800 rounded-lg bg-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Absents</label>
+              <input 
+                type="number"
+                readOnly
+                value={formData.absents}
+                className="w-full p-2 border border-neutral-200 dark:border-neutral-800 rounded-lg bg-neutral-50 dark:bg-neutral-800/50 cursor-not-allowed"
               />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1 inline-flex items-center gap-1">
-                Durée (H) * <span className="text-[10px] text-dia-red">(Salaires)</span>
+                Durée (H) *
               </label>
               <input 
                 type="number"
-                step="0.5"
+                step="0.01"
+                readOnly
                 value={formData.duree_heures}
-                onChange={(e) => setFormData({...formData, duree_heures: parseFloat(e.target.value) || 0})}
-                className="w-full p-2 border border-dia-red/30 dark:border-dia-red/20 rounded-lg bg-transparent font-bold"
+                className="w-full p-2 border border-neutral-100 dark:border-neutral-800 rounded-lg bg-neutral-50 dark:bg-neutral-800/50 font-bold cursor-not-allowed"
               />
             </div>
           </div>
@@ -457,6 +509,36 @@ const ReportModal: React.FC<{
               rows={2}
               className="w-full p-2 border border-neutral-200 dark:border-neutral-800 rounded-lg bg-transparent"
             />
+          </div>
+
+          <div className="p-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-100 dark:border-orange-900/30 rounded-xl space-y-3">
+            <div className="flex items-center gap-2">
+              <input 
+                type="checkbox"
+                id="justifie"
+                checked={formData.justifie}
+                onChange={(e) => setFormData({...formData, justifie: e.target.checked})}
+                className="w-4 h-4 text-dia-red rounded focus:ring-dia-red"
+              />
+              <label htmlFor="justifie" className="text-sm font-bold text-orange-800 dark:text-orange-300">
+                Cette séance est un dépassement de quota (doit être justifiée)
+              </label>
+            </div>
+            
+            {(user.role === 'admin' || user.isSuperAdmin) && (
+              <div className="flex items-center gap-2 pt-2 border-t border-orange-200 dark:border-orange-900/50">
+                <input 
+                  type="checkbox"
+                  id="valide_par_admin"
+                  checked={formData.valide_par_admin}
+                  onChange={(e) => setFormData({...formData, valide_par_admin: e.target.checked})}
+                  className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                />
+                <label htmlFor="valide_par_admin" className="text-sm font-bold text-green-700 dark:text-green-400">
+                  Valider le paiement pour ce dépassement (Admin uniquement)
+                </label>
+              </div>
+            )}
           </div>
         </div>
 
