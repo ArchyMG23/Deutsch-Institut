@@ -81,7 +81,7 @@ export default function EvaluationManagement() {
 
   const calculateResults = (modules: any) => {
     const total = Object.values(modules).reduce((a: any, b: any) => Number(a) + Number(b), 0) as number;
-    const average = (total / 100) * 100; // Since total is out of 100
+    const average = total / 4; // Each module is out of 100, total is out of 400, average is out of 100
     return { total, average };
   };
 
@@ -148,7 +148,7 @@ export default function EvaluationManagement() {
     const doc = new jsPDF();
     const student = students.find(s => s.uid === evaluation.studentId);
     const level = levels.find(l => l.id === evaluation.levelId);
-    const grade = getGoetheGrade(evaluation.total);
+    const grade = getGoetheGrade(evaluation.average || evaluation.total); // Prefer average which is out of 100
     const cls = classes.find(c => c.id === evaluation.classId);
 
     // Header
@@ -175,23 +175,21 @@ export default function EvaluationManagement() {
     // Table
     autoTable(doc, {
       startY: 85,
-      head: [['Module', 'Points Max', 'Points Obtenus']],
+      head: [['Module', 'Points Max', 'Points Obtenus', 'Résultat']],
       body: [
-        ['Lesen (Lecture)', '25', evaluation.modules.lesen.toString()],
-        ['Hören (Écoute)', '25', evaluation.modules.horen.toString()],
-        ['Schreiben (Écriture)', '25', evaluation.modules.schreiben.toString()],
-        ['Sprechen (Oral)', '25', evaluation.modules.sprechen.toString()],
+        ['Lesen (Lecture)', '100', evaluation.modules.lesen.toString(), evaluation.modules.lesen >= 60 ? 'Bestanden' : 'Nicht Bestanden'],
+        ['Hören (Écoute)', '100', evaluation.modules.horen.toString(), evaluation.modules.horen >= 60 ? 'Bestanden' : 'Nicht Bestanden'],
+        ['Schreiben (Écriture)', '100', evaluation.modules.schreiben.toString(), evaluation.modules.schreiben >= 60 ? 'Bestanden' : 'Nicht Bestanden'],
+        ['Sprechen (Oral)', '100', evaluation.modules.sprechen.toString(), evaluation.modules.sprechen >= 60 ? 'Bestanden' : 'Nicht Bestanden'],
       ],
       theme: 'grid',
       headStyles: { fillColor: [227, 30, 36] }
     });
 
-    // Total
+    // Independence: No total score or average
     const finalY = (doc as any).lastAutoTable.finalY + 10;
     doc.setFont('helvetica', 'bold');
-    doc.text(`Score Total: ${evaluation.total} / 100`, 20, finalY);
-    doc.text(`Résultat: ${grade.label}`, 20, finalY + 7);
-    doc.text(`Décision: ${evaluation.total >= 60 ? 'RÉUSSI (Bestanden)' : 'ÉCHEC (Nicht Bestanden)'}`, 20, finalY + 14);
+    doc.text('Modules Indépendants - Résultats par section', 20, finalY);
 
     if (evaluation.comments) {
       doc.setFont('helvetica', 'normal');
@@ -246,8 +244,7 @@ export default function EvaluationManagement() {
               
               toast.info(`📤 Envoi des résultats WhatsApp pour ${classEvals.length} étudiants...`);
               for (const ev of classEvals) {
-                const grade = getGoetheGrade(ev.total);
-                const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n📊 *RELEVÉ DE NOTES*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\nFélicitations ! Les résultats de l'évaluation sont disponibles.\n\n👤 *Étudiant* : ${ev.studentName}\n📝 *Module* : ${ev.moduleName || 'Examen'}\n\n⭐ *SCORE FINAL* : *${ev.total}/100*\n🏆 *Mention* : ${grade.label}\n\nContinuez vos efforts ! 💪\n━━━━━━━━━━━━━━━━━━━━━━━`;
+                const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n📊 *RÉSULTATS D'ÉVALUATION*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\nBonjour, les résultats par module pour l'évaluation sont disponibles.\n\n👤 *Étudiant* : ${ev.studentName}\n\n📚 *SCORES PAR MODULE* :\n📖 Lesen : *${ev.modules.lesen}/100*\n🎧 Hören : *${ev.modules.horen}/100*\n✍️ Schreiben : *${ev.modules.schreiben}/100*\n🗣️ Sprechen : *${ev.modules.sprechen}/100*\n\nChaque module est indépendant. Félicitations pour vos efforts ! 💪\n━━━━━━━━━━━━━━━━━━━━━━━`;
                 const student = students.find(s => s.uid === ev.studentId);
                 const a = document.createElement('a');
                 a.href = generateWhatsAppLink(student?.parentPhone || student?.phone || '', msg);
@@ -300,20 +297,17 @@ export default function EvaluationManagement() {
               <tr className="bg-neutral-50 dark:bg-neutral-800/50 border-b border-neutral-200 dark:border-neutral-800">
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">{t('common.student')}</th>
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">Type / Date</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">Modules (L/H/Sch/Spr)</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">{t('evaluations.total_score')}</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">{t('evaluations.result')}</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">Scores des Modules (L / H / Sch / Spr)</th>
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 text-right">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
               {filteredEvaluations.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center text-neutral-500">{t('common.no_results')}</td>
+                  <td colSpan={4} className="px-6 py-10 text-center text-neutral-500">{t('common.no_results')}</td>
                 </tr>
               ) : (
                 filteredEvaluations.map((ev) => {
-                  const grade = getGoetheGrade(ev.total);
                   return (
                     <tr key={ev.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
                       <td className="px-6 py-4">
@@ -333,24 +327,29 @@ export default function EvaluationManagement() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex gap-2">
-                          <span className="px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 text-[10px] rounded font-bold">{ev.modules.lesen}</span>
-                          <span className="px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 text-[10px] rounded font-bold">{ev.modules.horen}</span>
-                          <span className="px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 text-[10px] rounded font-bold">{ev.modules.schreiben}</span>
-                          <span className="px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 text-[10px] rounded font-bold">{ev.modules.sprechen}</span>
+                          <div className="flex flex-col items-center">
+                            <span className={cn("px-2 py-1 text-[11px] rounded font-bold shadow-sm", ev.modules.lesen >= 60 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700")}>{ev.modules.lesen}</span>
+                            <span className="text-[8px] text-neutral-400 mt-1">L</span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <span className={cn("px-2 py-1 text-[11px] rounded font-bold shadow-sm", ev.modules.horen >= 60 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700")}>{ev.modules.horen}</span>
+                            <span className="text-[8px] text-neutral-400 mt-1">H</span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <span className={cn("px-2 py-1 text-[11px] rounded font-bold shadow-sm", ev.modules.schreiben >= 60 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700")}>{ev.modules.schreiben}</span>
+                            <span className="text-[8px] text-neutral-400 mt-1">Sch</span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <span className={cn("px-2 py-1 text-[11px] rounded font-bold shadow-sm", ev.modules.sprechen >= 60 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700")}>{ev.modules.sprechen}</span>
+                            <span className="text-[8px] text-neutral-400 mt-1">Spr</span>
+                          </div>
                         </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-sm font-bold text-dia-red">{ev.total}/100</span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={cn("text-xs font-bold", grade.color)}>{grade.label}</span>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button 
                             onClick={() => {
-                              const grade = getGoetheGrade(ev.total);
-                              const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n📊 *RELEVÉ DE NOTES*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\nFélicitations ! Les résultats de l'évaluation sont disponibles.\n\n👤 *Étudiant* : ${ev.studentName}\n📝 *Module* : ${ev.moduleName || 'Examen'}\n\n⭐ *SCORE FINAL* : *${ev.total}/100*\n🏆 *Mention* : ${grade.label}\n\nContinuez vos efforts ! 💪\n━━━━━━━━━━━━━━━━━━━━━━━`;
+                              const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n📊 *RÉSULTATS D'ÉVALUATION*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\nBonjour, les résultats par module pour l'évaluation sont disponibles.\n\n👤 *Étudiant* : ${ev.studentName}\n\n📚 *SCORES PAR MODULE* :\n📖 Lesen : *${ev.modules.lesen}/100*\n🎧 Hören : *${ev.modules.horen}/100*\n✍️ Schreiben : *${ev.modules.schreiben}/100*\n🗣️ Sprechen : *${ev.modules.sprechen}/100*\n\nChaque module est indépendant. Félicitations pour vos efforts ! 💪\n━━━━━━━━━━━━━━━━━━━━━━━`;
                               const student = students.find(s => s.uid === ev.studentId);
                               const a = document.createElement('a');
                               a.href = generateWhatsAppLink(student?.parentPhone || student?.phone || '', msg);
@@ -449,7 +448,7 @@ export default function EvaluationManagement() {
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold ml-1">LESEN</label>
                     <input 
-                      type="number" min="0" max="25" 
+                      type="number" min="0" max="100" 
                       value={formData.modules.lesen}
                       onChange={(e) => setFormData({...formData, modules: {...formData.modules, lesen: Number(e.target.value)}})}
                       className="w-full px-4 py-2 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-xl outline-none" />
@@ -457,7 +456,7 @@ export default function EvaluationManagement() {
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold ml-1">HÖREN</label>
                     <input 
-                      type="number" min="0" max="25" 
+                      type="number" min="0" max="100" 
                       value={formData.modules.horen}
                       onChange={(e) => setFormData({...formData, modules: {...formData.modules, horen: Number(e.target.value)}})}
                       className="w-full px-4 py-2 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-xl outline-none" />
@@ -465,7 +464,7 @@ export default function EvaluationManagement() {
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold ml-1">SCHREIBEN</label>
                     <input 
-                      type="number" min="0" max="25" 
+                      type="number" min="0" max="100" 
                       value={formData.modules.schreiben}
                       onChange={(e) => setFormData({...formData, modules: {...formData.modules, schreiben: Number(e.target.value)}})}
                       className="w-full px-4 py-2 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-xl outline-none" />
@@ -473,7 +472,7 @@ export default function EvaluationManagement() {
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold ml-1">SPRECHEN</label>
                     <input 
-                      type="number" min="0" max="25" 
+                      type="number" min="0" max="100" 
                       value={formData.modules.sprechen}
                       onChange={(e) => setFormData({...formData, modules: {...formData.modules, sprechen: Number(e.target.value)}})}
                       className="w-full px-4 py-2 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-xl outline-none" />
