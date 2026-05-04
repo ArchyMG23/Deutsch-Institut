@@ -33,7 +33,7 @@ export default function EvaluationManagement() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
-  const [selectedClass, setSelectedClass] = useState<ClassRoom | null>(null);
+  const [selectedClassId, setSelectedClassId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   
   const [formData, setFormData] = useState({
@@ -63,15 +63,35 @@ export default function EvaluationManagement() {
     ev.studentId.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const resetForm = () => {
+    setFormData({
+      studentId: '',
+      classId: '',
+      type: 'sub-level',
+      date: new Date().toISOString().split('T')[0],
+      modules: {
+        lesen: 0,
+        horen: 0,
+        schreiben: 0,
+        sprechen: 0
+      },
+      comments: '',
+      status: 'draft'
+    });
+    setSelectedStudent(null);
+  };
+
   const handleLevelChange = (classId: string) => {
-    const cls = classes.find(c => c.id === classId);
-    if (cls) {
-      setSelectedClass(cls);
-      setFormData(prev => ({ ...prev, classId }));
-    }
+    setFormData(prev => ({ ...prev, classId, studentId: '' }));
+    setSelectedStudent(null);
   };
 
   const handleStudentSelect = (studentId: string) => {
+    if (!studentId) {
+      setSelectedStudent(null);
+      setFormData(prev => ({ ...prev, studentId: '' }));
+      return;
+    }
     const student = students.find(s => s.uid === studentId);
     if (student) {
       setSelectedStudent(student);
@@ -81,7 +101,7 @@ export default function EvaluationManagement() {
 
   const calculateResults = (modules: any) => {
     const total = Object.values(modules).reduce((a: any, b: any) => Number(a) + Number(b), 0) as number;
-    const average = total / 4; // Each module is out of 100, total is out of 400, average is out of 100
+    const average = total / 4; 
     return { total, average };
   };
 
@@ -96,12 +116,14 @@ export default function EvaluationManagement() {
     const { total, average } = calculateResults(formData.modules);
     const student = students.find(s => s.uid === formData.studentId);
     
+    const cls = classes.find(c => c.id === formData.classId);
+    
     const evaluationData = {
       ...formData,
       studentName: student ? `${student.firstName} ${student.lastName}` : t('common.unknown'),
       total,
       average,
-      levelId: selectedClass?.levelId || 'A1'
+      levelId: cls?.levelId || 'A1'
     };
 
     try {
@@ -114,9 +136,14 @@ export default function EvaluationManagement() {
       if (res.ok) {
         toast.success(t('evaluations.saved'));
         setIsAddModalOpen(false);
+        resetForm();
         refreshEvaluations();
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        toast.error(errorData.message || t('common.error'));
       }
     } catch (err) {
+      console.error('Error saving evaluation:', err);
       toast.error(t('common.error'));
     } finally {
       setSubmitting(false);
@@ -215,7 +242,7 @@ export default function EvaluationManagement() {
           <p className="text-neutral-500">{t('evaluations.subtitle')}</p>
         </div>
         <button 
-          onClick={() => setIsAddModalOpen(true)}
+          onClick={() => { resetForm(); setIsAddModalOpen(true); }}
           className="btn-primary flex items-center justify-center gap-2"
         >
           <Plus size={20} />
@@ -230,7 +257,8 @@ export default function EvaluationManagement() {
             <label className="text-[10px] font-bold uppercase text-neutral-400 ml-1">{t('evaluations.select_class')}</label>
             <select 
               className="px-4 py-2 bg-white dark:bg-neutral-800 border-none rounded-xl text-sm font-bold shadow-sm focus:ring-2 focus:ring-dia-red outline-none"
-              onChange={(e) => setSelectedClass(classes.find(c => c.id === e.target.value) || null)}
+              value={selectedClassId}
+              onChange={(e) => setSelectedClassId(e.target.value)}
             >
               <option value="">{t('evaluations.all_classes')}</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -238,8 +266,8 @@ export default function EvaluationManagement() {
           </div>
           <button 
             onClick={async () => {
-              if (!selectedClass) return toast.error(t('evaluations.error_select_class'));
-              const classEvals = evaluations.filter(e => e.classId === selectedClass.id);
+              if (!selectedClassId) return toast.error(t('evaluations.error_select_class'));
+              const classEvals = evaluations.filter(e => e.classId === selectedClassId);
               if (classEvals.length === 0) return toast.error(t('evaluations.no_evaluations'));
               
               toast.info(`📤 Envoi des résultats WhatsApp pour ${classEvals.length} étudiants...`);
@@ -262,8 +290,8 @@ export default function EvaluationManagement() {
           </button>
           <button 
             onClick={() => {
-              if (!selectedClass) return toast.error(t('evaluations.error_select_class'));
-              const classEvals = evaluations.filter(e => e.classId === selectedClass.id);
+              if (!selectedClassId) return toast.error(t('evaluations.error_select_class'));
+              const classEvals = evaluations.filter(e => e.classId === selectedClassId);
               if (classEvals.length === 0) return toast.error(t('evaluations.no_evaluations'));
               
               classEvals.forEach(ev => generatePDF(ev));
@@ -396,6 +424,7 @@ export default function EvaluationManagement() {
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.class')} / {t('common.level')}</label>
                   <select 
                     required
+                    value={formData.classId}
                     onChange={(e) => handleLevelChange(e.target.value)}
                     className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 outline-none"
                   >
@@ -407,13 +436,14 @@ export default function EvaluationManagement() {
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('common.student')}</label>
                   <select 
                     required
+                    value={formData.studentId}
                     onChange={(e) => handleStudentSelect(e.target.value)}
                     className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 outline-none"
                   >
                     <option value="">{t('evaluations.select_student_opt')}</option>
-                    {selectedClass ? (
+                    {formData.classId ? (
                       students
-                        .filter(s => s.classId === selectedClass.id)
+                        .filter(s => s.classId === formData.classId)
                         .map(s => <option key={s.uid} value={s.uid}>{s.firstName} {s.lastName}</option>)
                     ) : (
                       <option disabled>{t('evaluations.select_class_first')}</option>

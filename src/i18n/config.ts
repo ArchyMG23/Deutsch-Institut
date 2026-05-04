@@ -477,7 +477,7 @@ i18n
             eval_type: "Type d'évaluation",
             sub_level_opt: "Test Sous-Niveau",
             end_level_opt: "Test Fin de Niveau",
-            modules_header: "Modules (Note / 20)",
+            modules_header: "Modules (Note / 100)",
             comments_label: "Observations / Commentaires",
             comments_placeholder: "Ex: Bon travail, à encourager...",
             validate_eval: "Valider l'évaluation"
@@ -987,7 +987,7 @@ i18n
             eval_type: "Bewertungsart",
             sub_level_opt: "Unterstufentest",
             end_level_opt: "Stufenabschlusstest",
-            modules_header: "Module (Note / 20)",
+            modules_header: "Module (Note / 100)",
             comments_label: "Beobachtungen / Kommentare",
             comments_placeholder: "Z.B.: Gute Arbeit, weiter so...",
             validate_eval: "Bewertung bestätigen"
@@ -1553,7 +1553,7 @@ i18n
             eval_type: "Evaluation Type",
             sub_level_opt: "Sub-Level Test",
             end_level_opt: "End-Level Test",
-            modules_header: "Modules (Grade / 20)",
+            modules_header: "Modules (Grade / 100)",
             comments_label: "Observations / Comments",
             comments_placeholder: "E.g.: Good work, keep it up...",
             validate_eval: "Validate evaluation"
