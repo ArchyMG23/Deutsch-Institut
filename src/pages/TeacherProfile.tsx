@@ -217,6 +217,23 @@ export default function TeacherProfile() {
                   {teacher.totalHoursWorked || 0}h
                 </p>
               </div>
+              {teacher.minStudentsCondition > 0 && (
+                <div className="p-4 rounded-2xl bg-orange-50 dark:bg-orange-950/20 border border-orange-100 dark:border-orange-900/30 space-y-1">
+                  <p className="text-[10px] font-bold uppercase text-orange-600 dark:text-orange-400">{t('teachers.min_students_condition')}</p>
+                  <p className="text-xl font-bold flex items-center gap-2 text-orange-700 dark:text-orange-300">
+                    <User size={18} />
+                    {teacher.minStudentsCondition} min.
+                  </p>
+                </div>
+              )}
+              {teacher.specialConditions && (
+                <div className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30 space-y-1">
+                  <p className="text-[10px] font-bold uppercase text-blue-600 dark:text-blue-400">{t('teachers.special_conditions')}</p>
+                  <p className="text-sm font-medium text-blue-700 dark:text-blue-300 whitespace-pre-wrap italic">
+                    "{teacher.specialConditions}"
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

@@ -315,6 +315,10 @@ i18n
             no_class: "Aucune classe",
             temporary_password: "Mot de passe temporaire",
             password_hint: "L'enseignant pourra le modifier par la suite.",
+            min_students_condition: "Condition Élèves (Min)",
+            min_students_hint: "Nombre min. d'élèves par classe requis",
+            special_conditions: "Conditions Spéciales / Notes",
+            special_conditions_placeholder: "Ex: Bonus de transport, condition particulière de rémunération...",
             not_assigned: "Non assigné",
             teacher_label: "Enseignant"
           },
@@ -823,6 +827,10 @@ i18n
             no_class: "Keine Klasse",
             temporary_password: "Temporäres Passwort",
             password_hint: "Der Lehrer kann dies später ändern.",
+            min_students_condition: "Schülerbedingung (Min)",
+            min_students_hint: "Mindestanzahl an Schülern pro Klasse",
+            special_conditions: "Besondere Bedingungen / Notizen",
+            special_conditions_placeholder: "Z.B. Transportbonus, besondere Vergütungsbedingungen...",
             not_assigned: "Nicht zugewiesen",
             teacher_label: "Lehrer"
           },
@@ -1386,6 +1394,10 @@ i18n
             no_class: "No class",
             temporary_password: "Temporary password",
             password_hint: "The teacher will be able to change it later.",
+            min_students_condition: "Student Condition (Min)",
+            min_students_hint: "Min. students per class required",
+            special_conditions: "Special Conditions / Notes",
+            special_conditions_placeholder: "E.g., transport bonus, special payment terms...",
             not_assigned: "Not assigned",
             teacher_label: "Teacher"
           },

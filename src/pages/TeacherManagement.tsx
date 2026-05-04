@@ -15,7 +15,9 @@ import {
   SortAsc,
   Laptop,
   Smartphone,
-  Camera
+  Camera,
+  AlertCircle,
+  User
 } from 'lucide-react';
 import { cn, formatCurrency, generateMatricule } from '../utils';
 import { Teacher, ClassRoom } from '../types';
@@ -60,6 +62,8 @@ export default function TeacherManagement() {
       phone: formData.get('phone'),
       cni: formData.get('cni'),
       hourlyRate: parseInt(formData.get('hourlyRate') as string),
+      minStudentsCondition: parseInt(formData.get('minStudentsCondition') as string) || 0,
+      specialConditions: formData.get('specialConditions') as string || '',
       role: 'teacher',
       status: 'offline',
       totalHoursWorked: 0,
@@ -114,6 +118,8 @@ export default function TeacherManagement() {
       phone: formData.get('phone'),
       cni: formData.get('cni'),
       hourlyRate: parseInt(formData.get('hourlyRate') as string),
+      minStudentsCondition: parseInt(formData.get('minStudentsCondition') as string) || 0,
+      specialConditions: formData.get('specialConditions') as string || '',
     };
 
     const classId = formData.get('classId') as string;
@@ -284,7 +290,21 @@ export default function TeacherManagement() {
             </div>
             
             <div className="space-y-1 mb-4">
-              <h4 className="font-bold text-lg">{teacher.firstName} {teacher.lastName}</h4>
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-lg">{teacher.firstName} {teacher.lastName}</h4>
+                <div className="flex gap-1">
+                  {teacher.minStudentsCondition > 0 && (
+                    <span className="p-1 bg-orange-100 text-orange-600 rounded-md" title={`${t('teachers.min_students_condition')}: ${teacher.minStudentsCondition}`}>
+                      <User size={12} />
+                    </span>
+                  )}
+                  {teacher.specialConditions && (
+                    <span className="p-1 bg-blue-100 text-blue-600 rounded-md" title={teacher.specialConditions}>
+                      <AlertCircle size={12} />
+                    </span>
+                  )}
+                </div>
+              </div>
               <p className="text-xs font-mono text-neutral-500">{teacher.matricule}</p>
               {teacher.status === 'online' && (
                 <p className="text-[10px] font-bold text-green-600 flex items-center gap-1 mt-2">
@@ -359,6 +379,15 @@ export default function TeacherManagement() {
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('teachers.hourly_rate')} (FCFA)</label>
                   <input name="hourlyRate" required type="number" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('teachers.min_students_condition')}</label>
+                  <input name="minStudentsCondition" type="number" placeholder="Ex: 5" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                  <p className="text-[10px] text-neutral-500 mt-1">{t('teachers.min_students_hint')}</p>
+                </div>
+                <div className="col-span-1 md:col-span-2 space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('teachers.special_conditions')}</label>
+                  <textarea name="specialConditions" rows={3} placeholder={t('teachers.special_conditions_placeholder')} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all resize-none"></textarea>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('teachers.assign_to_class')}</label>
@@ -477,6 +506,14 @@ export default function TeacherManagement() {
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('teachers.hourly_rate')} (FCFA)</label>
                   <input name="hourlyRate" defaultValue={selectedTeacher.hourlyRate} required type="number" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('teachers.min_students_condition')}</label>
+                  <input name="minStudentsCondition" defaultValue={selectedTeacher.minStudentsCondition} type="number" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
+                </div>
+                <div className="col-span-1 md:col-span-2 space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('teachers.special_conditions')}</label>
+                  <textarea name="specialConditions" defaultValue={selectedTeacher.specialConditions} rows={3} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all resize-none"></textarea>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('teachers.assign_to_class')}</label>

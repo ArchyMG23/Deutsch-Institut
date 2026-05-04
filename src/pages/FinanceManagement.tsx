@@ -98,7 +98,12 @@ const TransactionTable = React.memo(({
                     {record.type === 'income' ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-neutral-700 dark:text-neutral-300 group-hover:text-dia-red transition-colors">{record.description || t('common.no_description')}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-bold text-neutral-700 dark:text-neutral-300 group-hover:text-dia-red transition-colors">{record.description || t('common.no_description')}</p>
+                      {record.status === 'archived' && (
+                        <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-neutral-200 dark:bg-neutral-800 text-neutral-500 rounded-md">Archive</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </td>
@@ -215,7 +220,13 @@ export default function FinanceManagement() {
     const formData = new FormData(e.currentTarget);
     const amountAttr = parseInt(formData.get('amount') as string);
     const descAttr = formData.get('description') as string;
+    const selectedDateStr = formData.get('date') as string;
+    const selectedDate = selectedDateStr ? new Date(selectedDateStr) : new Date();
     
+    // Auto-archival logic: if year is less than current year
+    const currentYear = new Date().getFullYear();
+    const isArchived = selectedDate.getFullYear() < currentYear;
+
     const newRecord = {
       type: formType,
       amount: amountAttr,
@@ -223,7 +234,8 @@ export default function FinanceManagement() {
         ? `Scolarité - ${verifiedStudent.firstName} ${verifiedStudent.lastName} (${verifiedStudent.matricule})`
         : descAttr,
       category: formCategory,
-      date: new Date().toISOString()
+      date: selectedDate.toISOString(),
+      status: isArchived ? 'archived' : 'active'
     };
 
     try {
@@ -419,7 +431,10 @@ export default function FinanceManagement() {
           <div className="flex items-center gap-2">
             <Calendar size={18} className="text-neutral-400" />
             <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="bg-transparent font-bold outline-none">
-              {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+              {Array.from({ length: 5 }).map((_, i) => {
+                const year = new Date().getFullYear() - 2 + i;
+                return <option key={year} value={year}>{year}</option>;
+              })}
             </select>
             <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="bg-transparent font-bold outline-none">
               <option value="all">Tous les mois</option>
@@ -549,6 +564,11 @@ export default function FinanceManagement() {
                   )}
                 </div>
               )}
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase text-neutral-400">Date de la transaction</label>
+                <input name="date" type="date" defaultValue={new Date().toISOString().split('T')[0]} className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl" />
+              </div>
 
               <div className="space-y-2">
                 <label className="text-xs font-bold uppercase text-neutral-400">Montant (FCFA)</label>

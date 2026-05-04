@@ -83,18 +83,21 @@ export default function RealFinanceDashboard() {
         handleFirestoreError(error, OperationType.GET, pathReports);
       }
 
-      const pathTeachers = 'users (teachers)';
+      const pathTeachers = 'teachers';
       let teachersSnap;
       try {
-        teachersSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'teacher')));
+        teachersSnap = await getDocs(collection(db, 'teachers'));
       } catch (error) {
         handleFirestoreError(error, OperationType.GET, pathTeachers);
       }
       
-      const teacherRates: Record<string, number> = {};
+      const teacherSettings: Record<string, { hourlyRate: number, minStudents?: number }> = {};
       teachersSnap.forEach(doc => {
         const t = doc.data();
-        teacherRates[doc.id] = t.hourlyRate || 3000; // Default rate if none set
+        teacherSettings[doc.id] = {
+          hourlyRate: t.hourlyRate || 3000,
+          minStudents: t.minStudentsCondition
+        };
       });
 
       let totalSalaires = 0;
@@ -104,8 +107,16 @@ export default function RealFinanceDashboard() {
         const r = doc.data() as DailyReport;
         const date = new Date(r.date);
         if (date.getFullYear() === selectedYear) {
-          const rate = teacherRates[r.enseignant_id] || 3000;
-          const salaire = (r.duree_heures || 0) * rate;
+          const settings = teacherSettings[r.enseignant_id];
+          const rate = settings?.hourlyRate || 3000;
+          
+          // Check condition: if presents < minStudents, the session might not be paid
+          // We apply the rule: if minStudents is set and presents is below, salary for this session is 0
+          const minRequired = settings?.minStudents || 0;
+          const isConditionMet = r.presents >= minRequired;
+          
+          const salaire = isConditionMet ? (r.duree_heures || 0) * rate : 0;
+          
           totalSalaires += salaire;
           const mKey = date.getMonth();
           monthlySalaries[mKey] = (monthlySalaries[mKey] || 0) + salaire;

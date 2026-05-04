@@ -40,7 +40,9 @@
       "properties": {
         "hourlyRate": { "type": "number" },
         "assignedClasses": { "type": "array", "items": { "type": "string" } },
-        "phone": { "type": "string" }
+        "phone": { "type": "string" },
+        "minStudentsCondition": { "type": "number", "description": "Minimum students per class for full pay" },
+        "specialConditions": { "type": "string", "description": "Specific contract notes" }
       }
     },
     "finances": {

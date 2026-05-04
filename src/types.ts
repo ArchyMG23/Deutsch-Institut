@@ -73,6 +73,8 @@ export interface Teacher extends UserProfile {
   phone: string;
   cni: string;
   totalHoursWorked: number;
+  minStudentsCondition?: number;
+  specialConditions?: string;
 }
 
 export interface ScheduleItem {

@@ -1042,7 +1042,7 @@ async function startServer() {
   app.post('/api/finances', authenticate, async (req, res) => {
     try {
       const id = Date.now().toString();
-      const newRecord = { ...req.body, id, date: new Date().toISOString() };
+      const newRecord = { ...req.body, id, date: req.body.date || new Date().toISOString() };
       await dbAdmin.collection('finances').doc(id).set(newRecord);
       res.json(newRecord);
     } catch (err: any) {
