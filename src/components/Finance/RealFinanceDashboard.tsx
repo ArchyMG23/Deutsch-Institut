@@ -17,7 +17,7 @@ import {
   getDocs, 
   collectionGroup 
 } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { db, auth } from '../../firebase';
 import { formatCurrency } from '../../utils';
 import { Charge, Session, Versement, DailyReport } from '../../types';
 import { motion } from 'motion/react';

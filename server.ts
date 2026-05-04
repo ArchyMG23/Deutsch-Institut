@@ -540,6 +540,83 @@ async function startServer() {
     }
   });
 
+  // --- SYSTEM RESET (DANGER ZONE) ---
+  app.post('/api/system/reset', authenticate, async (req: any, res) => {
+    try {
+      const currentUserDoc = await dbAdmin.collection('users').doc(req.user.id).get();
+      const userData = currentUserDoc.data();
+      const isSuperAdmin = userData?.isSuperAdmin || 
+                         req.user.email === 'yombivictor@gmail.com' || 
+                         req.user.email === 'gabrielyombi311@gmail.com';
+
+      if (!isSuperAdmin) {
+        return res.status(403).json({ message: 'Seul le Super Administrateur peut réinitialiser le système' });
+      }
+
+      const collectionsToClear = [
+        'finances', 'charges', 'scolarites', 'classes', 'niveaux', 
+        'rapports_journaliers', 'communiques', 'evaluations', 
+        'chat_eleves', 'logs', 'notifications', 'library', 'teachers', 'rooms'
+      ];
+
+      // Delete all documents in these collections
+      for (const collName of collectionsToClear) {
+        const snapshot = await dbAdmin.collection(collName).get();
+        const batch = dbAdmin.batch();
+        snapshot.docs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+      }
+
+      // Delete all users EXCEPT those specified as admins in the config
+      const defaultEmails = ['yombivictor@gmail.com', 'gabrielyombi311@gmail.com'];
+      const usersSnap = await dbAdmin.collection('users').get();
+      const userBatch = dbAdmin.batch();
+      
+      usersSnap.docs.forEach(doc => {
+        const u = doc.data();
+        if (!defaultEmails.includes(u.email)) {
+          userBatch.delete(doc.ref);
+        }
+      });
+      await userBatch.commit();
+
+      // Re-bootstrap default admins to ensure they exist and have correct roles
+      const defaultAdmins = [
+        { email: 'yombivictor@gmail.com', firstName: 'Victor', lastName: 'Yombi', matricule: 'SUPERADMIN', isSuperAdmin: true },
+        { email: 'gabrielyombi311@gmail.com', firstName: 'Gabriel', lastName: 'Yombi', matricule: 'ADMIN_GABRIEL', isSuperAdmin: true }
+      ];
+
+      for (const adminData of defaultAdmins) {
+        try {
+          let userRecord;
+          try {
+            userRecord = await authAdmin.getUserByEmail(adminData.email);
+          } catch (e) {
+            userRecord = await authAdmin.createUser({
+              email: adminData.email,
+              password: 'Admin.1234',
+              displayName: `${adminData.firstName} ${adminData.lastName}`
+            });
+          }
+
+          await dbAdmin.collection('users').doc(userRecord.uid).set({
+            uid: userRecord.uid,
+            ...adminData,
+            role: 'admin',
+            status: 'offline',
+            createdAt: new Date().toISOString()
+          }, { merge: true });
+        } catch (err) {
+          console.error(`Error re-bootstrapping admin ${adminData.email}:`, err);
+        }
+      }
+
+      res.json({ message: 'Système réinitialisé avec succès' });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post('/api/students/resend-credentials/:id', authenticate, async (req: any, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ message: 'Interdit' });
     try {
@@ -1145,7 +1222,7 @@ async function startServer() {
 
   app.post('/api/library', authenticate, async (req, res) => {
     try {
-      const id = Date.now().toString();
+      const id = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 9);
       const newItem = { ...req.body, id, addedAt: new Date().toISOString() };
       await dbAdmin.collection('library').doc(id).set(newItem);
       res.json(newItem);
@@ -1158,7 +1235,7 @@ async function startServer() {
     if (!req.file) return res.status(400).json({ message: 'Aucun fichier téléchargé' });
     
     try {
-      const id = Date.now().toString();
+      const id = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 9);
       const newItem = {
         id,
         title: req.body.title || req.file.originalname,

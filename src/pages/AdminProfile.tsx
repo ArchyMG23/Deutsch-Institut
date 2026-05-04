@@ -14,7 +14,9 @@ import {
   School,
   FileText,
   CalendarDays,
-  Smartphone
+  Smartphone,
+  RotateCcw,
+  AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../utils';
@@ -168,7 +170,40 @@ export default function AdminProfile() {
     }
   };
 
-  const isSuperAdmin = (user as any)?.isSuperAdmin;
+  const isSuperAdmin = (user as any)?.isSuperAdmin || 
+                      user?.email === 'yombivictor@gmail.com' || 
+                      user?.email === 'gabrielyombi311@gmail.com';
+
+  const handleSystemReset = async () => {
+    if (!window.confirm("ÊTES-VOUS ABSOLUMENT SÛR ? Cela supprimera TOUTES les données de production (finances, étudiants, rapports...). Cette opération est irréversible.")) {
+      return;
+    }
+
+    const confirmation = window.prompt("CONFIRMATION FINALE : Tapez 'RESET' pour confirmer la réinitialisation complète du système.");
+    if (confirmation !== 'RESET') {
+      toast.error("Réinitialisation annulée.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth('/api/system/reset', {
+        method: 'POST'
+      });
+
+      if (res.ok) {
+        toast.success("Système réinitialisé avec succès ! Redémarrage...");
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 2000);
+      }
+    } catch (err) {
+      console.error("Error resetting system:", err);
+      toast.error("Erreur lors de la réinitialisation");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -440,6 +475,34 @@ export default function AdminProfile() {
           </div>
 
           {/* Danger Zone */}
+          {isSuperAdmin && (
+            <div className="card border-red-200 dark:border-red-900 overflow-hidden">
+              <div className="p-6 bg-red-50 dark:bg-red-950/20 border-b border-red-100 dark:border-red-900/10">
+                <h4 className="font-bold flex items-center gap-2 text-red-600 dark:text-red-400">
+                  <AlertTriangle size={18} />
+                  Maintenance Système
+                </h4>
+                <p className="text-xs text-red-500/80 mt-1">Actions critiques pour l'administrateur principal</p>
+              </div>
+              <div className="p-6 space-y-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h5 className="font-bold text-sm">Réinitialisation Complète</h5>
+                    <p className="text-xs text-neutral-500 mt-0.5">Efface toutes les données (Finances, Classes, Rapports) mais garde les comptes administrateurs.</p>
+                  </div>
+                  <button 
+                    onClick={handleSystemReset}
+                    disabled={loading}
+                    className="px-6 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-all shadow-lg shadow-red-600/20 flex items-center gap-2"
+                  >
+                    <RotateCcw size={18} className={loading ? "animate-spin" : ""} />
+                    Réinitialiser le Système
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="card border-red-100 dark:border-red-900/30 overflow-hidden">
             <div className="p-6 bg-red-50/50 dark:bg-red-950/10 border-b border-red-100 dark:border-red-900/20">
               <h4 className="font-bold flex items-center gap-2 text-red-600 dark:text-red-400">

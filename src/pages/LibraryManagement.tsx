@@ -147,7 +147,7 @@ export default function LibraryManagement() {
     }));
   };
 
-  const categories = ['all', ...new Set(items.map(i => i.category))];
+  const categories = ['all', ...new Set(items.map(i => i.category).filter(c => c && c !== 'all'))];
 
   return (
     <div className="space-y-6">
