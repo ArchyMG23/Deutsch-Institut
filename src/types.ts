@@ -35,10 +35,13 @@ export interface Student extends UserProfile {
 }
 
 export interface TuitionPayment {
-  tranche: number;
+  tranche?: number;
   amount: number;
   date: string | null;
   receiptId?: string;
+  category?: 'scolarite_allemand' | 'scolarite_anglais' | 'inscription' | 'vorbereitung' | 'connexion' | 'autre';
+  comment?: string;
+  method?: string;
 }
 
 export interface Level {
@@ -46,6 +49,7 @@ export interface Level {
   name: string;
   tuition: number;
   hours: number; // Total hours for the level
+  type?: 'allemand' | 'anglais';
 }
 
 export interface ClassRoom {

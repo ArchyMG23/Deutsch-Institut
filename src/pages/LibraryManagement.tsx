@@ -68,7 +68,10 @@ export default function LibraryManagement() {
         if (res.ok) {
           setIsAddModalOpen(false);
           refreshLibrary();
-          toast.success(t('library.item_added'));
+          toast.success(t('library.item_added'), {
+            description: t('library.item_added_desc', { defaultValue: 'Le document a été ajouté avec succès à la bibliothèque.' }),
+            duration: 5000,
+          });
         } else {
           const err = await res.json();
           toast.error(err.message || t('common.error'));
@@ -91,7 +94,10 @@ export default function LibraryManagement() {
         if (res.ok) {
           setIsAddModalOpen(false);
           refreshLibrary();
-          toast.success(t('library.item_added'));
+          toast.success(t('library.item_added'), {
+            description: t('library.item_added_desc', { defaultValue: 'Le document a été ajouté avec succès à la bibliothèque.' }),
+            duration: 5000,
+          });
         } else {
           const err = await res.json().catch(() => ({ message: t('common.error') }));
           toast.error(err.message || t('common.error'));

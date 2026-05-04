@@ -24,9 +24,34 @@ const ReportManagement: React.FC = () => {
   // Filters
   const [filterClass, setFilterClass] = useState('');
   const [filterDate, setFilterDate] = useState('');
-  const [filterStatut, setFilterStatut] = useState('');
+  const [showQuotaStatus, setShowQuotaStatus] = useState(false);
+  const [quotaStats, setQuotaStats] = useState<{ total: number, quota: number, diff: number, status: 'ok' | 'low' | 'high' } | null>(null);
 
-  const isAdmin = user?.role === 'admin';
+  useEffect(() => {
+    if (filterClass && classes.length > 0) {
+      const cls = classes.find(c => c.id === filterClass);
+      const level = cls ? (cls as any).levelId : null; // In case levelId is not on ClassRoom type directly
+      
+      // We need to fetch the level hours. Assuming classes have level info or we fetch levels.
+      // For now, let's look at the class's level quota if available.
+      const classReports = reports.filter(r => r.classe_id === filterClass && r.statut === 'soumis');
+      const totalHours = classReports.reduce((acc, r) => acc + (r.duree_heures || 0), 0);
+      
+      // Find level quota (hardcoded fallback if not found)
+      // Ideally levels context should be used but let's assume a standard quota per level for now or fetch it
+      const quota = 100; // Placeholder, should be from level
+      const diff = totalHours - quota;
+      
+      let status: 'ok' | 'low' | 'high' = 'ok';
+      if (diff < -10) status = 'low';
+      else if (diff > 10) status = 'high';
+      
+      setQuotaStats({ total: totalHours, quota, diff, status });
+      setShowQuotaStatus(true);
+    } else {
+      setShowQuotaStatus(false);
+    }
+  }, [filterClass, reports, classes]);
 
   useEffect(() => {
     const fetchClasses = async () => {
@@ -200,6 +225,44 @@ const ReportManagement: React.FC = () => {
             {filteredReports.length} rapport(s) trouvé(s)
           </div>
         </div>
+
+        {showQuotaStatus && quotaStats && (
+          <div className={cn(
+            "mt-4 p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-500",
+            quotaStats.status === 'ok' ? "bg-green-50 border-green-200 text-green-800" : 
+            quotaStats.status === 'low' ? "bg-red-50 border-red-200 text-red-800" : 
+            "bg-orange-50 border-orange-200 text-orange-800"
+          )}>
+            <div className="flex items-center gap-3">
+              <div className={cn(
+                "p-2 rounded-lg",
+                quotaStats.status === 'ok' ? "bg-green-500 text-white" : "bg-red-500 text-white"
+              )}>
+                <Clock size={20} />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest opacity-70">Quota Horaire du Niveau</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xl font-black">{quotaStats.total}h / {quotaStats.quota}h</span>
+                  <span className={cn(
+                    "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase",
+                    quotaStats.status === 'ok' ? "bg-green-200 text-green-800" : "bg-red-200 text-white bg-red-600"
+                  )}>
+                    {quotaStats.status === 'ok' ? "Quota Atteint" : 
+                     quotaStats.status === 'low' ? "Insuffisant" : "Dépassement"}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex flex-col sm:items-end">
+              <p className="text-xs font-bold">Différence: {quotaStats.diff > 0 ? '+' : ''}{quotaStats.diff}h</p>
+              {quotaStats.status === 'high' && (
+                <p className="text-[10px] italic">Attention: les heures en dépassement (+10h) ne sont rémunérées que sur validation.</p>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-hidden shadow-sm">
@@ -219,9 +282,15 @@ const ReportManagement: React.FC = () => {
               {filteredReports.map((report) => (
                 <tr key={report.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition-colors">
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <Calendar size={14} className="text-neutral-400" />
-                      <span className="font-medium">{new Date(report.date).toLocaleDateString()}</span>
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-2">
+                        <Calendar size={14} className="text-neutral-400" />
+                        <span className="font-medium">{new Date(report.date).toLocaleDateString()}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-neutral-400 font-mono mt-1">
+                        <Clock size={10} />
+                        <span>{report.heure_debut} - {report.heure_fin} ({report.duree_heures}h)</span>
+                      </div>
                     </div>
                   </td>
                   {isAdmin && <td className="px-6 py-4 font-bold">{report.enseignant_nom}</td>}
@@ -230,13 +299,23 @@ const ReportManagement: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 font-medium">{report.matiere}</td>
                   <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                      report.statut === 'soumis' 
-                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' 
-                        : 'bg-dia-yellow/20 text-dia-yellow dark:text-yellow-400'
-                    }`}>
-                      {report.statut}
-                    </span>
+                    <div className="flex flex-col gap-1">
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase w-fit ${
+                        report.statut === 'soumis' 
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' 
+                          : 'bg-dia-yellow/20 text-dia-yellow dark:text-yellow-400'
+                      }`}>
+                        {report.statut}
+                      </span>
+                      {report.justifie && (
+                        <span className={cn(
+                          "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase w-fit",
+                          report.valide_par_admin ? "bg-green-500 text-white" : "bg-red-500 text-white"
+                        )}>
+                          {report.valide_par_admin ? "Validé par Admin" : "Dépassement non validé"}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">

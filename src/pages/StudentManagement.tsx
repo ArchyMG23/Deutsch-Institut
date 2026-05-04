@@ -348,14 +348,30 @@ export default function StudentManagement() {
     }
   };
 
-  const handleUpdatePayment = async (tranche: number, amount: number) => {
+  const handleUpdatePayment = async (tranche: number | undefined, amount: number, category?: string) => {
     if (!selectedStudent) return;
     
-    const updatedPayments = selectedStudent.payments.map(p => 
-      p.tranche === tranche ? { ...p, amount, date: new Date().toISOString(), receiptId: `REC-${Date.now()}` } : p
-    );
+    let updatedPayments: TuitionPayment[];
+    
+    if (tranche !== undefined) {
+      // It's a tuition tranche
+      updatedPayments = selectedStudent.payments.map(p => 
+        p.tranche === tranche ? { ...p, amount, date: new Date().toISOString(), receiptId: `REC-${Date.now()}` } : p
+      );
+    } else {
+      // It's a generic payment
+      const newPayment: TuitionPayment = {
+        amount,
+        date: new Date().toISOString(),
+        receiptId: `REC-${Date.now()}`,
+        category: category as any || 'autre',
+        method: 'Espèces'
+      };
+      updatedPayments = [...(selectedStudent.payments || []), newPayment];
+    }
 
     try {
+      setSubmitting(true);
       const res = await fetchWithAuth(`/api/students/${selectedStudent.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -365,9 +381,13 @@ export default function StudentManagement() {
         const updated = await res.json();
         setSelectedStudent(updated);
         refreshStudents();
+        toast.success(t('students.payment_registered') || 'Paiement enregistré');
       }
     } catch (err) {
       console.error("Error updating payment:", err);
+      toast.error(t('common.error'));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -555,274 +575,264 @@ export default function StudentManagement() {
         </div>
       </div>
 
-      {/* Students Table */}
-      <div className="card overflow-hidden" ref={printRef}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-neutral-50 dark:bg-neutral-800/50 border-bottom border-neutral-200 dark:border-neutral-800">
-                <th 
-                  className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 cursor-pointer hover:text-dia-red transition-colors"
-                  onClick={() => handleSort('name')}
-                >
-                  <div className="flex items-center gap-1">
-                    {t('students.student_label') || 'Étudiant'} <SortIcon column="name" />
-                  </div>
-                </th>
-                <th 
-                  className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 cursor-pointer hover:text-dia-red transition-colors"
-                  onClick={() => handleSort('matricule')}
-                >
-                  <div className="flex items-center gap-1">
-                    {t('students.matricule')} <SortIcon column="matricule" />
-                  </div>
-                </th>
-                <th 
-                  className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 cursor-pointer hover:text-dia-red transition-colors"
-                  onClick={() => handleSort('level')}
-                >
-                  <div className="flex items-center gap-1">
-                    {t('students.level')} <SortIcon column="level" />
-                  </div>
-                </th>
-                <th 
-                  className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 cursor-pointer hover:text-dia-red transition-colors"
-                  onClick={() => handleSort('class')}
-                >
-                  <div className="flex items-center gap-1">
-                    {t('students.class')} <SortIcon column="class" />
-                  </div>
-                </th>
-                <th 
-                  className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 cursor-pointer hover:text-dia-red transition-colors"
-                  onClick={() => handleSort('tuition')}
-                >
-                  <div className="flex items-center gap-1">
-                    {t('sidebar.finances')} <SortIcon column="tuition" />
-                  </div>
-                </th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 text-right">{t('common.actions')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-              {paginatedStudents.map((student) => {
-                const totalPaid = (student.payments || []).reduce((acc, p) => acc + (p.amount || 0), 0);
-                const level = levels.find(l => l.id === student.levelId);
-                const tuition = level?.tuition || 0;
-                const isFullyPaid = totalPaid >= tuition;
-
-                return (
-                  <tr key={student.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer" onClick={() => {
-                    setSelectedStudent(student);
-                    setIsDetailModalOpen(true);
-                  }}>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-dia-red/10 text-dia-red flex items-center justify-center font-bold">
-                          {student.firstName[0]}{student.lastName[0]}
-                        </div>
-                        <div>
-                          <p className="font-bold text-sm">{student.firstName} {student.lastName}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="font-mono text-xs font-bold bg-neutral-100 dark:bg-neutral-800 px-2 py-1 rounded">
-                        {student.matricule}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm">
-                      <p className="font-medium">{level?.name || 'N/A'}</p>
-                    </td>
-                    <td className="px-6 py-4 text-sm">
-                      <p className="font-medium text-neutral-500">{classes.find(c => c.id === student.classId)?.name || t('students.not_assigned') }</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-[10px] font-bold uppercase">
-                          <span>{formatCurrency(totalPaid)}</span>
-                          <span className="text-neutral-400">/ {formatCurrency(tuition)}</span>
-                        </div>
-                        <div className="w-full bg-neutral-100 rounded-full h-1.5 overflow-hidden">
-                          <div 
-                            className={cn("h-full transition-all", isFullyPaid ? "bg-green-500" : "bg-dia-red")}
-                            style={{ width: `${Math.min(100, (totalPaid / tuition) * 100)}%` }}
-                          />
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex justify-end gap-2">
-                        {activeTab === 'active' ? (
-                          <>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const msg = `Bonjour ${student.firstName}, c'est l'Institut ${APP_NAME_FOR_LINKS}. Comment pouvons-nous vous aider ?`;
-                                const a = document.createElement('a');
-                                a.href = generateWhatsAppLink(student.phone || student.parentPhone || '', msg);
-                                a.target = '_blank';
-                                a.click();
-                              }}
-                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-green-600"
-                              title="WhatsApp"
-                            >
-                              <Smartphone size={18} />
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleResetCredentials(student.id);
-                              }}
-                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-dia-yellow"
-                              title={t('students.resend_credentials')}
-                            >
-                              <RefreshCw size={18} />
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const level = levels.find(l => l.id === student.levelId) || 
-                                              levels.find(l => l.name.toLowerCase() === student.levelId?.toLowerCase());
-                                const tuition = level?.tuition || 0;
-                                const totalPaid = (student.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
-                                const balance = tuition - totalPaid;
-
-                                const msg = `🔔 *RAPPEL DE PAIEMENT - ${APP_NAME_FOR_LINKS}*\n\n` +
-                                  `Bonjour ${student.firstName},\n\n` +
-                                  `Sauf erreur de notre part, il reste un solde de *${formatCurrency(balance)}* à régler sur la scolarité pour le niveau *${level?.name || 'N/A'}*.\n\n` +
-                                  `Merci de régulariser la situation dès que possible.\n` +
-                                  `_Cordialement, l'Administration._`;
-
-                                const a = document.createElement('a');
-                                a.href = generateWhatsAppLink(student.parentPhone || student.phone || '', msg);
-                                a.target = '_blank';
-                                a.click();
-                              }}
-                              disabled={isFullyPaid}
-                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-green-600 disabled:opacity-30"
-                              title="Rappel WhatsApp"
-                            >
-                              <Smartphone size={18} />
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedStudent(student);
-                                setIsReceiptModalOpen(true);
-                              }}
-                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-blue-600"
-                              title={t('students.manage_payments')}
-                            >
-                              <CreditCard size={18} />
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const msg = `🔐 *VOS IDENTIFIANTS - ${APP_NAME_FOR_LINKS}*\n\n` +
-                                  `Bonjour ${student.firstName},\n\n` +
-                                  `Voici vos accès personnels pour consulter vos cours et notes :\n\n` +
-                                  `🔹 Matricule : ${student.matricule}\n` +
-                                  `🔹 Mot de passe : ${student.password || '********'}\n\n` +
-                                  `🌐 Lien d'accès : ${window.location.origin}\n\n` +
-                                  `Bonne formation !\n_Cordialement, l'administration._`;
-
-                                const a = document.createElement('a');
-                                a.href = generateWhatsAppLink(student.phone || student.parentPhone || '', msg);
-                                a.target = '_blank';
-                                a.click();
-                                toast.success("Lien WhatsApp (Identifiants) généré");
-                              }}
-                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-dia-yellow"
-                              title="Envoyer Identifiants (WhatsApp)"
-                            >
-                              <Smartphone size={18} />
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedStudent(student);
-                                setIsEditModalOpen(true);
-                              }}
-                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-blue-600"
-                              title={t('common.edit')}
-                            >
-                              <Edit size={18} />
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleArchiveStudent(student.id);
-                              }}
-                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-orange-600"
-                              title={t('common.archive')}
-                            >
-                              <X size={18} />
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleHardDeleteStudent(student.id);
-                              }}
-                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-red-600 font-bold"
-                              title={t('common.delete_forever')}
-                            >
-                              <Trash2 size={18} />
-                            </button>
-                          </>
-                        ) : (
-                          <div className="flex gap-2">
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedStudent(student);
-                                setIsEditModalOpen(true);
-                              }}
-                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-blue-600"
-                              title={t('common.edit')}
-                            >
-                              <Edit size={18} />
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRestoreStudent(student.id);
-                              }}
-                              className="flex items-center gap-2 px-3 py-1.5 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-lg text-xs font-bold hover:bg-green-200 transition-colors"
-                            >
-                              <Plus size={14} />
-                              {t('common.restore')}
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleHardDeleteStudent(student.id);
-                              }}
-                              className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-red-600"
-                              title={t('common.delete_forever')}
-                            >
-                              <Trash2 size={18} />
-                            </button>
+      {/* Students List */}
+      <div className="space-y-4">
+        {/* Table View (Desktop) */}
+        <div className="hidden md:block card overflow-hidden" ref={printRef}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-neutral-50 dark:bg-neutral-800/50 border-bottom border-neutral-200 dark:border-neutral-800">
+                  <th 
+                    className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 cursor-pointer hover:text-dia-red transition-colors"
+                    onClick={() => handleSort('name')}
+                  >
+                    <div className="flex items-center gap-1">
+                      {t('students.student_label') || 'Étudiant'} <SortIcon column="name" />
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 cursor-pointer hover:text-dia-red transition-colors"
+                    onClick={() => handleSort('matricule')}
+                  >
+                    <div className="flex items-center gap-1">
+                      {t('students.matricule')} <SortIcon column="matricule" />
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 cursor-pointer hover:text-dia-red transition-colors"
+                    onClick={() => handleSort('level')}
+                  >
+                    <div className="flex items-center gap-1">
+                      {t('students.level')} <SortIcon column="level" />
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 cursor-pointer hover:text-dia-red transition-colors"
+                    onClick={() => handleSort('class')}
+                  >
+                    <div className="flex items-center gap-1">
+                      {t('students.class')} <SortIcon column="class" />
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 cursor-pointer hover:text-dia-red transition-colors"
+                    onClick={() => handleSort('tuition')}
+                  >
+                    <div className="flex items-center gap-1">
+                      {t('sidebar.finances')} <SortIcon column="tuition" />
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 text-right">{t('common.actions')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                {paginatedStudents.map((student) => {
+                  const totalPaid = (student.payments || []).reduce((acc, p) => acc + (p.amount || 0), 0);
+                  const level = levels.find(l => l.id === student.levelId);
+                  const tuition = level?.tuition || 0;
+                  const isFullyPaid = totalPaid >= tuition;
+  
+                  return (
+                    <tr key={student.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer" onClick={() => {
+                      setSelectedStudent(student);
+                      setIsDetailModalOpen(true);
+                    }}>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-dia-red/10 text-dia-red flex items-center justify-center font-bold">
+                            {student.firstName[0]}{student.lastName[0]}
                           </div>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {hasMore && (
-            <div className="p-6 text-center border-t border-neutral-100 dark:border-neutral-800">
-              <button 
-                onClick={() => setCurrentPage(p => p + 1)}
-                className="px-6 py-2 bg-neutral-100 dark:bg-neutral-800 rounded-xl text-sm font-bold uppercase hover:bg-neutral-200 transition-all text-neutral-600 dark:text-neutral-300"
-              >
-                {t('common.show_more') || 'Voir plus'} ({sortedStudents.length - paginatedStudents.length} restants)
-              </button>
-            </div>
-          )}
+                          <div>
+                            <p className="font-bold text-sm">{student.firstName} {student.lastName}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="font-mono text-xs font-bold bg-neutral-100 dark:bg-neutral-800 px-2 py-1 rounded">
+                          {student.matricule}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm">
+                        <p className="font-medium">{level?.name || 'N/A'}</p>
+                      </td>
+                      <td className="px-6 py-4 text-sm">
+                        <p className="font-medium text-neutral-500">{classes.find(c => c.id === student.classId)?.name || t('students.not_assigned') }</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[10px] font-bold uppercase">
+                            <span>{formatCurrency(totalPaid)}</span>
+                            <span className="text-neutral-400">/ {formatCurrency(tuition)}</span>
+                          </div>
+                          <div className="w-full bg-neutral-100 rounded-full h-1.5 overflow-hidden">
+                            <div 
+                              className={cn("h-full transition-all", isFullyPaid ? "bg-green-500" : "bg-dia-red")}
+                              style={{ width: `${Math.min(100, (totalPaid / tuition) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-end gap-2">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const msg = `Bonjour ${student.firstName}, c'est l'Institut ${APP_NAME_FOR_LINKS}. Comment pouvons-nous vous aider ?`;
+                              const a = document.createElement('a');
+                              a.href = generateWhatsAppLink(student.phone || student.parentPhone || '', msg);
+                              a.target = '_blank';
+                              a.click();
+                            }}
+                            className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-green-600"
+                            title="WhatsApp"
+                          >
+                            <Smartphone size={18} />
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedStudent(student);
+                              setIsReceiptModalOpen(true);
+                            }}
+                            className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-blue-600"
+                            title={t('students.manage_payments')}
+                          >
+                            <CreditCard size={18} />
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedStudent(student);
+                              setIsEditModalOpen(true);
+                            }}
+                            className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-blue-600"
+                            title={t('common.edit')}
+                          >
+                            <Edit size={18} />
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleHardDeleteStudent(student.id);
+                            }}
+                            className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-red-600 font-bold"
+                            title={t('common.delete_forever')}
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
+
+        {/* Card View (Mobile) */}
+        <div className="grid grid-cols-1 gap-4 md:hidden">
+          {paginatedStudents.map((student) => {
+            const totalPaid = (student.payments || []).reduce((acc, p) => acc + (p.amount || 0), 0);
+            const level = levels.find(l => l.id === student.levelId);
+            const tuition = level?.tuition || 0;
+            const isFullyPaid = totalPaid >= tuition;
+            const cls = classes.find(c => c.id === student.classId);
+
+            return (
+              <div 
+                key={student.id} 
+                className="card p-4 space-y-4 active:scale-95 transition-transform"
+                onClick={() => {
+                  setSelectedStudent(student);
+                  setIsDetailModalOpen(true);
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-dia-red/10 text-dia-red flex items-center justify-center font-bold">
+                      {student.firstName[0]}{student.lastName[0]}
+                    </div>
+                    <div>
+                      <p className="font-bold text-sm tracking-tight">{student.firstName} {student.lastName}</p>
+                      <p className="text-[10px] font-mono text-neutral-400">{student.matricule}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-bold text-neutral-900 bg-neutral-100 dark:bg-neutral-800 px-2 py-1 rounded inline-block">
+                      {level?.name || 'N/A'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-[10px] font-bold uppercase">
+                  <div className="p-2 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg">
+                    <p className="text-neutral-400 mb-0.5">Classe</p>
+                    <p className="text-neutral-900 truncate">{cls?.name || 'Non assigné'}</p>
+                  </div>
+                  <div className="p-2 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg">
+                    <p className="text-neutral-400 mb-0.5">Scolarité</p>
+                    <p className={cn("truncate", isFullyPaid ? "text-green-500" : "text-dia-red")}>
+                      {totalPaid} / {tuition}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-neutral-100 dark:border-neutral-800" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => {
+                        const msg = `Bonjour ${student.firstName}, c'est l'Institut ${APP_NAME_FOR_LINKS}. Comment pouvons-nous vous aider ?`;
+                        window.open(generateWhatsAppLink(student.phone || student.parentPhone || '', msg), '_blank');
+                      }}
+                      className="p-2 bg-green-50 text-green-600 rounded-lg active:bg-green-100 shadow-sm"
+                    >
+                      <Smartphone size={18} />
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setSelectedStudent(student);
+                        setIsReceiptModalOpen(true);
+                      }}
+                      className="p-2 bg-blue-50 text-blue-600 rounded-lg active:bg-blue-100 shadow-sm"
+                    >
+                      <CreditCard size={18} />
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                     <button 
+                      onClick={() => {
+                        setSelectedStudent(student);
+                        setIsEditModalOpen(true);
+                      }}
+                      className="p-2 bg-neutral-100 text-neutral-600 rounded-lg active:bg-neutral-200"
+                    >
+                      <Edit size={18} />
+                    </button>
+                    <button 
+                      onClick={() => handleHardDeleteStudent(student.id)}
+                      className="p-2 bg-red-50 text-red-600 rounded-lg active:bg-red-100"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {hasMore && (
+          <div className="p-6 text-center">
+            <button 
+              onClick={() => setCurrentPage(p => p + 1)}
+              className="px-6 py-2 bg-neutral-100 dark:bg-neutral-800 rounded-xl text-sm font-bold uppercase hover:bg-neutral-200 transition-all text-neutral-600 dark:text-neutral-300"
+            >
+              {t('common.show_more') || 'Voir plus'} ({sortedStudents.length - paginatedStudents.length} restants)
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Add Student Modal */}
@@ -1207,28 +1217,86 @@ export default function StudentManagement() {
             
             <div className="p-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Payment Forms */}
-              <div className="space-y-6">
-                <h4 className="font-bold text-lg">{t('students.register_payment') || 'Enregistrer un paiement'}</h4>
-                {selectedStudent.payments.map((p) => (
-                  <div key={p.tranche} className="p-5 bg-neutral-50 dark:bg-neutral-800/50 rounded-2xl border border-neutral-100 dark:border-neutral-800">
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="text-sm font-bold uppercase tracking-wider text-neutral-400">{t('students.tranche')} {p.tranche}</span>
-                      {p.amount > 0 && <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">{t('students.paid_on')} {new Date(p.date!).toLocaleDateString()}</span>}
+              <div className="space-y-6 overflow-y-auto max-h-[60vh] pr-4">
+                <h4 className="font-bold text-lg flex items-center gap-2">
+                  <CreditCard className="text-dia-red" size={20} />
+                  {t('students.register_payment') || 'Enregistrer un paiement'}
+                </h4>
+                
+                <div className="space-y-4">
+                  <div className="p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl flex gap-1">
+                    <button 
+                      onClick={() => (window as any).paymentMode = 'tuition'}
+                      className="flex-1 py-2 text-xs font-bold rounded-lg bg-white dark:bg-neutral-900 shadow-sm"
+                    >
+                      Scolarité
+                    </button>
+                    <button 
+                      onClick={() => (window as any).paymentMode = 'other'}
+                      className="flex-1 py-2 text-xs font-bold rounded-lg text-neutral-500 hover:bg-white/50"
+                    >
+                      Autres Frais
+                    </button>
+                  </div>
+
+                  {/* Tuition Tranches */}
+                  {selectedStudent.payments.filter(p => p.tranche !== undefined).map((p) => (
+                    <div key={p.tranche} className="p-5 bg-neutral-50 dark:bg-neutral-800/50 rounded-2xl border border-neutral-100 dark:border-neutral-800">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-sm font-bold uppercase tracking-wider text-neutral-400">{t('students.tranche')} {p.tranche}</span>
+                        {p.amount > 0 && <span className="text-[10px] font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">{t('students.paid_on')} {new Date(p.date!).toLocaleDateString()}</span>}
+                      </div>
+                      <div className="flex gap-3">
+                        <input 
+                          type="number" 
+                          defaultValue={p.amount}
+                          placeholder={t('students.amount')}
+                          className="flex-1 px-4 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-dia-red/20 font-bold"
+                          onBlur={(e) => {
+                            const val = parseInt(e.target.value);
+                            if (val !== p.amount) handleUpdatePayment(p.tranche, val);
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div className="flex gap-3">
-                      <input 
-                        type="number" 
-                        defaultValue={p.amount}
-                        placeholder={t('students.amount')}
-                        className="flex-1 px-4 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-dia-red/20"
-                        onBlur={(e) => {
-                          const val = parseInt(e.target.value);
-                          if (val !== p.amount) handleUpdatePayment(p.tranche, val);
-                        }}
-                      />
+                  ))}
+
+                  {/* Add Other Payment Form */}
+                  <div className="p-5 bg-dia-red/5 rounded-2xl border border-dia-red/10 space-y-4">
+                    <p className="text-xs font-bold uppercase tracking-widest text-dia-red">Autres justifications d'entrée</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="col-span-2">
+                        <label className="text-[10px] font-bold uppercase text-neutral-400 mb-1 ml-1">Type de frais</label>
+                        <select 
+                          id="other_category"
+                          className="w-full px-4 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none text-sm font-bold"
+                        >
+                          <option value="inscription">Frais d'Inscription</option>
+                          <option value="scolarite_anglais">Scolarité Anglais</option>
+                          <option value="vorbereitung">Frais Vorbereitung</option>
+                          <option value="connexion">Frais de Connexion (WiFi)</option>
+                          <option value="autre">Autre</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold uppercase text-neutral-400 mb-1 ml-1">Montant</label>
+                        <input id="other_amount" type="number" placeholder="0" className="w-full px-4 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none text-sm font-bold" />
+                      </div>
+                      <div className="flex items-end">
+                        <button 
+                          onClick={() => {
+                            const cat = (document.getElementById('other_category') as HTMLSelectElement).value;
+                            const amt = parseInt((document.getElementById('other_amount') as HTMLInputElement).value);
+                            if (amt > 0) handleUpdatePayment(undefined, amt, cat);
+                          }}
+                          className="w-full py-2 bg-dia-red text-white text-xs font-bold rounded-xl hover:bg-dia-red/90 transition-all active:scale-95"
+                        >
+                          Ajouter
+                        </button>
+                      </div>
                     </div>
                   </div>
-                ))}
+                </div>
               </div>
 
               {/* Receipt Preview */}
@@ -1282,9 +1350,11 @@ export default function StudentManagement() {
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {selectedStudent.payments.filter(p => p.amount > 0).map(p => (
-                        <tr key={p.tranche}>
-                          <td className="py-3">Scolarité - {t('students.tranche')} {p.tranche}</td>
+                      {selectedStudent.payments.filter(p => p.amount > 0).map((p, idx) => (
+                        <tr key={p.tranche || `other-${idx}`}>
+                          <td className="py-3">
+                            {p.tranche ? `Scolarité - ${t('students.tranche')} ${p.tranche}` : (p.category ? p.category.replace('_', ' ') : 'Autre')}
+                          </td>
                           <td className="py-3 text-right font-bold">{formatCurrency(p.amount)}</td>
                         </tr>
                       ))}

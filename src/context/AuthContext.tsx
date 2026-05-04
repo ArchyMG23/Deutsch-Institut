@@ -227,6 +227,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await signInWithEmailAndPassword(auth, email, password);
     } catch (err: any) {
       console.error("Firebase login error:", err.code, err.message);
+      if (err.code === 'auth/network-request-failed') {
+        throw new Error("Erreur de connexion. Vérifiez votre accès internet (Orange/MTN) et réessayez.");
+      }
       if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
         throw new Error(t('auth.invalid_credentials'));
       }

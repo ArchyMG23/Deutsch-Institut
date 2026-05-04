@@ -113,14 +113,48 @@ export default function ClassManagement() {
           // Record Salary for Teacher for the sub-level completion
           const level = levels.find(l => l.id === cls.levelId);
           const teacher = teachers.find(t => t.id === cls.teacherId);
+          
           if (level && teacher) {
+            // Fetch reports for this class to calculate actual payable hours
+            const reportsRes = await fetchWithAuth(`/api/reports?classId=${classId}`);
+            const reports = await reportsRes.json();
+            const submittedReports = reports.filter((r: any) => r.statut === 'soumis');
+            
             const hoursPerSubLevel = level.hours / 2;
-            const salaryAmount = hoursPerSubLevel * teacher.hourlyRate;
+            let payableHours = 0;
+            let cumulative = 0;
+            
+            // Logic: Pay hours if they are within quota OR if they are validated by admin
+            submittedReports.forEach((r: any) => {
+              if (cumulative < hoursPerSubLevel) {
+                // Still within typical sub-level quota
+                const remainingInQuota = hoursPerSubLevel - cumulative;
+                const hoursToPay = Math.min(r.duree_heures, remainingInQuota);
+                payableHours += hoursToPay;
+                
+                // If this report goes beyond, check if the overage is validated
+                if (r.duree_heures > remainingInQuota) {
+                  const overage = r.duree_heures - remainingInQuota;
+                  if (r.valide_par_admin) {
+                    payableHours += overage;
+                  }
+                }
+              } else {
+                // Already exceeded sub-level quota, pay only if validated
+                if (r.valide_par_admin) {
+                  payableHours += r.duree_heures;
+                }
+              }
+              cumulative += r.duree_heures;
+            });
+
+            // Use the calculated payableHours instead of the fixed level.hours/2
+            const salaryAmount = payableHours * teacher.hourlyRate;
 
             await fetchWithAuth(`/api/teachers/${teacher.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ totalHoursWorked: (teacher.totalHoursWorked || 0) + hoursPerSubLevel })
+              body: JSON.stringify({ totalHoursWorked: (teacher.totalHoursWorked || 0) + payableHours })
             });
 
             await fetchWithAuth('/api/finances', {
@@ -185,14 +219,56 @@ export default function ClassManagement() {
           // Record Salary for Teacher for the sub-level 2 completion
           const level = levels.find(l => l.id === cls.levelId);
           const teacher = teachers.find(t => t.id === cls.teacherId);
+          
           if (level && teacher) {
+            // Fetch reports for this class to calculate actual payable hours for sub-level 2
+            const reportsRes = await fetchWithAuth(`/api/reports?classId=${classId}`);
+            const reports = await reportsRes.json();
+            
             const hoursPerSubLevel = level.hours / 2;
-            const salaryAmount = hoursPerSubLevel * teacher.hourlyRate;
+            let payableHours = 0;
+            let cumulative = 0;
+            
+            // We want ONLY the hours from sub-level 2
+            // For simplicity, we calculate total sub-level 2 "eligible" hours
+            // and subtract what was likely already paid in sub-level 1 if we had a more robust tracking
+            // BUT here we can just target reports since the last promotion.
+            // Since we don't have "promotion date", we'll just look at hours > level.hours/2
+            
+            const submittedReports = reports.filter((r: any) => r.statut === 'soumis');
+            
+            submittedReports.forEach((r: any) => {
+              const reportStart = cumulative;
+              const reportEnd = cumulative + r.duree_heures;
+              
+              // Only consider hours that fall in the second sub-level ( > level.hours / 2)
+              if (reportEnd > hoursPerSubLevel) {
+                const hoursInSubLevel2 = Math.max(0, reportEnd - Math.max(hoursPerSubLevel, reportStart));
+                
+                // If within quota of level (total level.hours)
+                if (reportStart < level.hours) {
+                  const remainingInQuota = level.hours - Math.max(hoursPerSubLevel, reportStart);
+                  const inQuotaToPay = Math.min(hoursInSubLevel2, Math.max(0, remainingInQuota));
+                  payableHours += inQuotaToPay;
+                  
+                  // Excess within this report
+                  if (hoursInSubLevel2 > remainingInQuota && r.valide_par_admin) {
+                     payableHours += (hoursInSubLevel2 - remainingInQuota);
+                  }
+                } else if (r.valide_par_admin) {
+                  // Completely in excess
+                  payableHours += hoursInSubLevel2;
+                }
+              }
+              cumulative += r.duree_heures;
+            });
+
+            const salaryAmount = payableHours * teacher.hourlyRate;
 
             await fetchWithAuth(`/api/teachers/${teacher.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ totalHoursWorked: (teacher.totalHoursWorked || 0) + hoursPerSubLevel })
+              body: JSON.stringify({ totalHoursWorked: (teacher.totalHoursWorked || 0) + payableHours })
             });
 
             await fetchWithAuth('/api/finances', {

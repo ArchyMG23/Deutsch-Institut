@@ -45,6 +45,7 @@ export default function RealFinanceDashboard() {
     revenus: 0,
     chargesFixes: 0,
     chargesSalariales: 0,
+    revenusDetails: {} as Record<string, number>,
     history: [] as any[],
     classQuotas: [] as any[],
     sessionDetails: [] as any[]
@@ -67,15 +68,40 @@ export default function RealFinanceDashboard() {
       classesSnap.forEach(doc => classesMap[doc.id] = doc.data());
 
       let totalRevenu = 0;
+      const revenusDetails: Record<string, number> = {
+        scolarite_allemand: 0,
+        scolarite_anglais: 0,
+        inscription: 0,
+        vorbereitung: 0,
+        connexion: 0,
+        autre: 0
+      };
+      
       const monthlyRevenu: Record<string, number> = {};
 
-      versementsSnap.forEach(doc => {
-        const v = doc.data() as Versement;
-        const date = new Date(v.date);
-        if (date.getFullYear() === selectedYear) {
-          totalRevenu += v.montant;
-          const mKey = date.getMonth();
-          monthlyRevenu[mKey] = (monthlyRevenu[mKey] || 0) + v.montant;
+      const studentsSnap = await getDocs(collection(db, 'students'));
+      studentsSnap.forEach(doc => {
+        const s = doc.data();
+        if (s.payments) {
+          s.payments.forEach((p: any) => {
+            if (p.amount > 0) {
+              const amount = Number(p.amount);
+              const date = p.date ? new Date(p.date) : new Date();
+              
+              totalRevenu += amount;
+              const cat = p.category || 'scolarite_allemand';
+              if (revenusDetails[cat] !== undefined) {
+                revenusDetails[cat] += amount;
+              } else {
+                revenusDetails.autre += amount;
+              }
+              
+              if (date.getFullYear() === selectedYear) {
+                const mKey = date.getMonth();
+                monthlyRevenu[mKey] = (monthlyRevenu[mKey] || 0) + amount;
+              }
+            }
+          });
         }
       });
 
@@ -250,6 +276,7 @@ export default function RealFinanceDashboard() {
         revenus: totalRevenu,
         chargesFixes: totalChargesFixes,
         chargesSalariales: totalSalaires,
+        revenusDetails,
         history,
         classQuotas,
         sessionDetails
@@ -388,6 +415,30 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Revenue Breakdown */}
+        <div className="card p-6">
+          <h5 className="font-bold mb-4 flex items-center gap-2 text-dia-red">
+            <DollarSign size={18} />
+            Répartition des Recettes
+          </h5>
+          <div className="space-y-4">
+            {Object.entries((data as any).revenusDetails || {}).filter(([_, val]) => (val as number) > 0).map(([cat, val]) => (
+              <div key={cat} className="flex flex-col gap-1">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-bold uppercase text-neutral-500">{cat.replace('_', ' ')}</span>
+                  <span className="font-mono font-bold">{formatCurrency(val as number)}</span>
+                </div>
+                <div className="h-1.5 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-dia-red" 
+                    style={{ width: `${Math.min(100, ((val as number) / (data.revenus || 1)) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Class Quotas Monitoring */}
         <div className="card p-6 lg:col-span-1">
           <h5 className="font-bold mb-4 flex items-center gap-2 text-dia-red">

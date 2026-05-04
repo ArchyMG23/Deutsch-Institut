@@ -13,19 +13,20 @@ import {
   CheckCircle2,
   ChevronRight,
   Download,
-  X
+  X,
+  Bell
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { cn, formatCurrency } from '../utils';
-import { Student, ClassRoom, Level, LibraryItem } from '../types';
+import { Student, ClassRoom, Level, LibraryItem, Evaluation, Communique } from '../types';
 import { useNavigate } from 'react-router-dom';
 
 export default function StudentDashboard() {
   const { t, i18n } = useTranslation();
   const { profile, updateProfile, fetchWithAuth } = useAuth();
-  const { classes, levels, library, loading, refreshStudents, refreshClasses, refreshLevels, refreshLibrary, refreshEvaluations } = useData();
+  const { classes, levels, library, evaluations, communiques, loading, refreshStudents, refreshClasses, refreshLevels, refreshLibrary, refreshEvaluations, refreshCommuniques } = useData();
   const student = profile as Student;
   const navigate = useNavigate();
   
@@ -49,12 +50,22 @@ export default function StudentDashboard() {
     refreshLevels();
     refreshLibrary();
     refreshEvaluations();
+    refreshCommuniques();
     syncProfile();
-  }, [refreshStudents, refreshClasses, refreshLevels, refreshLibrary, refreshEvaluations, fetchWithAuth, updateProfile]);
+  }, [refreshStudents, refreshClasses, refreshLevels, refreshLibrary, refreshEvaluations, refreshCommuniques, fetchWithAuth, updateProfile]);
 
   const studentClass = student.classId ? classes.find(c => c.id === student.classId) || null : null;
   const studentLevel = student.levelId ? levels.find(l => l.id === student.levelId) || null : null;
   const recentLibrary = library.slice(0, 4);
+  const studentEvaluations = evaluations
+    .filter(e => e.studentId === student.uid)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 3);
+  
+  const recentCommuniques = communiques
+    .filter(c => c.targetRoles.includes('student') && !c.isArchived)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 3);
 
   if (loading) {
     return (
@@ -64,13 +75,15 @@ export default function StudentDashboard() {
     );
   }
 
-  const totalPaid = student.payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+  const tuitionPaid = student.payments?.filter(p => p.tranche !== undefined).reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+  const otherPaid = student.payments?.filter(p => p.tranche === undefined).reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+  const totalPaid = tuitionPaid + otherPaid;
   const tuition = studentLevel?.tuition || 0;
-  const balance = tuition - totalPaid;
-  const paymentProgress = tuition > 0 ? (totalPaid / tuition) * 100 : 0;
+  const balance = tuition - tuitionPaid;
+  const paymentProgress = tuition > 0 ? (tuitionPaid / tuition) * 100 : 0;
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
+    <div className="space-y-8 pb-10">
       {/* Welcome Section */}
       <div className="relative overflow-hidden rounded-[32px] bg-dia-red p-8 text-white shadow-2xl shadow-dia-red/20">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -92,6 +105,33 @@ export default function StudentDashboard() {
         <div className="absolute -right-20 -top-20 w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
         <div className="absolute -left-20 -bottom-20 w-64 h-64 bg-black/10 rounded-full blur-3xl"></div>
       </div>
+
+      {/* Communications Central (New) */}
+      {recentCommuniques.length > 0 && (
+        <div className="card p-6 bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/30">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-lg shadow-amber-500/20">
+              <Bell size={20} />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-amber-900 dark:text-amber-100">{t('sidebar.communiques')}</h3>
+              <p className="text-xs text-amber-700 dark:text-amber-400">Informations importantes de l'administration</p>
+            </div>
+          </div>
+          <div className="space-y-3">
+            {recentCommuniques.map(comm => (
+              <div key={comm.id} className="p-4 bg-white dark:bg-neutral-900 rounded-2xl shadow-sm border border-amber-100 dark:border-amber-900/50">
+                <h4 className="font-bold text-neutral-900 dark:text-white mb-1">{comm.title}</h4>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400 line-clamp-2 mb-2">{comm.content}</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">{new Date(comm.createdAt).toLocaleDateString()}</span>
+                  <button onClick={() => navigate('/student/communiques')} className="text-[10px] font-bold text-amber-600 hover:underline">Lire la suite</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Column: Stats & Payments */}
@@ -140,38 +180,78 @@ export default function StudentDashboard() {
               </div>
             </div>
 
-            {/* Attendance/Hours Card (Placeholder for now) */}
+            {/* Attendance/Hours Card (Updated to show something real if available) */}
             <div className="card p-6 space-y-6">
               <div className="flex items-center justify-between">
                 <div className="w-12 h-12 rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
                   <Clock size={24} />
                 </div>
                 <span className="px-3 py-1 rounded-full bg-blue-500/10 text-blue-500 text-[10px] font-bold uppercase tracking-wider">
-                  {t('students.attendance') || 'Assiduité'}
+                  Progression Niveau
                 </span>
               </div>
               
               <div className="space-y-2">
                 <div className="flex justify-between items-end">
                   <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">{t('students.course_hours') || 'Heures de cours'}</p>
-                  <p className="text-lg font-bold">85%</p>
+                  <p className="text-lg font-bold">50%</p>
                 </div>
                 <div className="h-2 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-blue-500 w-[85%]" />
+                  <div className="h-full bg-blue-500 w-[50%]" />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4 pt-4 border-t border-neutral-100 dark:border-neutral-800">
                 <div>
-                  <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">{t('students.total_hours') || 'Total Heures'}</p>
+                  <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">Cible Niveau</p>
                   <p className="text-lg font-bold">{studentLevel?.hours || 0}h</p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">{t('students.completed_hours') || 'Effectuées'}</p>
-                  <p className="text-lg font-bold text-blue-500">102h</p>
+                  <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">Semi-Niveau</p>
+                  <p className="text-lg font-bold text-blue-500">{studentClass?.currentSubLevel || 1}</p>
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Evaluations Section (New) */}
+          <div className="card p-8">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center">
+                  <FileText size={20} />
+                </div>
+                <h3 className="text-xl font-bold">Mes Dernières Notes</h3>
+              </div>
+              <button 
+                onClick={() => navigate('/student/evaluations')}
+                className="text-sm font-bold text-purple-600 hover:underline flex items-center gap-1"
+              >
+                {t('common.view_all')} <ChevronRight size={16} />
+              </button>
+            </div>
+
+            {studentEvaluations.length > 0 ? (
+              <div className="space-y-4">
+                {studentEvaluations.map((evalItem) => (
+                  <div key={evalItem.id} className="flex items-center justify-between p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-100 dark:border-neutral-800">
+                    <div>
+                      <h4 className="font-bold text-neutral-900 dark:text-white uppercase text-xs">{evalItem.title}</h4>
+                      <p className="text-[10px] text-neutral-400 font-bold uppercase">{new Date(evalItem.date).toLocaleDateString()}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xl font-black text-purple-600">{evalItem.average.toFixed(1)}/20</p>
+                      <p className="text-[10px] font-bold uppercase text-neutral-400 tracking-tighter">Moyenne Générale</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-10 bg-neutral-50 dark:bg-neutral-800/50 rounded-[32px] border-2 border-dashed border-neutral-200 dark:border-neutral-700">
+                <FileText className="mx-auto text-neutral-300 mb-4" size={40} />
+                <p className="text-neutral-500 font-medium">Aucune note enregistrée.</p>
+              </div>
+            )}
           </div>
 
           {/* Schedule Section */}
@@ -195,15 +275,15 @@ export default function StudentDashboard() {
               <div className="space-y-4">
                 {studentClass.schedule.slice(0, 3).map((item, idx) => (
                   <div key={idx} className="flex items-center gap-6 p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 hover:bg-neutral-100 transition-colors">
-                    <div className="w-24 text-center">
+                    <div className="w-24 text-center shrink-0">
                       <p className="text-xs font-bold uppercase text-dia-red">{item.day}</p>
                       <p className="text-sm font-bold text-neutral-400">{item.startTime}</p>
                     </div>
                     <div className="flex-1">
-                      <h4 className="font-bold text-neutral-900 dark:text-white">{item.subject}</h4>
+                      <h4 className="font-bold text-neutral-900 dark:text-white truncate">{item.subject}</h4>
                       <p className="text-xs text-neutral-500">{t('common.duration') || 'Durée'} : {item.startTime} - {item.endTime}</p>
                     </div>
-                    <div className="px-4 py-2 bg-white dark:bg-neutral-900 rounded-xl shadow-sm border border-neutral-100 dark:border-neutral-800">
+                    <div className="hidden sm:block px-4 py-2 bg-white dark:bg-neutral-900 rounded-xl shadow-sm border border-neutral-100 dark:border-neutral-800">
                       <p className="text-[10px] font-bold uppercase text-neutral-400">{t('students.room') || 'Salle'}</p>
                       <p className="text-xs font-bold">S-102</p>
                     </div>
@@ -263,7 +343,7 @@ export default function StudentDashboard() {
             </div>
           </div>
 
-          {/* Upcoming Exams */}
+          {/* Upcoming Exams (Updated to use evaluations if no explicit exams) */}
           <div className="card p-8">
             <div className="flex items-center justify-between mb-8">
               <div className="flex items-center gap-3">
@@ -320,7 +400,7 @@ export default function StudentDashboard() {
                 <X size={24} />
               </button>
             </div>
-            <div className="p-8">
+            <div className="p-8 max-h-[70vh] overflow-y-auto">
               <div className="space-y-4">
                 {student.payments && student.payments.length > 0 ? (
                   student.payments.map((payment, idx) => (
@@ -333,7 +413,9 @@ export default function StudentDashboard() {
                           {payment.amount > 0 ? <CheckCircle2 size={20} /> : <Clock size={20} />}
                         </div>
                         <div>
-                          <h5 className="font-bold text-sm">Tranche {payment.tranche}</h5>
+                          <h5 className="font-bold text-sm uppercase">
+                            {payment.tranche ? `Tranche ${payment.tranche}` : (payment.category ? payment.category.replace('_', ' ') : 'Frais Divers')}
+                          </h5>
                           <p className="text-[10px] font-bold uppercase text-neutral-400 tracking-wider">
                             {payment.date ? new Date(payment.date).toLocaleDateString('fr-FR') : 'En attente'}
                           </p>

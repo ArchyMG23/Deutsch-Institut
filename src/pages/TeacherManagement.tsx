@@ -215,8 +215,9 @@ export default function TeacherManagement() {
         </button>
       </div>
 
+      {/* Search and Filter */}
       <div className="card p-4 flex flex-col sm:flex-row gap-4 items-center">
-        <div className="relative group flex-1">
+        <div className="relative group flex-1 w-full">
           <input 
             type="text" 
             value={searchQuery}
@@ -226,12 +227,12 @@ export default function TeacherManagement() {
           />
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none z-10" size={18} />
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-neutral-400 uppercase">{t('common.sort_by')}:</span>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <span className="text-xs font-bold text-neutral-400 uppercase whitespace-nowrap">{t('common.sort_by')}:</span>
           <select 
             value={sortConfig?.key || ''} 
             onChange={(e) => handleSort(e.target.value)}
-            className="bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-dia-red outline-none"
+            className="flex-1 sm:flex-none bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-dia-red outline-none"
           >
             <option value="lastName">{t('common.name')}</option>
             <option value="hourlyRate">{t('teachers.hourly_rate')}</option>
@@ -246,18 +247,135 @@ export default function TeacherManagement() {
         </div>
       </div>
 
-      {/* Teachers Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* Teachers Desktop View */}
+      <div className="hidden md:block overflow-x-auto card">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="border-b border-neutral-100 dark:border-neutral-800">
+              <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-neutral-400">{t('common.name')}</th>
+              <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-neutral-400">{t('common.phone')}</th>
+              <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-neutral-400">{t('teachers.hourly_rate')}</th>
+              <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-neutral-400">{t('teachers.total_hours')}</th>
+              <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-neutral-400">{t('classes.title')}</th>
+              <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-neutral-400 text-right">{t('common.actions')}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+            {sortedTeachers.map((teacher) => (
+              <tr key={teacher.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors group">
+                <td className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-dia-red/10 text-dia-red flex items-center justify-center font-bold relative shrink-0">
+                      {teacher.firstName[0]}{teacher.lastName[0]}
+                      {teacher.status === 'online' && (
+                        <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white dark:border-neutral-900 rounded-full"></span>
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-sm tracking-tight">{teacher.firstName} {teacher.lastName}</p>
+                        {teacher.minStudentsCondition > 0 && (
+                          <span className="p-1 bg-orange-100 text-orange-600 rounded-md" title={`${t('teachers.min_students_condition')}: ${teacher.minStudentsCondition}`}>
+                            <User size={10} />
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] font-mono text-neutral-400 uppercase tracking-widest">{teacher.matricule}</p>
+                    </div>
+                  </div>
+                </td>
+                <td className="p-4">
+                  <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">{teacher.phone}</p>
+                </td>
+                <td className="p-4">
+                  <p className="text-sm font-bold flex items-center gap-1 text-dia-red">
+                    <DollarSign size={14} />
+                    {formatCurrency(teacher.hourlyRate)}/h
+                  </p>
+                </td>
+                <td className="p-4">
+                  <p className="text-sm font-bold flex items-center gap-1">
+                    <Clock size={14} className="text-neutral-400" />
+                    {teacher.totalHoursWorked}h
+                  </p>
+                </td>
+                <td className="p-4">
+                   <div className="flex flex-wrap gap-1 max-w-[200px]">
+                    {classes.filter(c => c.teacherId === teacher.id).map(c => (
+                      <span key={c.id} className="px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded-lg text-[9px] font-bold text-neutral-500 uppercase tracking-tighter">
+                        {c.name}
+                      </span>
+                    ))}
+                    {classes.filter(c => c.teacherId === teacher.id).length === 0 && (
+                      <span className="text-[10px] text-neutral-400 italic">{t('teachers.no_class')}</span>
+                    )}
+                  </div>
+                </td>
+                <td className="p-4">
+                  <div className="flex justify-end gap-2 text-neutral-400">
+                    <button 
+                      onClick={() => {
+                        const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n🚀 *ACCÈS ENSEIGNANT*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\nBonjour M/Mme ${teacher.lastName},\n\nBienvenue dans notre équipe pédagogique. Voici vos identifiants pour gérer vos classes et vos évaluations :\n\n🔑 *Matricule* : ${teacher.matricule}\n🔒 *Mot de passe* : ${teacher.password || 'Inconnu'}\n\n🌐 *Accès* : ${window.location.origin}\n\nNous vous souhaitons une excellente collaboration ! 🙏`;
+                        const a = document.createElement('a');
+                        a.href = generateWhatsAppLink(teacher.phone || '', msg);
+                        a.target = '_blank';
+                        a.click();
+                      }}
+                      className="p-2 hover:bg-green-50 hover:text-green-600 rounded-lg transition-all"
+                      title="WhatsApp"
+                    >
+                      <Smartphone size={16} />
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setSelectedTeacher(teacher);
+                        setIsEditModalOpen(true);
+                      }}
+                      className="p-2 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-all"
+                      title={t('common.edit')}
+                    >
+                      <Edit size={16} />
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteTeacher(teacher.id)}
+                      className="p-2 hover:bg-red-50 hover:text-red-600 rounded-lg transition-all"
+                      title={t('common.delete')}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Teachers Mobile View (Cards) */}
+      <div className="grid grid-cols-1 gap-4 md:hidden">
         {sortedTeachers.map((teacher) => (
-          <div key={teacher.id} className="card p-6 hover:shadow-lg transition-shadow">
-            <div className="flex justify-between items-start mb-4">
-              <div className="w-12 h-12 rounded-2xl bg-dia-red/10 text-dia-red flex items-center justify-center text-xl font-bold relative">
-                {teacher.firstName[0]}{teacher.lastName[0]}
-                {teacher.status === 'online' && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 border-4 border-white dark:border-neutral-900 rounded-full"></span>
-                )}
+          <div key={teacher.id} className="card p-5 space-y-4 hover:shadow-lg transition-shadow">
+            <div className="flex justify-between items-start">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-dia-red/10 text-dia-red flex items-center justify-center text-xl font-bold relative shrink-0">
+                  {teacher.firstName[0]}{teacher.lastName[0]}
+                  {teacher.status === 'online' && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 border-4 border-white dark:border-neutral-900 rounded-full"></span>
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-base leading-tight">{teacher.firstName} {teacher.lastName}</h4>
+                    {teacher.minStudentsCondition > 0 && (
+                      <span className="p-1 bg-orange-100 text-orange-600 rounded-md">
+                        <User size={10} />
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10px] font-mono text-neutral-400 uppercase tracking-widest">{teacher.matricule}</p>
+                </div>
               </div>
-              <div className="flex gap-1">
+              <div className="flex gap-2">
                 <button 
                   onClick={() => {
                     const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n🚀 *ACCÈS ENSEIGNANT*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\nBonjour M/Mme ${teacher.lastName},\n\nBienvenue dans notre équipe pédagogique. Voici vos identifiants pour gérer vos classes et vos évaluations :\n\n🔑 *Matricule* : ${teacher.matricule}\n🔒 *Mot de passe* : ${teacher.password || 'Inconnu'}\n\n🌐 *Accès* : ${window.location.origin}\n\nNous vous souhaitons une excellente collaboration ! 🙏`;
@@ -266,81 +384,53 @@ export default function TeacherManagement() {
                     a.target = '_blank';
                     a.click();
                   }}
-                  className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors text-green-600"
-                  title="WhatsApp"
+                  className="p-2.5 bg-green-50 text-green-600 rounded-xl active:scale-95 transition-transform"
                 >
-                  <Smartphone size={16} />
+                  <Smartphone size={18} />
                 </button>
                 <button 
                   onClick={() => {
                     setSelectedTeacher(teacher);
                     setIsEditModalOpen(true);
                   }}
-                  className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors text-blue-600"
+                  className="p-2.5 bg-blue-50 text-blue-600 rounded-xl active:scale-95 transition-transform"
                 >
-                  <Edit size={16} />
+                  <Edit size={18} />
                 </button>
                 <button 
                   onClick={() => handleDeleteTeacher(teacher.id)}
-                  className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors text-red-600"
+                  className="p-2.5 bg-red-50 text-red-600 rounded-xl active:scale-95 transition-transform"
                 >
-                  <X size={16} />
+                  <X size={18} />
                 </button>
               </div>
             </div>
-            
-            <div className="space-y-1 mb-4">
-              <div className="flex items-center justify-between">
-                <h4 className="font-bold text-lg">{teacher.firstName} {teacher.lastName}</h4>
-                <div className="flex gap-1">
-                  {teacher.minStudentsCondition > 0 && (
-                    <span className="p-1 bg-orange-100 text-orange-600 rounded-md" title={`${t('teachers.min_students_condition')}: ${teacher.minStudentsCondition}`}>
-                      <User size={12} />
-                    </span>
-                  )}
-                  {teacher.specialConditions && (
-                    <span className="p-1 bg-blue-100 text-blue-600 rounded-md" title={teacher.specialConditions}>
-                      <AlertCircle size={12} />
-                    </span>
-                  )}
-                </div>
-              </div>
-              <p className="text-xs font-mono text-neutral-500">{teacher.matricule}</p>
-              {teacher.status === 'online' && (
-                <p className="text-[10px] font-bold text-green-600 flex items-center gap-1 mt-2">
-                  {teacher.lastActiveDevice?.toLowerCase().includes('android') || teacher.lastActiveDevice?.toLowerCase().includes('ios') ? <Smartphone size={10} /> : <Laptop size={10} />}
-                  {t('common.online_on')} {teacher.lastActiveDevice}
-                </p>
-              )}
-            </div>
 
-            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-neutral-100 dark:border-neutral-800">
-              <div className="space-y-1">
-                <p className="text-[10px] font-bold uppercase text-neutral-400">{t('teachers.hourly_rate')}</p>
-                <p className="text-sm font-bold flex items-center gap-1">
-                  <DollarSign size={14} className="text-dia-red" />
+            <div className="grid grid-cols-2 gap-3 pb-4 border-b border-neutral-100 dark:border-neutral-800">
+              <div className="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-2xl">
+                <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">{t('teachers.hourly_rate')}</p>
+                <p className="text-sm font-bold flex items-center gap-1 text-dia-red">
                   {formatCurrency(teacher.hourlyRate)}/h
                 </p>
               </div>
-              <div className="space-y-1">
-                <p className="text-[10px] font-bold uppercase text-neutral-400">{t('teachers.total_hours')}</p>
+              <div className="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-2xl">
+                <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">{t('teachers.total_hours')}</p>
                 <p className="text-sm font-bold flex items-center gap-1">
-                  <Clock size={14} className="text-dia-red" />
                   {teacher.totalHoursWorked}h
                 </p>
               </div>
             </div>
 
-            <div className="mt-4 pt-4 border-t border-neutral-100 dark:border-neutral-800 space-y-2">
+            <div className="flex flex-col gap-2">
               <div className="flex flex-wrap gap-1">
                 {classes.filter(c => c.teacherId === teacher.id).map(c => (
-                  <span key={c.id} className="px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded-full text-[10px] font-bold text-neutral-500 uppercase">
+                  <span key={c.id} className="px-2 py-1 bg-neutral-100 dark:bg-neutral-800 rounded-lg text-[9px] font-bold text-neutral-500 uppercase">
                     {c.name}
                   </span>
                 ))}
               </div>
-              <p className="text-sm flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
-                <Phone size={14} /> {teacher.phone}
+              <p className="text-xs flex items-center gap-2 text-neutral-600 dark:text-neutral-400 font-medium">
+                <Phone size={14} className="text-dia-red" /> {teacher.phone}
               </p>
             </div>
           </div>

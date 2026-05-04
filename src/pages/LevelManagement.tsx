@@ -43,6 +43,7 @@ export default function LevelManagement() {
       name: formData.get('name'),
       tuition: Number(formData.get('tuition')),
       hours: Number(formData.get('hours')),
+      type: formData.get('type'),
     };
 
     try {
@@ -76,6 +77,7 @@ export default function LevelManagement() {
       name: formData.get('name'),
       tuition: Number(formData.get('tuition')),
       hours: Number(formData.get('hours')),
+      type: formData.get('type'),
     };
 
     setSubmitting(true);
@@ -239,6 +241,13 @@ export default function LevelManagement() {
             <form onSubmit={handleAddLevel} className="p-8 space-y-6">
               <div className="space-y-4">
                 <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Type de Formation</label>
+                  <select name="type" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
+                    <option value="allemand">Allemand</option>
+                    <option value="anglais">Anglais</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('levels.name')}</label>
                   <input name="name" required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
@@ -285,6 +294,13 @@ export default function LevelManagement() {
             </div>
             <form onSubmit={handleEditLevel} className="p-8 space-y-6">
               <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Type de Formation</label>
+                  <select name="type" defaultValue={editingLevel.type || 'allemand'} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
+                    <option value="allemand">Allemand</option>
+                    <option value="anglais">Anglais</option>
+                  </select>
+                </div>
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('levels.name')}</label>
                   <input name="name" defaultValue={editingLevel.name} required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />

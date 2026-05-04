@@ -80,7 +80,7 @@ export function Sidebar() {
   return (
     <>
       {/* Mobile Header Overlay */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-neutral-900 border-b border-neutral-100 dark:border-neutral-800 z-40 flex items-center px-4">
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-lg border-b border-neutral-100 dark:border-neutral-800 z-40 flex items-center px-4 pt-[env(safe-area-inset-top)]">
         <button 
           onClick={() => setIsOpen(!isOpen)}
           className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors text-neutral-600 dark:text-neutral-400"
@@ -89,7 +89,7 @@ export function Sidebar() {
         </button>
         <div className="ml-4 flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-dia-red flex items-center justify-center text-white font-bold text-sm">D</div>
-          <span className="font-bold text-neutral-900 dark:text-white">DIA_SAAS</span>
+          <span className="font-bold text-neutral-900 dark:text-white uppercase tracking-tight">DIA_SAAS</span>
         </div>
       </div>
 

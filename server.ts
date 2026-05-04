@@ -545,6 +545,7 @@ async function startServer() {
     try {
       const currentUserDoc = await dbAdmin.collection('users').doc(req.user.id).get();
       const userData = currentUserDoc.data();
+      
       const isSuperAdmin = userData?.isSuperAdmin || 
                          req.user.email === 'yombivictor@gmail.com' || 
                          req.user.email === 'gabrielyombi311@gmail.com';
@@ -553,34 +554,66 @@ async function startServer() {
         return res.status(403).json({ message: 'Seul le Super Administrateur peut réinitialiser le système' });
       }
 
+      const { confirmation } = req.body;
+      if (confirmation !== 'RESET_FACTORY') {
+        return res.status(400).json({ message: 'Code de confirmation incorrect (Attendu: RESET_FACTORY)' });
+      }
+
       const collectionsToClear = [
         'finances', 'charges', 'scolarites', 'classes', 'niveaux', 
         'rapports_journaliers', 'communiques', 'evaluations', 
-        'chat_eleves', 'logs', 'notifications', 'library', 'teachers', 'rooms'
+        'chat_eleves', 'logs', 'notifications', 'library', 'teachers', 'rooms',
+        'students', 'levels', 'exams', 'messages', 'attendances', 'system'
       ];
+
+      addLog('INFO', `Démarrage de la réinitialisation système par ${userData?.email}`);
 
       // Delete all documents in these collections
       for (const collName of collectionsToClear) {
         const snapshot = await dbAdmin.collection(collName).get();
-        const batch = dbAdmin.batch();
-        snapshot.docs.forEach(doc => batch.delete(doc.ref));
-        await batch.commit();
+        if (snapshot.empty) continue;
+
+        // Firestore batch limit is 500
+        const docs = snapshot.docs;
+        for (let i = 0; i < docs.length; i += 500) {
+          const batch = dbAdmin.batch();
+          const chunk = docs.slice(i, i + 500);
+          chunk.forEach(doc => batch.delete(doc.ref));
+          await batch.commit();
+        }
+        addLog('INFO', `Collection ${collName} vidée`);
       }
 
       // Delete all users EXCEPT those specified as admins in the config
       const defaultEmails = ['yombivictor@gmail.com', 'gabrielyombi311@gmail.com'];
       const usersSnap = await dbAdmin.collection('users').get();
-      const userBatch = dbAdmin.batch();
       
-      usersSnap.docs.forEach(doc => {
+      let batch = dbAdmin.batch();
+      let count = 0;
+
+      for (const doc of usersSnap.docs) {
         const u = doc.data();
         if (!defaultEmails.includes(u.email)) {
-          userBatch.delete(doc.ref);
-        }
-      });
-      await userBatch.commit();
+          batch.delete(doc.ref);
+          count++;
 
-      // Re-bootstrap default admins to ensure they exist and have correct roles
+          // Delete from Firebase Auth as well
+          try {
+            await authAdmin.deleteUser(doc.id);
+          } catch (e: any) {
+            console.error(`Error deleting auth user ${doc.id}:`, e.message);
+          }
+
+          if (count >= 400) {
+            await batch.commit();
+            batch = dbAdmin.batch();
+            count = 0;
+          }
+        }
+      }
+      await batch.commit();
+
+      // Ensure default admins exist in Firestore
       const defaultAdmins = [
         { email: 'yombivictor@gmail.com', firstName: 'Victor', lastName: 'Yombi', matricule: 'SUPERADMIN', isSuperAdmin: true },
         { email: 'gabrielyombi311@gmail.com', firstName: 'Gabriel', lastName: 'Yombi', matricule: 'ADMIN_GABRIEL', isSuperAdmin: true }
@@ -588,129 +621,24 @@ async function startServer() {
 
       for (const adminData of defaultAdmins) {
         try {
-          let userRecord;
-          try {
-            userRecord = await authAdmin.getUserByEmail(adminData.email);
-          } catch (e) {
-            userRecord = await authAdmin.createUser({
-              email: adminData.email,
-              password: 'Admin.1234',
-              displayName: `${adminData.firstName} ${adminData.lastName}`
-            });
+          const userRec = await authAdmin.getUserByEmail(adminData.email).catch(() => null);
+          if (userRec) {
+            await dbAdmin.collection('users').doc(userRec.uid).set({
+              uid: userRec.uid,
+              ...adminData,
+              role: 'admin',
+              status: 'offline',
+              createdAt: new Date().toISOString()
+            }, { merge: true });
           }
-
-          await dbAdmin.collection('users').doc(userRecord.uid).set({
-            uid: userRecord.uid,
-            ...adminData,
-            role: 'admin',
-            status: 'offline',
-            createdAt: new Date().toISOString()
-          }, { merge: true });
-        } catch (err) {
-          console.error(`Error re-bootstrapping admin ${adminData.email}:`, err);
+        } catch (err: any) {
+          console.error(`Error bootstrapping admin ${adminData.email}:`, err.message);
         }
       }
 
       res.json({ message: 'Système réinitialisé avec succès' });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
-
-  app.post('/api/students/resend-credentials/:id', authenticate, async (req: any, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Interdit' });
-    try {
-      const studentDoc = await dbAdmin.collection('users').doc(req.params.id).get();
-      if (!studentDoc.exists) return res.status(404).json({ message: 'Étudiant non trouvé' });
-      const student = studentDoc.data();
-      
-      const newPassword = 'DIA' + Math.floor(1000 + Math.random() * 9000) + '.';
-      await authAdmin.updateUser(req.params.id, { password: newPassword });
-      
-      // The frontend NotificationService will be called or we can trigger it here.
-      // Actually the frontend calls this, so we just return the password and let the frontend send the email.
-      // Or we can send it from here. The frontend expects a success message.
-      // Re-reading logic: the frontend calls this and expects success.
-      
-      res.json({ message: 'Mot de passe réinitialisé', password: newPassword });
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
-
-  app.post('/api/system/reset', authenticate, async (req: any, res) => {
-    try {
-      const currentUserDoc = await dbAdmin.collection('users').doc(req.user.id).get();
-      const userData = currentUserDoc.data();
-      
-      if (!userData || !userData.isSuperAdmin) {
-        return res.status(403).json({ message: 'Seul le Super Administrateur peut réinitialiser le système' });
-      }
-
-      const { confirmation } = req.body;
-      if (confirmation !== 'RESET_FACTORY') {
-        return res.status(400).json({ message: 'Code de confirmation incorrect' });
-      }
-
-      addLog('INFO', `Démarrage de la réinitialisation système par ${userData.email}`);
-
-      const collectionsToReset = [
-        'students', 'teachers', 'classes', 'levels', 'finances', 
-        'library', 'communiques', 'notifications', 'attendances', 
-        'exams', 'messages'
-      ];
-
-      // Delete all docs in specified collections
-      for (const collName of collectionsToReset) {
-        const snapshot = await dbAdmin.collection(collName).get();
-        if (snapshot.empty) continue;
-        
-        const chunks = [];
-        for (let i = 0; i < snapshot.docs.length; i += 500) {
-          chunks.push(snapshot.docs.slice(i, i + 500));
-        }
-
-        for (const chunk of chunks) {
-          const batch = dbAdmin.batch();
-          chunk.forEach((doc) => batch.delete(doc.ref));
-          await batch.commit();
-        }
-        addLog('INFO', `Collection ${collName} vidée`);
-      }
-
-      // Handle users collection: delete all except admins
-      const usersSnapshot = await dbAdmin.collection('users').get();
-      const usersBatch = dbAdmin.batch();
-      let deletedUsersCount = 0;
-      usersSnapshot.docs.forEach((doc) => {
-        const data = doc.data();
-        // Preserve all admins (including regular admins and super admins)
-        if (data.role !== 'admin') {
-          usersBatch.delete(doc.ref);
-          deletedUsersCount++;
-        }
-      });
-      if (deletedUsersCount > 0) {
-        await usersBatch.commit();
-      }
-      addLog('INFO', `Utilisateurs non-admins supprimés (${deletedUsersCount})`);
-
-      // Re-bootstrap indispensable data (Levels)
-      const initialLevels = [
-        { id: 'a1', name: 'A1', tuition: 150000, hours: 120 },
-        { id: 'a2', name: 'A2', tuition: 175000, hours: 120 },
-        { id: 'b1', name: 'B1', tuition: 200000, hours: 160 },
-        { id: 'b2', name: 'B2', tuition: 250000, hours: 180 },
-        { id: 'c1', name: 'C1', tuition: 350000, hours: 200 }
-      ];
-      for (const level of initialLevels) {
-        await dbAdmin.collection('levels').doc(level.id).set(level);
-      }
-      addLog('INFO', `Niveaux réinitialisés aux valeurs d'origine`);
-
-      res.json({ message: 'Système réinitialisé avec succès. Les données ont été formatées mais les comptes Administrateurs ont été conservés.' });
-    } catch (err: any) {
-      addLog('ERROR', `Échec de la réinitialisation système`, err.message);
+      addLog('ERROR', 'System Reset Error', err.message);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1239,6 +1167,7 @@ async function startServer() {
       const newItem = {
         id,
         title: req.body.title || req.file.originalname,
+        category: req.body.category || 'Autre',
         type: req.body.type || 'document',
         url: `/uploads/${req.file.filename}`,
         addedAt: new Date().toISOString(),
