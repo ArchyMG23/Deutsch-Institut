@@ -816,8 +816,8 @@ export default function FinanceManagement() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Versement Scolarité (Avance) *</label>
-                <input name="amount" type="number" required defaultValue={50000} placeholder="Ex: 50000" className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl font-bold text-neutral-900 outline-none focus:ring-2 focus:ring-orange-500/20" />
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Versement Scolarité (Avance)</label>
+                <input name="amount" type="number" defaultValue={50000} placeholder="Ex: 50000" className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl font-bold text-neutral-900 outline-none focus:ring-2 focus:ring-orange-500/20" />
               </div>
               <div className="pt-4 flex gap-4">
                 <button type="button" onClick={() => setIsQuickAddModalOpen(false)} className="flex-1 py-3 text-sm font-bold text-neutral-500">Annuler</button>
