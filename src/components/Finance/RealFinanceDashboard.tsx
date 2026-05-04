@@ -4,7 +4,7 @@ import {
   TrendingDown, 
   DollarSign, 
   Calendar, 
-  PieChart, 
+  PieChart as PieChartIcon, 
   ArrowUpRight, 
   ArrowDownRight,
   Activity,
@@ -57,6 +57,9 @@ interface FirestoreErrorInfo {
   }
 }
 
+// Robust class names join helper
+const cn = (...classes: any[]) => classes.filter(Boolean).join(' ');
+
 export default function RealFinanceDashboard() {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
@@ -64,7 +67,7 @@ export default function RealFinanceDashboard() {
     revenus: 0,
     chargesFixes: 0,
     chargesSalariales: 0,
-    revenusDetails: {} as Record<string, number>,
+    revenusDetails: { scolarite: 0, inscription: 0, autre: 0 } as Record<string, number>,
     history: [] as any[],
     classQuotas: [] as any[],
     sessionDetails: [] as any[],
@@ -84,7 +87,7 @@ export default function RealFinanceDashboard() {
       path
     };
     console.error('Firestore Error Detailed: ', JSON.stringify(errInfo));
-    throw new Error(JSON.stringify(errInfo));
+    // Don't crash the whole app on a background data fetch failure, just log it
   };
 
   const fetchFinanceStats = async () => {
@@ -106,10 +109,14 @@ export default function RealFinanceDashboard() {
       }
       
       const levelsMap: Record<string, any> = {};
-      levelsSnap!.forEach(doc => levelsMap[doc.id] = doc.data());
+      if (levelsSnap) {
+        levelsSnap.forEach(doc => levelsMap[doc.id] = doc.data());
+      }
       
       const classesMap: Record<string, any> = {};
-      classesSnap!.forEach(doc => classesMap[doc.id] = doc.data());
+      if (classesSnap) {
+        classesSnap.forEach(doc => classesMap[doc.id] = doc.data());
+      }
 
       // ... rest of the logic ...
       let totalRevenu = 0;
@@ -252,13 +259,15 @@ export default function RealFinanceDashboard() {
       }
       
       const teacherSettings: Record<string, { hourlyRate: number, minStudents?: number }> = {};
-      teachersSnap!.forEach((doc: any) => {
-        const t = doc.data();
-        teacherSettings[doc.id] = {
-          hourlyRate: t.hourlyRate || 3000,
-          minStudents: t.minStudentsCondition
-        };
-      });
+      if (teachersSnap) {
+        teachersSnap.forEach((doc: any) => {
+          const t = doc.data();
+          teacherSettings[doc.id] = {
+            hourlyRate: t.hourlyRate || 3000,
+            minStudents: t.minStudentsCondition
+          };
+        });
+      }
 
       let totalSalaires = 0;
       const monthlySalaries: Record<string, number> = {};
@@ -406,14 +415,14 @@ export default function RealFinanceDashboard() {
       }));
 
       setData({
-        revenus: totalRevenu,
-        chargesFixes: totalChargesFixes,
-        chargesSalariales: totalSalaires,
-        revenusDetails,
-        history,
-        classQuotas,
-        sessionDetails,
-        scolarites
+        revenus: totalRevenu || 0,
+        chargesFixes: totalChargesFixes || 0,
+        chargesSalariales: totalSalaires || 0,
+        revenusDetails: revenusDetails || { scolarite: 0, inscription: 0, autre: 0 },
+        history: history || [],
+        classQuotas: classQuotas || [],
+        sessionDetails: sessionDetails || [],
+        scolarites: scolarites || []
       });
     } catch (err) {
       console.error("Erreur Dashboard Financier (Détails):", err);
@@ -588,7 +597,7 @@ export default function RealFinanceDashboard() {
         <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="card p-6">
             <h5 className="font-bold mb-6 flex items-center gap-2">
-              <PieChart size={18} className="text-dia-red" />
+              <PieChartIcon size={18} className="text-dia-red" />
               Évolution Mensuelle
             </h5>
           <div className="h-72">
@@ -659,8 +668,8 @@ export default function RealFinanceDashboard() {
                 data.sessionDetails?.map((s: any, idx: number) => (
                   <tr key={idx} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition-colors">
                     <td className="px-6 py-4">
-                      <p className="font-bold">{new Date(s.date).toLocaleDateString()}</p>
-                      <p className="text-xs text-neutral-400">{s.teacherName}</p>
+                      <p className="font-bold">{s.date ? new Date(s.date).toLocaleDateString() : 'N/A'}</p>
+                      <p className="text-xs text-neutral-400">{s.teacherName || 'Enseignant'}</p>
                     </td>
                     <td className="px-6 py-4">
                       <p className="font-medium text-xs">{s.matiere}</p>
@@ -699,15 +708,15 @@ export default function RealFinanceDashboard() {
       <div className="card overflow-hidden">
         <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 bg-orange-50/50 flex items-center justify-between">
           <h5 className="font-bold flex items-center gap-2 text-orange-600">
-            <PieChart size={18} />
+            <PieChartIcon size={18} />
             État Global des Scolarités (Tous les élèves)
           </h5>
           <div className="flex gap-2">
              <span className="text-[10px] font-black bg-white px-2 py-1 rounded-lg border border-orange-200">
-              Total Dû: {formatCurrency(data.scolarites.reduce((acc, s) => acc + (s.montant_total_du || 0), 0))}
+              Total Dû: {formatCurrency((data.scolarites || []).reduce((acc, s) => acc + (s.montant_total_du || 0), 0))}
              </span>
              <span className="text-[10px] font-black bg-white px-2 py-1 rounded-lg border border-orange-200 text-green-600">
-              Total Encaissé: {formatCurrency(data.scolarites.reduce((acc, s) => acc + (s.total_verse || 0), 0))}
+              Total Encaissé: {formatCurrency((data.scolarites || []).reduce((acc, s) => acc + (s.total_verse || 0), 0))}
              </span>
           </div>
         </div>
@@ -723,12 +732,12 @@ export default function RealFinanceDashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-              {data.scolarites.length === 0 ? (
+              {(!data.scolarites || data.scolarites.length === 0) ? (
                 <tr>
                   <td colSpan={5} className="px-6 py-10 text-center text-neutral-500 italic">Aucune donnée de scolarité trouvée.</td>
                 </tr>
               ) : (
-                data.scolarites.sort((a,b) => (b.reste || 0) - (a.reste || 0)).map((s: any, idx: number) => (
+                [...data.scolarites].sort((a,b) => (b.reste || 0) - (a.reste || 0)).map((s: any, idx: number) => (
                   <tr key={idx} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition-colors">
                     <td className="px-6 py-4">
                       <p className="font-bold uppercase text-xs">{s.nom_eleve}</p>
@@ -744,9 +753,9 @@ export default function RealFinanceDashboard() {
                         {s.statut_paiement}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-right font-medium">{formatCurrency(s.montant_total_du)}</td>
-                    <td className="px-6 py-4 text-right font-black text-green-600">{formatCurrency(s.total_verse)}</td>
-                    <td className="px-6 py-4 text-right font-black text-dia-red">{formatCurrency(s.reste)}</td>
+                    <td className="px-6 py-4 text-right font-medium">{formatCurrency(s.montant_total_du || 0)}</td>
+                    <td className="px-6 py-4 text-right font-black text-green-600">{formatCurrency(s.total_verse || 0)}</td>
+                    <td className="px-6 py-4 text-right font-black text-dia-red">{formatCurrency(s.reste || 0)}</td>
                   </tr>
                 ))
               )}
@@ -756,8 +765,4 @@ export default function RealFinanceDashboard() {
       </div>
     </div>
   );
-}
-
-function cn(...classes: any[]) {
-  return classes.filter(Boolean).join(' ');
 }

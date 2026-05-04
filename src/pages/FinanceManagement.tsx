@@ -445,7 +445,11 @@ export default function FinanceManagement() {
         
         // --- Consistency Sync with TuitionManagement ---
         const amount = Number(formData.get('amount')) || 0;
-        if (amount > 0) {
+        const payInscription = formData.get('payInscription') === 'on';
+        const inscriptionAmount = payInscription ? 10000 : 0;
+        const totalPaid = amount + inscriptionAmount;
+
+        if (totalPaid > 0) {
           const studentLevel = levels.find(l => l.id === formData.get('levelId'));
           const tuitionAmount = studentLevel?.tuition || 110000;
           
@@ -461,21 +465,37 @@ export default function FinanceManagement() {
             nom_eleve: `${student.firstName} ${student.lastName}`,
             classe_id: 'N/A',
             montant_total_du: tuitionAmount,
-            total_verse: amount,
+            total_verse: amount, // Scolarité only
             reste: Math.max(0, tuitionAmount - amount),
             surplus: Math.max(0, amount - tuitionAmount),
             statut_paiement: amount >= tuitionAmount ? 'SOLDÉ' : 'EN COURS'
           });
 
-          await addDoc(collection(db, 'scolarites', student.uid, 'versements'), {
-            montant: amount,
-            date: finalDate,
-            mode_paiement: 'Espèces',
-            categorie: 'inscription',
-            recu_numero: `INS-${Date.now().toString().slice(-6)}`,
-            caissier_id: user?.uid || 'System',
-            notes: 'Inscription Rapide'
-          });
+          // Enregistrer l'inscription si cochée
+          if (payInscription) {
+            await addDoc(collection(db, 'scolarites', student.uid, 'versements'), {
+              montant: 10000,
+              date: finalDate,
+              mode_paiement: 'Espèces',
+              categorie: 'inscription',
+              recu_numero: `INS-${Date.now().toString().slice(-6)}`,
+              caissier_id: user?.uid || 'System',
+              notes: 'Frais d\'inscription (Rapide)'
+            });
+          }
+
+          // Enregistrer le versement de scolarité si montant > 0
+          if (amount > 0) {
+            await addDoc(collection(db, 'scolarites', student.uid, 'versements'), {
+              montant: amount,
+              date: finalDate,
+              mode_paiement: 'Espèces',
+              categorie: 'scolarite',
+              recu_numero: `SCO-${(Date.now() + 1).toString().slice(-6)}`,
+              caissier_id: user?.uid || 'System',
+              notes: 'Avance Scolarité (Rapide)'
+            });
+          }
         }
         // -----------------------------------------------
 
@@ -788,9 +808,16 @@ export default function FinanceManagement() {
                   {levels.map(l => <option key={l.id} value={l.id}>{l.name} - {formatCurrency(l.tuition)}</option>)}
                 </select>
               </div>
+              <div className="space-y-1.5 p-4 bg-orange-50 dark:bg-orange-900/10 border-2 border-orange-100 dark:border-orange-900/30 rounded-2xl flex items-center gap-3">
+                <input name="payInscription" type="checkbox" defaultChecked className="w-5 h-5 accent-orange-600 rounded cursor-pointer" />
+                <div>
+                  <p className="text-[11px] font-black uppercase text-orange-600 tracking-wider">Frais d'Inscription</p>
+                  <p className="text-xs font-bold text-orange-500">10 000 FCFA (Inclus par défaut)</p>
+                </div>
+              </div>
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Montant Versé (Tranche 1) *</label>
-                <input name="amount" type="number" required defaultValue={10000} placeholder="Ex: 50000" className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-orange-200 dark:border-orange-900 rounded-xl font-bold text-orange-600 outline-none focus:ring-2 focus:ring-orange-500/20" />
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Versement Scolarité (Avance) *</label>
+                <input name="amount" type="number" required defaultValue={50000} placeholder="Ex: 50000" className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl font-bold text-neutral-900 outline-none focus:ring-2 focus:ring-orange-500/20" />
               </div>
               <div className="pt-4 flex gap-4">
                 <button type="button" onClick={() => setIsQuickAddModalOpen(false)} className="flex-1 py-3 text-sm font-bold text-neutral-500">Annuler</button>

@@ -49,6 +49,20 @@ const TuitionManagement: React.FC = () => {
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
 
+  const hasPaidInscription = versements.some(v => v.categorie === 'inscription');
+
+  useEffect(() => {
+    if (targetStudent && hasPaidInscription && paymentCategory === 'inscription') {
+      setPaymentCategory('scolarite');
+    }
+  }, [hasPaidInscription, targetStudent]);
+
+  useEffect(() => {
+    if (paymentCategory === 'inscription') {
+      setAmount(10000);
+    }
+  }, [paymentCategory]);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -440,10 +454,16 @@ const TuitionManagement: React.FC = () => {
                   <select 
                     value={paymentCategory}
                     onChange={(e) => setPaymentCategory(e.target.value as any)}
-                    className="w-full p-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl font-bold"
+                    className={cn(
+                      "w-full p-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl font-bold",
+                      paymentCategory === 'inscription' && "bg-orange-50 border-orange-200 text-orange-600"
+                    )}
                   >
                     <option value="scolarite">Scolarité</option>
-                    <option value="inscription">Inscription</option>
+                    {!hasPaidInscription && (
+                      <option value="inscription" className="font-bold text-orange-600">Inscription (10 000 FCFA)</option>
+                    )}
+                    <option value="examen">Examen</option>
                     <option value="autre">Autre</option>
                   </select>
                 </div>

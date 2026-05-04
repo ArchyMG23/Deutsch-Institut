@@ -188,13 +188,16 @@ export default function StudentManagement() {
         
         // --- SYNC WITH FINANCE MODULE ---
         // Calculate total initial payment from tranches
-        const initialPayment = (Number(formData.get('tranche1')) || 0) + 
-                              (Number(formData.get('tranche2')) || 0) + 
-                              (Number(formData.get('tranche3')) || 0);
+        const payInscription = formData.get('payInscription') === 'on';
+        const inscriptionAmount = payInscription ? 10000 : 0;
+        const tranche1 = Number(formData.get('tranche1')) || 0;
+        const tranche2 = Number(formData.get('tranche2')) || 0;
+        const tranche3 = Number(formData.get('tranche3')) || 0;
+        const initialPayment = tranche1 + tranche2 + tranche3;
 
-        if (initialPayment > 0) {
+        if (initialPayment > 0 || inscriptionAmount > 0) {
           const studentLevel = levels.find(l => l.id === levelId);
-          const tuitionAmount = studentLevel?.tuition || 150000;
+          const tuitionAmount = studentLevel?.tuition || 110000;
           
           await setDoc(doc(db, 'scolarites', student.uid), {
             id: student.uid,
@@ -209,15 +212,29 @@ export default function StudentManagement() {
             statut_paiement: initialPayment >= tuitionAmount ? 'SOLDÉ' : 'EN COURS'
           });
 
-          await addDoc(collection(db, 'scolarites', student.uid, 'versements'), {
-            montant: initialPayment,
-            date: new Date().toISOString(),
-            mode_paiement: 'Espèces',
-            categorie: 'inscription',
-            recu_numero: `INS-${Date.now().toString().slice(-6)}`,
-            caissier_id: 'System',
-            notes: 'Paiement initial (inscription)'
-          });
+          if (inscriptionAmount > 0) {
+            await addDoc(collection(db, 'scolarites', student.uid, 'versements'), {
+              montant: 10000,
+              date: new Date().toISOString(),
+              mode_paiement: 'Espèces',
+              categorie: 'inscription',
+              recu_numero: `INS-${Date.now().toString().slice(-6)}`,
+              caissier_id: (auth.currentUser as any)?.uid || 'System',
+              notes: 'Frais d\'inscription (Standard)'
+            });
+          }
+
+          if (initialPayment > 0) {
+            await addDoc(collection(db, 'scolarites', student.uid, 'versements'), {
+              montant: initialPayment,
+              date: new Date().toISOString(),
+              mode_paiement: 'Espèces',
+              categorie: 'scolarite',
+              recu_numero: `SCO-${(Date.now() + 1).toString().slice(-6)}`,
+              caissier_id: (auth.currentUser as any)?.uid || 'System',
+              notes: 'Paiement initial scolarité'
+            });
+          }
         }
         // --------------------------------
 
@@ -915,6 +932,13 @@ export default function StudentManagement() {
                     <option value="">{t('students.not_assigned')}</option>
                     {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
+                </div>
+                <div className="space-y-2 p-4 bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-900/30 rounded-2xl flex items-center gap-3 md:col-span-2">
+                  <input name="payInscription" type="checkbox" defaultChecked className="w-5 h-5 accent-orange-600 rounded cursor-pointer" />
+                  <div>
+                    <p className="text-[11px] font-black uppercase text-orange-600 tracking-wider">Frais d'Inscription</p>
+                    <p className="text-xs font-bold text-orange-500">10 000 FCFA (S'ajoute au paiement initial)</p>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.initial_payment')} (Tranche 1)</label>
