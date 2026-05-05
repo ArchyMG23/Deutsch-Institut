@@ -155,11 +155,15 @@ async function startServer() {
       if (levelsSnapshot.empty) {
         console.log("Bootstrapping levels...");
         const initialLevels = [
-          { id: 'a1', name: 'A1', tuition: 110000, hours: 120 },
-          { id: 'a2', name: 'A2', tuition: 110000, hours: 120 },
-          { id: 'b1', name: 'B1', tuition: 120000, hours: 160 },
-          { id: 'b2', name: 'B2', tuition: 120000, hours: 180 },
-          { id: 'c1', name: 'C1', tuition: 130000, hours: 200 }
+          { id: 'a1_de', name: 'A1 (Allemand)', stream: 'Allemand', tuition: 110000, hours: 120 },
+          { id: 'a2_de', name: 'A2 (Allemand)', stream: 'Allemand', tuition: 110000, hours: 120 },
+          { id: 'b1_de', name: 'B1 (Allemand)', stream: 'Allemand', tuition: 120000, hours: 160 },
+          { id: 'b2_de', name: 'B2 (Allemand)', stream: 'Allemand', tuition: 120000, hours: 180 },
+          { id: 'c1_de', name: 'C1 (Allemand)', stream: 'Allemand', tuition: 130000, hours: 200 },
+          { id: 'a1_en', name: 'A1 (Anglais)', stream: 'Anglais', tuition: 110000, hours: 120 },
+          { id: 'a2_en', name: 'A2 (Anglais)', stream: 'Anglais', tuition: 110000, hours: 120 },
+          { id: 'b1_en', name: 'B1 (Anglais)', stream: 'Anglais', tuition: 120000, hours: 160 },
+          { id: 'vorbereitung', name: 'Vorbereitung', stream: 'Allemand', tuition: 50000, hours: 60 }
         ];
         // Enforce definitively
         for (const level of initialLevels) {
@@ -169,11 +173,15 @@ async function startServer() {
       } else {
         // Even if not empty, ensure the specified ones are correct
         const forcedLevels = [
-          { id: 'a1', name: 'A1', tuition: 110000 },
-          { id: 'a2', name: 'A2', tuition: 110000 },
-          { id: 'b1', name: 'B1', tuition: 120000 },
-          { id: 'b2', name: 'B2', tuition: 120000 },
-          { id: 'c1', name: 'C1', tuition: 130000 }
+          { id: 'a1_de', name: 'A1 (Allemand)', stream: 'Allemand', tuition: 110000 },
+          { id: 'a2_de', name: 'A2 (Allemand)', stream: 'Allemand', tuition: 110000 },
+          { id: 'b1_de', name: 'B1 (Allemand)', stream: 'Allemand', tuition: 120000 },
+          { id: 'b2_de', name: 'B2 (Allemand)', stream: 'Allemand', tuition: 120000 },
+          { id: 'c1_de', name: 'C1 (Allemand)', stream: 'Allemand', tuition: 130000 },
+          { id: 'a1_en', name: 'A1 (Anglais)', stream: 'Anglais', tuition: 110000 },
+          { id: 'a2_en', name: 'A2 (Anglais)', stream: 'Anglais', tuition: 110000 },
+          { id: 'b1_en', name: 'B1 (Anglais)', stream: 'Anglais', tuition: 120000 },
+          { id: 'vorbereitung', name: 'Vorbereitung', stream: 'Allemand', tuition: 50000 }
         ];
         for (const level of forcedLevels) {
           await dbAdmin.collection('levels').doc(level.id).set(level, { merge: true });

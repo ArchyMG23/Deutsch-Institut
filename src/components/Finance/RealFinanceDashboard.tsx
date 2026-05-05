@@ -160,7 +160,7 @@ export default function RealFinanceDashboard() {
           if (txDate.getFullYear() === selectedYear) {
             totalRevenu += amount;
             const cat = String(v.categorie || 'scolarite').toLowerCase();
-            if (cat === 'inscription' || cat === 'registration' || cat.indexOf('inscrip') !== -1) {
+            if (cat === 'inscription' || cat === 'registration' || cat.includes('inscrip')) {
               revenusDetails.inscription += amount;
             } else {
               revenusDetails.scolarite += amount;
@@ -233,7 +233,7 @@ export default function RealFinanceDashboard() {
               }
   
               totalRevenu += amount;
-              if (cat.indexOf('inscrip') !== -1) revenusDetails.inscription += amount;
+              if (cat.includes('inscrip')) revenusDetails.inscription += amount;
               else revenusDetails.autre += amount;
   
               const mKey = date.getMonth();

@@ -52,6 +52,8 @@ export default function StudentManagement() {
   const [activeTab, setActiveTab] = useState<'active' | 'former'>('active');
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedTuition, setSelectedTuition] = useState(110000);
+  const [selectedStream, setSelectedStream] = useState<string>('');
   const itemsPerPage = 20;
   
   const printRef = useRef<HTMLDivElement>(null);
@@ -185,35 +187,45 @@ export default function StudentManagement() {
       });
       if (res.ok) {
         const student = await res.json();
+        const studentId = student.id || student.uid;
         
         // --- SYNC WITH FINANCE MODULE ---
         // Calculate total initial payment from tranches
         const payInscription = formData.get('payInscription') === 'on';
         const inscriptionAmount = payInscription ? 10000 : 0;
+        
+        const payVorbereitung = formData.get('payVorbereitung') === 'on';
+        const vorbereitungAmount = payVorbereitung ? (Number(formData.get('vorbereitungAmount')) || 0) : 0;
+
         const tranche1 = Number(formData.get('tranche1')) || 0;
         const tranche2 = Number(formData.get('tranche2')) || 0;
         const tranche3 = Number(formData.get('tranche3')) || 0;
         const initialPayment = tranche1 + tranche2 + tranche3;
 
-        if (initialPayment > 0 || inscriptionAmount > 0) {
-          const studentLevel = levels.find(l => l.id === levelId);
-          const tuitionAmount = studentLevel?.tuition || 110000;
+        if (initialPayment > 0 || inscriptionAmount > 0 || vorbereitungAmount > 0) {
+          const tuitionAmount = Number(formData.get('totalTuition')) || 110000;
+          const levelId = formData.get('levelId') as string;
+          const level = levels.find(l => l.id === levelId);
           
-          await setDoc(doc(db, 'scolarites', student.uid), {
-            id: student.uid,
-            eleve_id: student.uid,
+          const totalWithExtras = initialPayment + inscriptionAmount + vorbereitungAmount;
+          
+          await setDoc(doc(db, 'scolarites', studentId), {
+            id: studentId,
+            eleve_id: studentId,
             matricule: student.matricule,
             nom_eleve: `${student.firstName} ${student.lastName}`,
             classe_id: classId || 'N/A',
+            filiere: level?.stream || 'N/A',
+            niveau: level?.name || 'N/A',
             montant_total_du: tuitionAmount,
-            total_verse: initialPayment,
-            reste: Math.max(0, tuitionAmount - initialPayment),
-            surplus: Math.max(0, initialPayment - tuitionAmount),
-            statut_paiement: initialPayment >= tuitionAmount ? 'SOLDÉ' : 'EN COURS'
+            total_verse: totalWithExtras,
+            reste: Math.max(0, tuitionAmount - totalWithExtras),
+            surplus: Math.max(0, totalWithExtras - tuitionAmount),
+            statut_paiement: totalWithExtras >= tuitionAmount ? 'SOLDÉ' : 'EN COURS'
           });
 
           if (inscriptionAmount > 0) {
-            await addDoc(collection(db, 'scolarites', student.uid, 'versements'), {
+            await addDoc(collection(db, 'scolarites', studentId, 'versements'), {
               montant: 10000,
               date: new Date().toISOString(),
               mode_paiement: 'Espèces',
@@ -222,10 +234,50 @@ export default function StudentManagement() {
               caissier_id: (auth.currentUser as any)?.uid || 'System',
               notes: 'Frais d\'inscription (Standard)'
             });
+
+            // Enregistrer dans les finances globales
+            await fetchWithAuth('/api/finances', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'income',
+                amount: 10000,
+                description: `Inscription - ${newStudent.firstName} ${newStudent.lastName} (${matricule})`,
+                category: 'registration',
+                date: new Date().toISOString(),
+                status: 'active'
+              })
+            });
+          }
+
+          if (vorbereitungAmount > 0) {
+            await addDoc(collection(db, 'scolarites', studentId, 'versements'), {
+              montant: vorbereitungAmount,
+              date: new Date().toISOString(),
+              mode_paiement: 'Espèces',
+              categorie: 'vorbereitung',
+              recu_numero: `VOR-${Date.now().toString().slice(-6)}`,
+              caissier_id: (auth.currentUser as any)?.uid || 'System',
+              notes: 'Frais Vorbereitung (Standard)'
+            });
+
+            // Enregistrer dans les finances globales
+            await fetchWithAuth('/api/finances', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'income',
+                amount: vorbereitungAmount,
+                description: `Vorbereitung - ${newStudent.firstName} ${newStudent.lastName} (${matricule})`,
+                category: 'tuition',
+                date: new Date().toISOString(),
+                status: 'active'
+              })
+            });
           }
 
           if (initialPayment > 0) {
-            await addDoc(collection(db, 'scolarites', student.uid, 'versements'), {
+            await addDoc(collection(db, 'scolarites', studentId, 'versements'), {
               montant: initialPayment,
               date: new Date().toISOString(),
               mode_paiement: 'Espèces',
@@ -233,6 +285,20 @@ export default function StudentManagement() {
               recu_numero: `SCO-${(Date.now() + 1).toString().slice(-6)}`,
               caissier_id: (auth.currentUser as any)?.uid || 'System',
               notes: 'Paiement initial scolarité'
+            });
+
+            // Enregistrer dans les finances globales
+            await fetchWithAuth('/api/finances', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'income',
+                amount: initialPayment,
+                description: `Scolarité - ${newStudent.firstName} ${newStudent.lastName} (${matricule})`,
+                category: 'tuition',
+                date: new Date().toISOString(),
+                status: 'active'
+              })
             });
           }
         }
@@ -921,10 +987,49 @@ export default function StudentManagement() {
                   <input name="phone" required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.level')}</label>
-                  <select name="levelId" required className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
-                    {levels.map(l => <option key={l.id} value={l.id}>{l.name} ({formatCurrency(l.tuition)})</option>)}
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Filière (Allemand/Anglais/Autre)</label>
+                  <select 
+                    value={selectedStream}
+                    onChange={(e) => {
+                      const stream = e.target.value;
+                      setSelectedStream(stream);
+                      const filtered = levels.filter(l => !stream || l.stream === stream);
+                      if (filtered.length > 0) {
+                        setSelectedTuition(filtered[0].tuition);
+                      }
+                    }}
+                    className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 outline-none"
+                  >
+                    <option value="">Toutes les filières</option>
+                    <option value="Allemand">Allemand</option>
+                    <option value="Anglais">Anglais</option>
                   </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.level')}</label>
+                  <select 
+                    name="levelId" 
+                    required 
+                    onChange={(e) => {
+                      const level = levels.find(l => l.id === e.target.value);
+                      if (level) setSelectedTuition(level.tuition);
+                    }}
+                    className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all"
+                  >
+                    {levels.filter(l => !selectedStream || l.stream === selectedStream).map(l => (
+                      <option key={l.id} value={l.id}>{l.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Montant Total Scolarité *</label>
+                  <input 
+                    name="totalTuition" 
+                    type="number" 
+                    value={selectedTuition}
+                    onChange={(e) => setSelectedTuition(Number(e.target.value))}
+                    className="w-full px-5 py-3 bg-white dark:bg-neutral-800/50 border-2 border-dia-red/50 rounded-2xl focus:ring-2 focus:ring-dia-red/20 outline-none transition-all font-bold text-dia-red" 
+                  />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.class')}</label>
@@ -933,11 +1038,20 @@ export default function StudentManagement() {
                     {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
-                <div className="space-y-2 p-4 bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-900/30 rounded-2xl flex items-center gap-3 md:col-span-2">
-                  <input name="payInscription" type="checkbox" defaultChecked className="w-5 h-5 accent-orange-600 rounded cursor-pointer" />
-                  <div>
-                    <p className="text-[11px] font-black uppercase text-orange-600 tracking-wider">Frais d'Inscription</p>
-                    <p className="text-xs font-bold text-orange-500">10 000 FCFA (S'ajoute au paiement initial)</p>
+                <div className="space-y-4 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 bg-orange-50 dark:bg-orange-900/10 border-2 border-orange-100 dark:border-orange-900/30 rounded-2xl flex items-center gap-3">
+                    <input name="payInscription" type="checkbox" defaultChecked className="w-6 h-6 accent-orange-600 rounded cursor-pointer" />
+                    <div>
+                      <p className="text-xs font-black uppercase text-orange-600 tracking-wider">Frais d'Inscription</p>
+                      <p className="text-[10px] font-bold text-orange-500">10 000 FCFA</p>
+                    </div>
+                  </div>
+                  <div className="p-4 bg-blue-50 dark:bg-blue-900/10 border-2 border-blue-100 dark:border-blue-900/30 rounded-2xl flex flex-col justify-center">
+                    <div className="flex items-center gap-3 mb-1">
+                      <input name="payVorbereitung" type="checkbox" className="w-6 h-6 accent-blue-600 rounded cursor-pointer" />
+                      <p className="text-xs font-black uppercase text-blue-600 tracking-wider">Vorbereitung</p>
+                    </div>
+                    <input name="vorbereitungAmount" type="number" defaultValue={50000} className="w-full text-xs bg-transparent border-b border-blue-200 outline-none font-bold text-blue-700" placeholder="Montant" />
                   </div>
                 </div>
                 <div className="space-y-2">

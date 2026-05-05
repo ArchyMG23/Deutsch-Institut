@@ -75,7 +75,7 @@ export default function StudentCalendar() {
                 const dayExams = studentClass?.exams?.filter(e => {
                   const examDate = new Date(e.date);
                   // This is a simplified check for the current week/month
-                  const dayIdx = days.indexOf(day);
+                  const dayIdx = days.findIndex(d => d === day);
                   if (dayIdx === -1) return false;
                   return examDate.getDay() === (dayIdx + 1) % 7;
                 }) || [];

@@ -49,6 +49,7 @@ export interface Level {
   name: string;
   tuition: number;
   hours: number; // Total hours for the level
+  stream?: 'Allemand' | 'Anglais';
   type?: 'allemand' | 'anglais';
 }
 
@@ -177,6 +178,8 @@ export interface StudentScolarite {
   matricule: string;
   nom_eleve: string;
   classe_id: string;
+  filiere?: string;
+  niveau?: string;
   montant_total_du: number;
   total_verse: number;
   reste: number;

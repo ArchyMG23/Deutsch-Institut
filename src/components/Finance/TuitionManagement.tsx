@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
 import { collection, query, where, getDocs, doc, setDoc, updateDoc, getDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { Student, StudentScolarite, Versement, SchoolConfig, Level } from '../../types';
-import { Search, CreditCard, Printer, History, AlertCircle, CheckCircle2, User, Landmark, Share2, Send, MessageCircle } from 'lucide-react';
+import { Search, CreditCard, Printer, History, AlertCircle, CheckCircle2, User, Landmark, Share2, Send, MessageCircle, Edit2, X, Check } from 'lucide-react';
 import { formatCurrency, cn } from '../../utils';
 import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
@@ -12,7 +12,8 @@ import { auth } from '../../firebase';
 import { generateWhatsAppLink, APP_NAME_FOR_LINKS } from '../../utils/contactLinks';
 
 const TuitionManagement: React.FC = () => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const isSuperAdmin = profile?.role === 'admin' || profile?.isSuperAdmin;
   
   const handleFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
     const errInfo: FirestoreErrorInfo = {
@@ -48,6 +49,9 @@ const TuitionManagement: React.FC = () => {
   const [paymentCategory, setPaymentCategory] = useState<Versement['categorie']>('scolarite');
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
+  const [editingVersementId, setEditingVersementId] = useState<string | null>(null);
+  const [editAmount, setEditAmount] = useState<number>(0);
+  const [editNotes, setEditNotes] = useState('');
 
   const hasPaidInscription = versements.some(v => v.categorie === 'inscription');
 
@@ -98,6 +102,8 @@ const TuitionManagement: React.FC = () => {
       // Fetch level info
       const studentLevel = levels.find(l => l.id === student.levelId);
       const defaultTuition = studentLevel?.tuition || 110000;
+      const stream = studentLevel?.stream || 'N/A';
+      const levelName = studentLevel?.name || 'N/A';
 
       // Fetch scolarite master record
       let scolariteSnap;
@@ -109,9 +115,15 @@ const TuitionManagement: React.FC = () => {
       
       if (scolariteSnap!.exists()) {
         const data = scolariteSnap!.data() as StudentScolarite;
-        // Verify if total due matches level tuition, update if necessary
-        if (data.montant_total_du !== defaultTuition && data.total_verse === 0) {
-          const updated = { ...data, montant_total_du: defaultTuition, reste: defaultTuition };
+        // Update stream/level if missing or changed
+        if (data.filiere !== stream || data.niveau !== levelName || (data.montant_total_du !== defaultTuition && data.total_verse === 0)) {
+          const updated = { 
+            ...data, 
+            filiere: stream, 
+            niveau: levelName,
+            montant_total_du: data.total_verse === 0 ? defaultTuition : data.montant_total_du,
+            reste: Math.max(0, (data.total_verse === 0 ? defaultTuition : data.montant_total_du) - data.total_verse)
+          };
           await updateDoc(doc(db, 'scolarites', student.uid), updated);
           setScolarite(updated);
         } else {
@@ -125,6 +137,8 @@ const TuitionManagement: React.FC = () => {
           matricule: student.matricule,
           nom_eleve: `${student.firstName} ${student.lastName}`,
           classe_id: student.classId || 'N/A',
+          filiere: stream,
+          niveau: levelName,
           montant_total_du: defaultTuition,
           total_verse: 0,
           reste: defaultTuition,
@@ -370,6 +384,61 @@ const TuitionManagement: React.FC = () => {
     doc.save(`Recu_${versement.recu_numero}.pdf`);
   };
 
+  const handleUpdatePayment = async (versementId: string) => {
+    if (!targetStudent || !scolarite || !isSuperAdmin) return;
+
+    setLoading(true);
+    try {
+      // 1. Update the versement in subcollection
+      await updateDoc(doc(db, 'scolarites', targetStudent.uid, 'versements', versementId), {
+        montant: editAmount,
+        notes: editNotes,
+        updated_at: serverTimestamp(),
+        updated_by: user.uid
+      });
+
+      // 2. Recalculate totals
+      const updatedVersements = versements.map(v => 
+        v.id === versementId ? { ...v, montant: editAmount, notes: editNotes } : v
+      );
+      
+      const newTotalPaid = updatedVersements.reduce((acc, v) => acc + (Number(v.montant) || 0), 0);
+      const newReste = Math.max(0, scolarite.montant_total_du - newTotalPaid);
+      const newSurplus = Math.max(0, newTotalPaid - scolarite.montant_total_du);
+      
+      let newStatut: StudentScolarite['statut_paiement'] = 'EN COURS';
+      if (newSurplus > 0) newStatut = 'SURPLUS';
+      else if (newReste === 0) newStatut = 'SOLDÉ';
+
+      const updatedScolarite = {
+        ...scolarite,
+        total_verse: newTotalPaid,
+        reste: newReste,
+        surplus: newSurplus,
+        statut_paiement: newStatut
+      };
+
+      await updateDoc(doc(db, 'scolarites', targetStudent.uid), updatedScolarite);
+      
+      setScolarite(updatedScolarite);
+      setVersements(updatedVersements);
+      setEditingVersementId(null);
+      
+      addAuditLog("VERSEMENT_MODIFIÉ", targetStudent.uid, { 
+        versementId, 
+        ancien_montant: versements.find(v => v.id === versementId)?.montant,
+        nouveau_montant: editAmount 
+      });
+
+      toast.success("Versement mis à jour et totaux recalculés !");
+    } catch (error) {
+      console.error(error);
+      toast.error("Erreur lors de la mise à jour");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 shadow-sm">
@@ -418,7 +487,17 @@ const TuitionManagement: React.FC = () => {
                 </div>
                 <div className="text-center">
                   <p className="text-[10px] font-bold truncate max-w-[80px]">{s.firstName}</p>
-                  <p className="text-[8px] opacity-60">{s.matricule}</p>
+                  <p className="text-[8px] opacity-60 mb-1">{s.matricule}</p>
+                  {s.levelId && (
+                    <span className={cn(
+                      "text-[7px] font-black uppercase px-1.5 py-0.5 rounded-full",
+                      levels.find(l => l.id === s.levelId)?.stream === 'Allemand' 
+                        ? "bg-orange-100 text-orange-600" 
+                        : "bg-blue-100 text-blue-600"
+                    )}>
+                      {levels.find(l => l.id === s.levelId)?.stream || 'N/A'}
+                    </span>
+                  )}
                 </div>
               </button>
             ))
@@ -434,6 +513,75 @@ const TuitionManagement: React.FC = () => {
       {targetStudent && scolarite && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
+            {/* Level & Target Tuition Setup */}
+            <div className="bg-neutral-50 dark:bg-neutral-800/50 border-2 border-dashed border-neutral-200 dark:border-neutral-700 rounded-2xl p-4 flex flex-wrap items-center gap-4">
+              <div className="flex-1 min-w-[200px]">
+                <p className="text-[10px] font-black uppercase text-neutral-400 mb-1">Filière / Niveau Actuel</p>
+                <div className="flex gap-2">
+                  <select 
+                    value={targetStudent.levelId || ''}
+                    onChange={async (e) => {
+                      const newLevelId = e.target.value;
+                      const level = levels.find(l => l.id === newLevelId);
+                      if (level) {
+                        try {
+                          await updateDoc(doc(db, 'users', targetStudent.uid), { levelId: newLevelId });
+                          const newTotal = level.tuition;
+                          const newScolarite = { 
+                            ...scolarite, 
+                            filiere: level.stream || 'N/A',
+                            niveau: level.name,
+                            montant_total_du: newTotal,
+                            reste: Math.max(0, newTotal - scolarite.total_verse),
+                            surplus: Math.max(0, scolarite.total_verse - newTotal)
+                          };
+                          await updateDoc(doc(db, 'scolarites', targetStudent.uid), newScolarite);
+                          setScolarite(newScolarite);
+                          setTargetStudent({...targetStudent, levelId: newLevelId});
+                          toast.success(`Niveau mis à jour vers ${level.name}`);
+                        } catch (err) {
+                          toast.error("Erreur mise à jour niveau");
+                        }
+                      }
+                    }}
+                    className="flex-1 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg p-2 text-xs font-bold"
+                  >
+                    <option value="">Sélectionner un niveau</option>
+                    {levels.map(l => (
+                      <option key={l.id} value={l.id}>{l.name} ({l.stream})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="w-40">
+                <p className="text-[10px] font-black uppercase text-neutral-400 mb-1">Total Scolarité (FCFA)</p>
+                <input 
+                  type="number"
+                  value={scolarite.montant_total_du}
+                  onChange={async (e) => {
+                    const newTotal = Number(e.target.value);
+                    const newScolarite = { 
+                      ...scolarite, 
+                      montant_total_du: newTotal,
+                      reste: Math.max(0, newTotal - scolarite.total_verse),
+                      surplus: Math.max(0, scolarite.total_verse - newTotal)
+                    };
+                    setScolarite(newScolarite); // Instant feedback
+                  }}
+                  onBlur={async (e) => {
+                    const newTotal = Number(e.target.value);
+                    await updateDoc(doc(db, 'scolarites', targetStudent.uid), { 
+                      montant_total_du: newTotal,
+                      reste: Math.max(0, newTotal - scolarite.total_verse),
+                      surplus: Math.max(0, scolarite.total_verse - newTotal)
+                    });
+                    toast.success("Montant total mis à jour");
+                  }}
+                  className="w-full bg-white dark:bg-neutral-900 border-2 border-dia-red/20 rounded-lg p-2 text-xs font-black text-dia-red"
+                />
+              </div>
+            </div>
+
             {/* Payment Form */}
             <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 shadow-sm">
               <h3 className="text-lg font-black uppercase mb-6 flex items-center gap-2">
@@ -463,6 +611,7 @@ const TuitionManagement: React.FC = () => {
                     {!hasPaidInscription && (
                       <option value="inscription" className="font-bold text-orange-600">Inscription (10 000 FCFA)</option>
                     )}
+                    <option value="vorbereitung">Vorbereitung</option>
                     <option value="examen">Examen</option>
                     <option value="autre">Autre</option>
                   </select>
@@ -515,39 +664,103 @@ const TuitionManagement: React.FC = () => {
               </h3>
               <div className="space-y-4">
                 {versements.map((v) => (
-                  <div key={v.id} className="flex items-center justify-between p-4 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-100 dark:border-neutral-700 rounded-xl group hover:border-dia-red/30 transition-colors">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-black text-lg">{formatCurrency(v.montant)}</span>
-                        <span className="text-[10px] font-bold px-2 py-0.5 bg-neutral-200 dark:bg-neutral-700 rounded text-neutral-500 uppercase">{v.mode_paiement}</span>
-                      </div>
-                      <div className="text-xs text-neutral-500 flex items-center gap-3">
-                        <span>{new Date(v.date).toLocaleDateString()}</span>
-                        <span>{v.recu_numero}</span>
+                  <div key={v.id} className="flex flex-col p-4 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-100 dark:border-neutral-700 rounded-xl group hover:border-dia-red/30 transition-colors">
+                    <div className="flex items-center justify-between">
+                      {editingVersementId === v.id ? (
+                        <div className="flex-1 pr-4 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <input 
+                              type="number"
+                              value={editAmount}
+                              onChange={(e) => setEditAmount(Number(e.target.value))}
+                              className="flex-1 px-3 py-1.5 bg-white dark:bg-neutral-900 border-2 border-dia-red rounded-lg font-black text-lg outline-none"
+                            />
+                            <span className="text-xs font-bold text-neutral-400">FCFA</span>
+                          </div>
+                          <input 
+                            type="text"
+                            value={editNotes}
+                            onChange={(e) => setEditNotes(e.target.value)}
+                            placeholder="Raison de la modification..."
+                            className="w-full px-3 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg text-xs outline-none"
+                          />
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-black text-lg">{formatCurrency(v.montant)}</span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 bg-neutral-200 dark:bg-neutral-700 rounded text-neutral-500 uppercase">{v.mode_paiement}</span>
+                            {v.categorie !== 'scolarite' && (
+                              <span className="text-[8px] font-black px-1.5 py-0.5 bg-orange-100 text-orange-600 rounded uppercase">{v.categorie}</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-neutral-500 flex items-center gap-3">
+                            <span>{new Date(v.date).toLocaleDateString()}</span>
+                            <span>{v.recu_numero}</span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="flex items-center justify-end gap-2">
+                        {editingVersementId === v.id ? (
+                          <>
+                            <button 
+                              onClick={() => handleUpdatePayment(v.id)}
+                              className="p-3 bg-green-600 text-white rounded-full shadow-lg hover:bg-green-700 active:scale-95 transition-all"
+                              title="Valider la modification"
+                            >
+                              <Check size={18} />
+                            </button>
+                            <button 
+                              onClick={() => setEditingVersementId(null)}
+                              className="p-3 bg-neutral-200 dark:bg-neutral-700 text-neutral-600 rounded-full shadow-sm hover:bg-neutral-300 transition-all"
+                              title="Annuler"
+                            >
+                              <X size={18} />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {isSuperAdmin && (
+                              <button 
+                                onClick={() => {
+                                  setEditingVersementId(v.id);
+                                  setEditAmount(v.montant);
+                                  setEditNotes(v.notes || '');
+                                }}
+                                className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-blue-600 hover:scale-110 transition-transform"
+                                title="Modifier ce versement (Super Admin)"
+                              >
+                                <Edit2 size={18} />
+                              </button>
+                            )}
+                            <button 
+                              onClick={() => handleGeneratePDF(v)}
+                              className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-dia-red hover:scale-110 transition-transform"
+                              title="Réimprimer le reçu"
+                            >
+                              <Printer size={18} />
+                            </button>
+                            <button 
+                              onClick={() => {
+                                const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n🧾 *REÇU DE PAIEMENT*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\nBonjour,\nNous confirmons la réception du versement suivant pour l'élève *${targetStudent.firstName} ${targetStudent.lastName}* :\n\n🔹 *Montant* : ${formatCurrency(v.montant)}\n🔹 *Reçu N°* : ${v.recu_numero}\n🔹 *Date* : ${new Date(v.date).toLocaleDateString()}\n🔹 *Mode* : ${v.mode_paiement}\n\n📊 *SITUATION FINANCIÈRE* :\n- Déjà versé : ${formatCurrency(scolarite.total_verse)}\n- *RESTE À PAYER* : ${formatCurrency(scolarite.reste)}\n\nMerci de votre confiance. 🙏\n━━━━━━━━━━━━━━━━━━━━━━━`;
+                                const a = document.createElement('a');
+                                a.href = generateWhatsAppLink(targetStudent.parentPhone || targetStudent.phone || '', msg);
+                                a.target = '_blank';
+                                a.click();
+                              }}
+                              className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-green-600 hover:scale-110 transition-transform"
+                              title="Envoyer par WhatsApp"
+                            >
+                              <MessageCircle size={18} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center justify-end gap-2">
-                      <button 
-                        onClick={() => handleGeneratePDF(v)}
-                        className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-dia-red hover:scale-110 transition-transform"
-                        title="Réimprimer le reçu"
-                      >
-                        <Printer size={18} />
-                      </button>
-                      <button 
-                        onClick={() => {
-                          const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n🧾 *REÇU DE PAIEMENT*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\nBonjour,\nNous confirmons la réception du versement suivant pour l'élève *${targetStudent.firstName} ${targetStudent.lastName}* :\n\n🔹 *Montant* : ${formatCurrency(v.montant)}\n🔹 *Reçu N°* : ${v.recu_numero}\n🔹 *Date* : ${new Date(v.date).toLocaleDateString()}\n🔹 *Mode* : ${v.mode_paiement}\n\n📊 *SITUATION FINANCIÈRE* :\n- Déjà versé : ${formatCurrency(scolarite.total_verse)}\n- *RESTE À PAYER* : ${formatCurrency(scolarite.reste)}\n\nMerci de votre confiance. 🙏\n━━━━━━━━━━━━━━━━━━━━━━━`;
-                          const a = document.createElement('a');
-                          a.href = generateWhatsAppLink(targetStudent.parentPhone || targetStudent.phone || '', msg);
-                          a.target = '_blank';
-                          a.click();
-                        }}
-                        className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-green-600 hover:scale-110 transition-transform"
-                        title="Envoyer par WhatsApp"
-                      >
-                        <MessageCircle size={18} />
-                      </button>
-                    </div>
+                    {v.notes && !editingVersementId && (
+                      <p className="mt-2 text-[10px] text-neutral-400 italic">Note: {v.notes}</p>
+                    )}
                   </div>
                 ))}
                 {versements.length === 0 && (
@@ -566,7 +779,20 @@ const TuitionManagement: React.FC = () => {
                 </div>
                 <h4 className="font-black text-xl">{targetStudent.firstName} {targetStudent.lastName}</h4>
                 <p className="text-sm text-dia-red font-bold uppercase">{targetStudent.matricule}</p>
-                <div className="mt-2 flex items-center gap-2">
+                <div className="mt-2 flex flex-col gap-2 items-center">
+                  <div className="flex gap-1">
+                    <span className="px-3 py-1 bg-neutral-100 dark:bg-neutral-800 rounded-full text-[10px] font-black uppercase text-neutral-500">
+                      {levels.find(l => l.id === targetStudent.levelId)?.name || 'Niveau non défini'}
+                    </span>
+                    <span className={cn(
+                      "px-3 py-1 rounded-full text-[10px] font-black uppercase shadow-sm",
+                      levels.find(l => l.id === targetStudent.levelId)?.stream === 'Allemand' 
+                        ? "bg-orange-600 text-white" 
+                        : "bg-blue-600 text-white"
+                    )}>
+                      {levels.find(l => l.id === targetStudent.levelId)?.stream || 'N/A'}
+                    </span>
+                  </div>
                   <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
                     scolarite.statut_paiement === 'SOLDÉ' ? 'bg-green-100 text-green-700' : 
                     scolarite.statut_paiement === 'SURPLUS' ? 'bg-blue-100 text-blue-700' :

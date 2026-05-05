@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  TrendingUp, 
+import { TrendingUp, 
   TrendingDown, 
   Wallet, 
   ArrowUpRight, 
@@ -18,7 +17,8 @@ import {
   Smartphone,
   CreditCard,
   History,
-  UserCheck
+  UserCheck,
+  Download
 } from 'lucide-react';
 import { cn, formatCurrency, generateMatricule } from '../utils';
 import { FinanceRecord, Student, StudentScolarite, Versement } from '../types';
@@ -159,6 +159,8 @@ export default function FinanceManagement() {
   const [viewMode, setViewMode] = useState<'active' | 'trash' | 'tuition' | 'dashboard' | 'charges'>('dashboard');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isQuickAddModalOpen, setIsQuickAddModalOpen] = useState(false);
+  const [quickAddTuition, setQuickAddTuition] = useState(110000);
+  const [quickAddStream, setQuickAddStream] = useState('');
   
   // Modal Form State
   const [formType, setFormType] = useState<'income' | 'expense'>('income');
@@ -228,11 +230,13 @@ export default function FinanceManagement() {
     const currentYear = new Date().getFullYear();
     const isArchived = selectedDate.getFullYear() < currentYear;
 
+    const isStudentRelated = formType === 'income' && (formCategory === 'tuition' || formCategory === 'registration' || formCategory === 'other');
+
     const newRecord = {
       type: formType,
       amount: amountAttr,
-      description: formType === 'income' && formCategory === 'tuition' && verifiedStudent 
-        ? `Scolarité - ${verifiedStudent.firstName} ${verifiedStudent.lastName} (${verifiedStudent.matricule})`
+      description: isStudentRelated && verifiedStudent 
+        ? `${formCategory.charAt(0).toUpperCase() + formCategory.slice(1)} - ${verifiedStudent.firstName} ${verifiedStudent.lastName} (${verifiedStudent.matricule})`
         : descAttr,
       category: formCategory,
       date: selectedDate.toISOString(),
@@ -248,8 +252,8 @@ export default function FinanceManagement() {
       });
 
       if (res.ok) {
-        // 2. If Tuition, also update Student Tuition record in Firestore
-        if (formType === 'income' && formCategory === 'tuition' && verifiedStudent) {
+        // 2. If Student Related, also update Student Tuition record in Firestore
+        if (isStudentRelated && verifiedStudent) {
           const scolariteRef = doc(db, 'scolarites', verifiedStudent.uid);
           const scolariteSnap = await getDoc(scolariteRef);
           
@@ -265,6 +269,8 @@ export default function FinanceManagement() {
               matricule: verifiedStudent.matricule,
               nom_eleve: `${verifiedStudent.firstName} ${verifiedStudent.lastName}`,
               classe_id: verifiedStudent.classId || 'N/A',
+              filiere: studentLevel?.stream || 'N/A',
+              niveau: studentLevel?.name || 'N/A',
               montant_total_du: tuitionAmount,
               total_verse: 0,
               reste: tuitionAmount,
@@ -294,14 +300,15 @@ export default function FinanceManagement() {
           // Add detailed versement
           await addDoc(collection(db, 'scolarites', verifiedStudent.uid, 'versements'), {
             montant: amountAttr,
-            date: new Date().toISOString(),
+            date: selectedDate.toISOString(),
             mode_paiement: 'Espèces',
+            categorie: formCategory === 'registration' ? 'inscription' : 'scolarite',
             recu_numero: `FIN-${Date.now().toString().slice(-6)}`,
             caissier_id: user?.uid || 'System',
-            notes: 'Enregistré via interface Finance Générale'
+            notes: descAttr || 'Enregistré via interface Finance Générale'
           });
 
-          addAuditLog("VERSEMENT_AUTO_SYNC", verifiedStudent.uid, { amount: amountAttr });
+          addAuditLog("VERSEMENT_AUTO_SYNC", verifiedStudent.uid, { amount: amountAttr, category: formCategory });
         }
 
         setIsAddModalOpen(false);
@@ -396,6 +403,42 @@ export default function FinanceManagement() {
     }
   };
 
+  const exportToCSV = () => {
+    try {
+      const records = sortedRecords;
+      if (records.length === 0) {
+        toast.error("Aucune donnée à exporter");
+        return;
+      }
+
+      const headers = ["Date", "Description", "Catégorie", "Type", "Montant"];
+      const csvContent = [
+        headers.join(","),
+        ...records.map(r => [
+          new Date(r.date).toLocaleDateString(),
+          `"${(r.description || '').replace(/"/g, '""')}"`,
+          r.category,
+          r.type === 'income' ? 'Revenu' : 'Dépense',
+          r.amount
+        ].join(","))
+      ].join("\n");
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `finances_${selectedYear}_${selectedMonth}_${new Date().getTime()}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success("Export CSV réussi !");
+    } catch (err) {
+      console.error(err);
+      toast.error("Erreur lors de l'export");
+    }
+  };
+
   const handleQuickInscription = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (submitting) return;
@@ -442,38 +485,50 @@ export default function FinanceManagement() {
       
       if (res.ok) {
         const student = await res.json();
+        const studentId = student.id || student.uid;
         
         // --- Consistency Sync with TuitionManagement ---
         const amount = Number(formData.get('amount')) || 0;
         const payInscription = formData.get('payInscription') === 'on';
         const inscriptionAmount = payInscription ? 10000 : 0;
-        const totalPaid = amount + inscriptionAmount;
+        
+        const payVorbereitung = formData.get('payVorbereitung') === 'on';
+        const vorbereitungAmount = payVorbereitung ? (Number(formData.get('vorbereitungAmount')) || 0) : 0;
+        
+        const totalPaid = amount + inscriptionAmount + vorbereitungAmount;
+
+    const finalTuition = Number(formData.get('totalTuition')) || 0;
 
         if (totalPaid > 0) {
-          const studentLevel = levels.find(l => l.id === formData.get('levelId'));
-          const tuitionAmount = studentLevel?.tuition || 110000;
+          const tuitionAmount = finalTuition;
+          const levelId = formData.get('levelId') as string;
+          const level = levels.find(l => l.id === levelId);
           
           // Ensure time is included if it's a past date
           const finalDate = paymentDateStr === new Date().toISOString().split('T')[0] 
             ? new Date().toISOString() 
             : new Date(paymentDateStr + 'T12:00:00Z').toISOString();
 
-          await setDoc(doc(db, 'scolarites', student.uid), {
-            id: student.uid,
-            eleve_id: student.uid,
+          const initialTotalPaid = amount + inscriptionAmount + vorbereitungAmount;
+
+          await setDoc(doc(db, 'scolarites', studentId), {
+            id: studentId,
+            eleve_id: studentId,
             matricule: student.matricule,
             nom_eleve: `${student.firstName} ${student.lastName}`,
             classe_id: 'N/A',
+            filiere: level?.stream || 'N/A',
+            niveau: level?.name || 'N/A',
             montant_total_du: tuitionAmount,
-            total_verse: amount, // Scolarité only
-            reste: Math.max(0, tuitionAmount - amount),
-            surplus: Math.max(0, amount - tuitionAmount),
-            statut_paiement: amount >= tuitionAmount ? 'SOLDÉ' : 'EN COURS'
+            total_verse: initialTotalPaid, 
+            reste: Math.max(0, tuitionAmount - initialTotalPaid),
+            surplus: Math.max(0, initialTotalPaid - tuitionAmount),
+            statut_paiement: initialTotalPaid >= tuitionAmount ? 'SOLDÉ' : 'EN COURS'
           });
 
           // Enregistrer l'inscription si cochée
           if (payInscription) {
-            await addDoc(collection(db, 'scolarites', student.uid, 'versements'), {
+            await addDoc(collection(db, 'scolarites', studentId, 'versements'), {
               montant: 10000,
               date: finalDate,
               mode_paiement: 'Espèces',
@@ -482,11 +537,52 @@ export default function FinanceManagement() {
               caissier_id: user?.uid || 'System',
               notes: 'Frais d\'inscription (Rapide)'
             });
+
+            // Enregistrer dans les finances globales
+            await fetchWithAuth('/api/finances', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'income',
+                amount: 10000,
+                description: `Inscription - ${newStudent.firstName} ${newStudent.lastName} (${matricule})`,
+                category: 'registration',
+                date: finalDate,
+                status: 'active'
+              })
+            });
+          }
+
+          // Enregistrer Vorbereitung si coché
+          if (payVorbereitung && vorbereitungAmount > 0) {
+            await addDoc(collection(db, 'scolarites', studentId, 'versements'), {
+              montant: vorbereitungAmount,
+              date: finalDate,
+              mode_paiement: 'Espèces',
+              categorie: 'vorbereitung',
+              recu_numero: `VOR-${Date.now().toString().slice(-6)}`,
+              caissier_id: user?.uid || 'System',
+              notes: 'Frais Vorbereitung (Rapide)'
+            });
+
+            // Enregistrer dans les finances globales
+            await fetchWithAuth('/api/finances', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'income',
+                amount: vorbereitungAmount,
+                description: `Vorbereitung - ${newStudent.firstName} ${newStudent.lastName} (${matricule})`,
+                category: 'tuition',
+                date: finalDate,
+                status: 'active'
+              })
+            });
           }
 
           // Enregistrer le versement de scolarité si montant > 0
           if (amount > 0) {
-            await addDoc(collection(db, 'scolarites', student.uid, 'versements'), {
+            await addDoc(collection(db, 'scolarites', studentId, 'versements'), {
               montant: amount,
               date: finalDate,
               mode_paiement: 'Espèces',
@@ -494,6 +590,20 @@ export default function FinanceManagement() {
               recu_numero: `SCO-${(Date.now() + 1).toString().slice(-6)}`,
               caissier_id: user?.uid || 'System',
               notes: 'Avance Scolarité (Rapide)'
+            });
+
+            // Enregistrer dans les finances globales
+            await fetchWithAuth('/api/finances', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'income',
+                amount: amount,
+                description: `Scolarité - ${newStudent.firstName} ${newStudent.lastName} (${matricule})`,
+                category: 'tuition',
+                date: finalDate,
+                status: 'active'
+              })
             });
           }
         }
@@ -581,6 +691,12 @@ export default function FinanceManagement() {
               ))}
             </select>
           </div>
+          <button 
+            onClick={exportToCSV}
+            className="p-2 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 rounded-xl hover:bg-neutral-200 transition-all flex items-center gap-2 text-xs font-bold"
+          >
+            <Download size={16} /> Export CSV
+          </button>
         </div>
       )}
 
@@ -802,21 +918,89 @@ export default function FinanceManagement() {
                   <input name="paymentDate" type="date" required defaultValue={new Date().toISOString().split('T')[0]} className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border-2 border-orange-200 dark:border-orange-900 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20" />
                 </div>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Niveau d'Étude *</label>
-                <select name="levelId" required className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20">
-                  {levels.map(l => <option key={l.id} value={l.id}>{l.name} - {formatCurrency(l.tuition)}</option>)}
-                </select>
+              <div className="space-y-1.5 px-1">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Filière</label>
+                <div className="flex gap-2">
+                  {['Allemand', 'Anglais'].map(stream => (
+                    <button
+                      key={stream}
+                      type="button"
+                      onClick={() => {
+                        setQuickAddStream(stream);
+                        const filtered = levels.filter(l => l.stream === stream);
+                        if (filtered.length > 0) setQuickAddTuition(filtered[0].tuition);
+                      }}
+                      className={cn(
+                        "flex-1 py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                        quickAddStream === stream 
+                          ? "bg-orange-600 text-white shadow-lg shadow-orange-500/30" 
+                          : "bg-neutral-100 text-neutral-400 hover:bg-neutral-200"
+                      )}
+                    >
+                      {stream}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setQuickAddStream('')}
+                    className={cn(
+                      "flex-1 py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                      quickAddStream === '' 
+                        ? "bg-neutral-600 text-white shadow-lg" 
+                        : "bg-neutral-100 text-neutral-400 hover:bg-neutral-200"
+                    )}
+                  >
+                    Tout
+                  </button>
+                </div>
               </div>
-              <div className="space-y-1.5 p-4 bg-orange-50 dark:bg-orange-900/10 border-2 border-orange-100 dark:border-orange-900/30 rounded-2xl flex items-center gap-3">
-                <input name="payInscription" type="checkbox" defaultChecked className="w-5 h-5 accent-orange-600 rounded cursor-pointer" />
-                <div>
-                  <p className="text-[11px] font-black uppercase text-orange-600 tracking-wider">Frais d'Inscription</p>
-                  <p className="text-xs font-bold text-orange-500">10 000 FCFA (Inclus par défaut)</p>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Niveau d'Étude *</label>
+                  <select 
+                    name="levelId" 
+                    required 
+                    onChange={(e) => {
+                      const level = levels.find(l => l.id === e.target.value);
+                      if (level) setQuickAddTuition(level.tuition);
+                    }}
+                    className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20"
+                  >
+                    {levels.filter(l => !quickAddStream || l.stream === quickAddStream).map(l => (
+                      <option key={l.id} value={l.id}>{l.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Total Scolarité *</label>
+                  <input 
+                    name="totalTuition" 
+                    type="number" 
+                    value={quickAddTuition}
+                    onChange={(e) => setQuickAddTuition(Number(e.target.value))}
+                    className="w-full px-4 py-2.5 bg-white dark:bg-neutral-800 border-2 border-orange-200 dark:border-orange-900 rounded-xl font-bold text-orange-600 outline-none focus:ring-2 focus:ring-orange-500/20" 
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5 p-4 bg-orange-50 dark:bg-orange-900/10 border-2 border-orange-100 dark:border-orange-900/30 rounded-2xl flex items-center gap-3">
+                  <input name="payInscription" type="checkbox" defaultChecked className="w-5 h-5 accent-orange-600 rounded cursor-pointer" />
+                  <div>
+                    <p className="text-[11px] font-black uppercase text-orange-600 tracking-wider">Inscription</p>
+                    <p className="text-xs font-bold text-orange-500">10 000 FCFA</p>
+                  </div>
+                </div>
+                <div className="space-y-1.5 p-4 bg-blue-50 dark:bg-blue-900/10 border-2 border-blue-100 dark:border-blue-900/30 rounded-2xl flex flex-col justify-center">
+                  <div className="flex items-center gap-3 mb-1">
+                    <input name="payVorbereitung" type="checkbox" className="w-5 h-5 accent-blue-600 rounded cursor-pointer" />
+                    <p className="text-[11px] font-black uppercase text-blue-600 tracking-wider">Vorbereitung</p>
+                  </div>
+                  <input name="vorbereitungAmount" type="number" defaultValue={50000} className="w-full text-xs bg-transparent border-b border-blue-200 outline-none font-bold text-blue-700" placeholder="Montant" />
                 </div>
               </div>
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Versement Scolarité (Avance)</label>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1 font-black">Versement Scolarité (Avance)</label>
                 <input name="amount" type="number" defaultValue={50000} placeholder="Ex: 50000" className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl font-bold text-neutral-900 outline-none focus:ring-2 focus:ring-orange-500/20" />
               </div>
               <div className="pt-4 flex gap-4">
