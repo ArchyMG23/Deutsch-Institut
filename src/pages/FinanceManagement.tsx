@@ -213,7 +213,7 @@ const TransactionTable = React.memo(({
 
 export default function FinanceManagement() {
   const { t, i18n } = useTranslation();
-  const { finances: allRecords, trashFinances, refreshFinances, refreshTrash, levels, classes } = useData();
+  const { finances: allRecords, trashFinances, refreshFinances, refreshTrash, levels, classes, refreshAll } = useData();
   const { user, profile, fetchWithAuth } = useAuth();
   
   const isSuperAdmin = 
@@ -569,147 +569,33 @@ export default function FinanceManagement() {
       const res = await fetchWithAuth('/api/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newStudent)
+        body: JSON.stringify({
+          ...newStudent,
+          inscriptionAmount: formData.get('payInscription') === 'on' ? 10000 : 0,
+          vorbereitungAmount: formData.get('payVorbereitung') === 'on' ? (Number(formData.get('vorbereitungAmount')) || 0) : 0,
+          totalTuition: Number(formData.get('totalTuition')) || 110000
+        })
       });
       
       if (res.ok) {
         const student = await res.json();
-        const studentId = student.id || student.uid;
         
-        // --- Consistency Sync with TuitionManagement ---
-        const amount = Number(formData.get('amount')) || 0;
-        const payInscription = formData.get('payInscription') === 'on';
-        const inscriptionAmount = payInscription ? 10000 : 0;
-        
-        const payVorbereitung = formData.get('payVorbereitung') === 'on';
-        const vorbereitungAmount = payVorbereitung ? (Number(formData.get('vorbereitungAmount')) || 0) : 0;
-        
-        const totalPaid = amount + inscriptionAmount + vorbereitungAmount;
-
-    const finalTuition = Number(formData.get('totalTuition')) || 0;
-
-        if (totalPaid > 0) {
-          const tuitionAmount = finalTuition;
-          const levelId = formData.get('levelId') as string;
-          const level = levels.find(l => l.id === levelId);
-          
-          // Ensure time is included if it's a past date
-          const finalDate = paymentDateStr === new Date().toISOString().split('T')[0] 
-            ? new Date().toISOString() 
-            : new Date(paymentDateStr + 'T12:00:00Z').toISOString();
-
-          const initialTotalPaid = amount + inscriptionAmount + vorbereitungAmount;
-
-          await setDoc(doc(db, 'scolarites', studentId), {
-            id: studentId,
-            eleve_id: studentId,
-            matricule: student.matricule,
-            nom_eleve: `${student.firstName} ${student.lastName}`,
-            classe_id: 'N/A',
-            filiere: level?.stream || 'N/A',
-            niveau: level?.name || 'N/A',
-            montant_total_du: tuitionAmount,
-            total_verse: initialTotalPaid, 
-            reste: Math.max(0, tuitionAmount - initialTotalPaid),
-            surplus: Math.max(0, initialTotalPaid - tuitionAmount),
-            statut_paiement: initialTotalPaid >= tuitionAmount ? 'SOLDÉ' : 'EN COURS'
-          });
-
-          // Enregistrer l'inscription si cochée
-          if (payInscription) {
-            await addDoc(collection(db, 'scolarites', studentId, 'versements'), {
-              montant: 10000,
-              date: finalDate,
-              mode_paiement: 'Espèces',
-              categorie: 'inscription',
-              recu_numero: `INS-${Date.now().toString().slice(-6)}`,
-              caissier_id: user?.uid || 'System',
-              notes: 'Frais d\'inscription (Rapide)'
-            });
-
-            // Enregistrer dans les finances globales
-            await fetchWithAuth('/api/finances', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                type: 'income',
-                amount: 10000,
-                description: `Inscription - ${newStudent.firstName} ${newStudent.lastName} (${matricule})`,
-                category: 'registration',
-                date: finalDate,
-                status: 'active'
-              })
-            });
-          }
-
-          // Enregistrer Vorbereitung si coché
-          if (payVorbereitung && vorbereitungAmount > 0) {
-            await addDoc(collection(db, 'scolarites', studentId, 'versements'), {
-              montant: vorbereitungAmount,
-              date: finalDate,
-              mode_paiement: 'Espèces',
-              categorie: 'vorbereitung',
-              recu_numero: `VOR-${Date.now().toString().slice(-6)}`,
-              caissier_id: user?.uid || 'System',
-              notes: 'Frais Vorbereitung (Rapide)'
-            });
-
-            // Enregistrer dans les finances globales
-            await fetchWithAuth('/api/finances', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                type: 'income',
-                amount: vorbereitungAmount,
-                description: `Vorbereitung - ${newStudent.firstName} ${newStudent.lastName} (${matricule})`,
-                category: 'tuition',
-                date: finalDate,
-                status: 'active'
-              })
-            });
-          }
-
-          // Enregistrer le versement de scolarité si montant > 0
-          if (amount > 0) {
-            await addDoc(collection(db, 'scolarites', studentId, 'versements'), {
-              montant: amount,
-              date: finalDate,
-              mode_paiement: 'Espèces',
-              categorie: 'scolarite',
-              recu_numero: `SCO-${(Date.now() + 1).toString().slice(-6)}`,
-              caissier_id: user?.uid || 'System',
-              notes: 'Avance Scolarité (Rapide)'
-            });
-
-            // Enregistrer dans les finances globales
-            await fetchWithAuth('/api/finances', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                type: 'income',
-                amount: amount,
-                description: `Scolarité - ${newStudent.firstName} ${newStudent.lastName} (${matricule})`,
-                category: 'tuition',
-                date: finalDate,
-                status: 'active'
-              })
-            });
-          }
+        // Send credentials notification
+        try {
+          await NotificationService.sendCredentials(fetchWithAuth, student, password);
+        } catch (notifErr) {
+           console.warn("Could not send credentials notification:", notifErr);
         }
-        // -----------------------------------------------
-
-        // Send credentials
-        await NotificationService.sendCredentials(fetchWithAuth, student, password);
         
         setIsQuickAddModalOpen(false);
-        refreshFinances();
-        toast.success(`Élève ${newStudent.firstName} inscrit avec succès ! Matricule: ${matricule}`);
+        await Promise.all([
+          refreshFinances(),
+          refreshStudents()
+        ]);
+        toast.success(`Élève ${newStudent.firstName} inscrit avec succès ! Matricule: ${student.matricule}`);
         
-        // Also refresh everything
-        if (typeof window !== 'undefined') {
-          // Force a full refresh after a small delay to sync all contexts
-          setTimeout(() => window.location.reload(), 1500);
-        }
+        // Refresh contexts completely after a short delay
+        setTimeout(() => refreshAll(true), 2000);
       } else {
         const err = await res.json();
         toast.error(err.message || "Erreur d'inscription");

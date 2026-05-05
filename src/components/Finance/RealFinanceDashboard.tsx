@@ -128,86 +128,7 @@ export default function RealFinanceDashboard() {
       
       const monthlyRevenu: Record<string, number> = {};
 
-      const processedTransactionIds = new Set<string>();
-
-      // A. Versements from scolarités subcollections
-      let versementsSnap;
-      try {
-        versementsSnap = await getDocs(collectionGroup(db, 'versements'));
-      } catch (e) {
-        handleFirestoreError(e, OperationType.LIST, 'versements (collection group)');
-      }
-
-      if (versementsSnap) {
-        versementsSnap.forEach(doc => {
-          const v = doc.data();
-          if (!v) return;
-          
-          const amount = Number(v.montant) || 0;
-          const txId = v.recu_numero || doc.id;
-          processedTransactionIds.add(txId);
-          
-          // Robust date parsing
-          let txDate: Date;
-          if (v.date) {
-            txDate = new Date(v.date);
-          } else if (v.createdAt) {
-            txDate = new Date(v.createdAt);
-          } else {
-            txDate = new Date();
-          }
-          
-          if (txDate.getFullYear() === selectedYear) {
-            totalRevenu += amount;
-            const cat = String(v.categorie || 'scolarite').toLowerCase();
-            if (cat === 'inscription' || cat === 'registration' || cat.includes('inscrip')) {
-              revenusDetails.inscription += amount;
-            } else {
-              revenusDetails.scolarite += amount;
-            }
-  
-            const mKey = txDate.getMonth();
-            monthlyRevenu[mKey] = (monthlyRevenu[mKey] || 0) + amount;
-          }
-        });
-      }
-
-      // B. Students payments array (Legacy or Direct Profile Payments)
-      let studentsSnap;
-      try {
-        studentsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student')));
-      } catch (e) {
-        handleFirestoreError(e, OperationType.LIST, 'users (students)');
-      }
-
-      if (studentsSnap) {
-        studentsSnap.forEach(studentDoc => {
-          const s = studentDoc.data();
-          if (!s) return;
-          if (s.payments && Array.isArray(s.payments)) {
-            s.payments.forEach((p: any) => {
-              if (!p) return;
-              const txId = p.receiptId || `profile-${studentDoc.id}-${p.tranche || 'x'}-${p.amount}`;
-              if (processedTransactionIds.has(txId)) return; // Skip if already counted from versements
-              
-              const amount = Number(p.amount) || 0;
-              const dateStr = p.date || p.createdAt || s.createdAt;
-              if (!dateStr || amount === 0) return;
-  
-              const date = new Date(dateStr);
-              if (!isNaN(date.getTime()) && date.getFullYear() === selectedYear) {
-                processedTransactionIds.add(txId);
-                totalRevenu += amount;
-                revenusDetails.scolarite += amount;
-                const mKey = date.getMonth();
-                monthlyRevenu[mKey] = (monthlyRevenu[mKey] || 0) + amount;
-              }
-            });
-          }
-        });
-      }
-
-      // C. General Finance Records (Other Incomes)
+      // Unified Finance Records
       let financesSnap;
       try {
         financesSnap = await getDocs(collection(db, 'finances'));
@@ -218,27 +139,30 @@ export default function RealFinanceDashboard() {
       if (financesSnap) {
         financesSnap.forEach(doc => {
           const f = doc.data();
-          if (!f) return;
-          if (f.type === 'income') {
-            const amount = Number(f.amount) || 0;
-            const date = f.date ? new Date(f.date) : new Date();
+          if (!f || f.type !== 'income') return;
+          
+          const amount = Number(f.amount) || 0;
+          if (amount <= 0) return;
+
+          const dateStr = f.date || f.createdAt;
+          const date = dateStr ? new Date(dateStr) : new Date();
+          
+          if (!isNaN(date.getTime()) && date.getFullYear() === selectedYear) {
+            const cat = String(f.category || 'other').toLowerCase();
+            const desc = String(f.description || '').toLowerCase();
             
-            if (!isNaN(date.getTime()) && date.getFullYear() === selectedYear) {
-              const cat = String(f.category || 'other').toLowerCase();
-              
-              // Skip if it's tuition to avoid double counting with versements subcollection
-              if (cat === 'tuition' || cat === 'scolarité' || cat === 'scolarite') {
-                // We already counted these via versements subcollection sync in FinanceManagement
-                return;
-              }
-  
-              totalRevenu += amount;
-              if (cat.includes('inscrip')) revenusDetails.inscription += amount;
-              else revenusDetails.autre += amount;
-  
-              const mKey = date.getMonth();
-              monthlyRevenu[mKey] = (monthlyRevenu[mKey] || 0) + amount;
+            totalRevenu += amount;
+            
+            if (cat.includes('inscrip') || cat === 'registration' || desc.includes('inscription')) {
+              revenusDetails.inscription += amount;
+            } else if (cat.includes('scolarit') || cat === 'tuition' || desc.includes('scolarit')) {
+              revenusDetails.scolarite += amount;
+            } else {
+              revenusDetails.autre += amount;
             }
+
+            const mKey = date.getMonth();
+            monthlyRevenu[mKey] = (monthlyRevenu[mKey] || 0) + amount;
           }
         });
       }

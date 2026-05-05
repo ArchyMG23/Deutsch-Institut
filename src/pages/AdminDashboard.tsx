@@ -15,7 +15,8 @@ import {
   Laptop,
   Smartphone,
   Globe,
-  FileText
+  FileText,
+  Trash2
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { 
@@ -34,7 +35,7 @@ import { toast } from 'sonner';
 
 export default function AdminDashboard() {
   const { students, teachers, finances, evaluations, loading, refreshAll } = useData();
-  const { fetchWithAuth } = useAuth();
+  const { user, profile, fetchWithAuth } = useAuth();
   const { t } = useTranslation();
   const [configStatus, setConfigStatus] = useState<any>(null);
   const [logs, setLogs] = useState<any[]>([]);
@@ -88,6 +89,49 @@ export default function AdminDashboard() {
       toast.error(t('dashboard.diag_error'));
     } finally {
       setCheckingDiag(false);
+    }
+  };
+
+  const isSuperAdmin = 
+    profile?.role === 'admin' || 
+    profile?.isSuperAdmin || 
+    user?.role === 'admin' || 
+    user?.isSuperAdmin || 
+    user?.email?.toLowerCase() === 'gabrielyombi311@gmail.com' ||
+    user?.email?.toLowerCase() === 'yombivictor@gmail.com';
+
+  const handleSystemCleanup = async (forceAll: boolean = false) => {
+    const message = forceAll 
+      ? "🚨 ATTENTION: Cette action va EFFACER INTÉGRALEMENT la base de données (Finances, Scolarités, etc.). Voulez-vous TOUT SUPPRIMER pour recommencer à zéro ?"
+      : "⚠️ Attention: Cette action va supprimer les données (finances, absences, messages, etc.) enregistrées AVANT AUJOURD'HUI. Continuer ?";
+      
+    if (!window.confirm(message)) return;
+    
+    const loadingToast = toast.loading(forceAll ? "Formatage de la base de données en cours..." : "Nettoyage en cours...");
+    try {
+      setCheckingDiag(true);
+      const res = await fetchWithAuth('/api/system/cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          beforeDate: new Date().toISOString().split('T')[0],
+          forceAll: forceAll
+        })
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        toast.success(data.message || "Nettoyage réussi !");
+        refreshAll(true);
+      } else {
+        const err = await res.json();
+        toast.error(err.message || "Erreur lors du nettoyage");
+      }
+    } catch (err) {
+      toast.error("Erreur serveur lors du nettoyage");
+    } finally {
+      setCheckingDiag(false);
+      toast.dismiss(loadingToast);
     }
   };
 
@@ -369,6 +413,29 @@ export default function AdminDashboard() {
                     <AlertTriangle size={14} /> {diagResult.message}
                   </div>
                 )}
+              </div>
+            )}
+
+            {isSuperAdmin && (
+              <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800 space-y-2">
+                <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">Maintenance Système</p>
+                <button 
+                  onClick={() => handleSystemCleanup(false)}
+                  disabled={checkingDiag}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-dia-red hover:text-white transition-colors text-xs font-bold rounded-xl"
+                >
+                  <Trash2 size={14} />
+                  <span>Nettoyer (Avant Aujourd'hui)</span>
+                </button>
+                <button 
+                  onClick={() => handleSystemCleanup(true)}
+                  disabled={checkingDiag}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-dia-red/10 text-dia-red hover:bg-dia-red hover:text-white transition-colors text-xs font-bold rounded-xl"
+                >
+                  <ShieldAlert size={14} />
+                  <span>TOUT FORMATER (Remise à Zéro)</span>
+                </button>
+                <p className="text-[9px] text-neutral-400 mt-2 italic text-center leading-tight">Ces actions sont irréversibles et affectent les finances et rapports.</p>
               </div>
             )}
           </div>

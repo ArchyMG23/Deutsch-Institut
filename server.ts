@@ -692,6 +692,169 @@ async function startServer() {
     }
   });
 
+  // Targeted cleanup: Delete data before a specific date
+  app.post('/api/system/cleanup', authenticate, async (req: any, res) => {
+    try {
+      const currentUserDoc = await dbAdmin.collection('users').doc(req.user.id).get();
+      const userData = currentUserDoc.data();
+      
+      const isSuperAdmin = userData?.role === 'admin' || 
+                         userData?.isSuperAdmin === true ||
+                         req.user.role === 'admin' ||
+                         req.user.email === 'yombivictor@gmail.com' || 
+                         req.user.email === 'gabrielyombi311@gmail.com';
+
+      if (!isSuperAdmin) {
+        addLog('AUTH', `Blocked cleanup attempt from ${req.user.email}`);
+        return res.status(403).json({ message: 'Interdit: Droits super-administrateur requis' });
+      }
+
+      const { beforeDate, forceAll } = req.body;
+      const targetDate = beforeDate ? new Date(beforeDate) : new Date();
+      targetDate.setHours(0, 0, 0, 0); // Start of today
+
+      const collectionsToCleanup = [
+        'finances', 'rapports_journaliers', 'evaluations', 
+        'chat_eleves', 'logs', 'notifications', 'messages', 'attendances',
+        'rapports_journaliers', 'logs'
+      ];
+
+      addLog('INFO', `Cleanup started: deleting records ${forceAll ? 'ALL' : 'before ' + targetDate.toISOString()}`);
+
+      // Delete records
+      for (const collName of collectionsToCleanup) {
+        let snapshot;
+        try {
+          snapshot = await dbAdmin.collection(collName).get();
+        } catch (e) { continue; }
+        
+        if (snapshot.empty) continue;
+
+        let batch = dbAdmin.batch();
+        let count = 0;
+        let batchCount = 0;
+        
+        for (const doc of snapshot.docs) {
+          const data = doc.data();
+          const recordDate = data.createdAt || data.date || data.addedAt || data.timestamp || data.addedBy;
+          let shouldDelete = forceAll === true;
+          
+          if (!shouldDelete && recordDate) {
+            const d = new Date(recordDate);
+            if (d < targetDate) {
+              shouldDelete = true;
+            }
+          }
+
+          if (shouldDelete) {
+            batch.delete(doc.ref);
+            count++;
+            batchCount++;
+            
+            if (batchCount >= 450) {
+              await batch.commit();
+              batch = dbAdmin.batch();
+              batchCount = 0;
+            }
+          }
+        }
+
+        if (batchCount > 0) {
+          await batch.commit();
+          addLog('INFO', `Cleaned up ${count} records from ${collName}`);
+        }
+      }
+
+      // Special handling for scolarites
+      const scolaritesSnap = await dbAdmin.collection('scolarites').get();
+      for (const studentScolaDoc of scolaritesSnap.docs) {
+        const versementsSnap = await studentScolaDoc.ref.collection('versements').get();
+        let vBatch = dbAdmin.batch();
+        let vCount = 0;
+        let vBatchCount = 0;
+        
+        for (const vDoc of versementsSnap.docs) {
+          const vData = vDoc.data();
+          const vDate = vData.date || vData.createdAt;
+          let shouldDeleteV = forceAll === true;
+          
+          if (!shouldDeleteV && vDate) {
+            const d = new Date(vDate);
+            if (d < targetDate) {
+              shouldDeleteV = true;
+            }
+          }
+
+          if (shouldDeleteV) {
+            vBatch.delete(vDoc.ref);
+            vCount++;
+            vBatchCount++;
+            
+            if (vBatchCount >= 450) {
+              await vBatch.commit();
+              vBatch = dbAdmin.batch();
+              vBatchCount = 0;
+            }
+          }
+        }
+        
+        if (vBatchCount > 0) {
+          await vBatch.commit();
+        }
+        
+        // Recalculate student scolarite totals
+        const remainingVersements = await studentScolaDoc.ref.collection('versements').get();
+        const newTotal = remainingVersements.docs.reduce((acc, d) => acc + (Number(d.data().montant) || 0), 0);
+        const scolaData = studentScolaDoc.data();
+        const tuition = Number(scolaData.montant_total_du) || 0;
+        
+        await studentScolaDoc.ref.update({
+          total_verse: newTotal,
+          reste: Math.max(0, tuition - newTotal),
+          surplus: Math.max(0, newTotal - tuition),
+          statut_paiement: newTotal >= tuition ? 'SOLDÉ' : (newTotal > 0 ? 'EN COURS' : 'NON PAYÉ')
+        });
+      }
+
+      // Clean up user/student payments
+      const usersSnap = await dbAdmin.collection('users').where('role', '==', 'student').get();
+      for (const userDoc of usersSnap.docs) {
+        const uData = userDoc.data();
+        if (uData.payments && Array.isArray(uData.payments)) {
+          let updatedPayments = uData.payments;
+          if (forceAll) {
+            updatedPayments = [
+              { tranche: 1, amount: 0, date: null },
+              { tranche: 2, amount: 0, date: null },
+              { tranche: 3, amount: 0, date: null }
+            ];
+          } else {
+            updatedPayments = uData.payments.map((p: any) => {
+               const pDate = p.date ? new Date(p.date) : new Date();
+               if (pDate < targetDate) return { ...p, amount: 0, date: null };
+               return p;
+            });
+          }
+          await userDoc.ref.update({ payments: updatedPayments });
+          
+          const sDoc = await dbAdmin.collection('students').doc(userDoc.id).get();
+          if (sDoc.exists) {
+            await sDoc.ref.update({ payments: updatedPayments });
+          }
+        }
+      }
+
+      res.json({ 
+        message: forceAll 
+          ? 'Base de données remise à zéro avec succès (Finances et Versements).' 
+          : 'Nettoyage terminé. Les données anciennes ont été supprimées.' 
+      });
+    } catch (err: any) {
+      addLog('ERROR', 'Cleanup failure', err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get('/api/auth/me', authenticate, async (req: any, res) => {
     try {
       const userDoc = await dbAdmin.collection('users').doc(req.user.id).get();
@@ -779,11 +942,17 @@ async function startServer() {
 
       // --- ATOMIC FINANCIAL SYNC ---
       const initialAmount = (newStudent.payments || []).reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
+      const inscriptionAmount = Number(req.body.inscriptionAmount) || 0;
+      const vorbereitungAmount = Number(req.body.vorbereitungAmount) || 0;
+      const totalInitial = initialAmount + inscriptionAmount + vorbereitungAmount;
       
       try {
         // Fetch tuition info from levels
         const levelDoc = await dbAdmin.collection('levels').doc(studentData.levelId || 'a1').get();
-        const tuitionTotal = levelDoc.exists ? (levelDoc.data()?.tuition || 150000) : 150000;
+        let baseTuition = levelDoc.exists ? (levelDoc.data()?.tuition || 150000) : 150000;
+        
+        // Add Standard Registration fee (10,000) to total due
+        const tuitionTotal = baseTuition + 10000;
 
         // Create main Tuition record
         await dbAdmin.collection('scolarites').doc(userRecord.uid).set({
@@ -793,11 +962,55 @@ async function startServer() {
           nom_eleve: `${newStudent.firstName} ${newStudent.lastName}`,
           classe_id: newStudent.classId || 'N/A',
           montant_total_du: tuitionTotal,
-          total_verse: initialAmount,
-          reste: Math.max(0, tuitionTotal - initialAmount),
-          surplus: Math.max(0, initialAmount - tuitionTotal),
-          statut_paiement: initialAmount >= tuitionTotal ? 'SOLDÉ' : (initialAmount > 0 ? 'EN COURS' : 'NON PAYÉ')
+          total_verse: totalInitial,
+          reste: Math.max(0, tuitionTotal - totalInitial),
+          surplus: Math.max(0, totalInitial - tuitionTotal),
+          statut_paiement: totalInitial >= tuitionTotal ? 'SOLDÉ' : (totalInitial > 0 ? 'EN COURS' : 'NON PAYÉ')
         });
+
+        // Record Inscription if any
+        if (inscriptionAmount > 0) {
+          const financeId = 'INS-' + Date.now().toString();
+          await dbAdmin.collection('finances').doc(financeId).set({
+            id: financeId,
+            type: 'income',
+            amount: inscriptionAmount,
+            description: `Inscription - ${newStudent.matricule} - ${newStudent.firstName}`,
+            category: 'registration',
+            date: new Date().toISOString()
+          });
+          await dbAdmin.collection('scolarites').doc(userRecord.uid).collection('versements').add({
+            montant: inscriptionAmount,
+            date: new Date().toISOString(),
+            mode_paiement: 'Espèces',
+            categorie: 'inscription',
+            recu_numero: `INS-${Date.now().toString().slice(-6)}`,
+            caissier_id: (req as any).user?.id || 'System',
+            notes: 'Frais d\'inscription initial'
+          });
+        }
+
+        // Record Vorbereitung if any
+        if (vorbereitungAmount > 0) {
+          const financeId = 'VOR-' + Date.now().toString();
+          await dbAdmin.collection('finances').doc(financeId).set({
+            id: financeId,
+            type: 'income',
+            amount: vorbereitungAmount,
+            description: `Vorbereitung - ${newStudent.matricule} - ${newStudent.firstName}`,
+            category: 'tuition',
+            date: new Date().toISOString()
+          });
+          await dbAdmin.collection('scolarites').doc(userRecord.uid).collection('versements').add({
+            montant: vorbereitungAmount,
+            date: new Date().toISOString(),
+            mode_paiement: 'Espèces',
+            categorie: 'vorbereitung',
+            recu_numero: `VOR-${Date.now().toString().slice(-6)}`,
+            caissier_id: (req as any).user?.id || 'System',
+            notes: 'Frais Vorbereitung initial'
+          });
+        }
 
         // Record initial payments in finances & subcollection
         if (newStudent.payments) {
@@ -806,12 +1019,12 @@ async function startServer() {
               const financeId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
               const txDate = p.date || new Date().toISOString();
               
-              // 1. General Finance Record
+      // 1. General Finance Record
               const financeRecord = {
                 id: financeId,
                 type: 'income',
                 amount: p.amount,
-                description: `Scolarité (Inscription) - ${newStudent.matricule} - ${newStudent.firstName}`,
+                description: `Paiement Scolarité - ${newStudent.matricule} - ${newStudent.firstName} (Tranche ${p.tranche})`,
                 category: 'tuition',
                 date: txDate
               };
@@ -822,8 +1035,8 @@ async function startServer() {
                 montant: p.amount,
                 date: txDate,
                 mode_paiement: 'Espèces',
-                categorie: 'inscription',
-                recu_numero: `INS-${Date.now().toString().slice(-6)}`,
+                categorie: 'scolarite',
+                recu_numero: `SCO-${Date.now().toString().slice(-6)}`,
                 caissier_id: (req as any).user?.id || 'System',
                 notes: 'Enregistré via inscription rapide'
               });

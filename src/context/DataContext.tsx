@@ -152,10 +152,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const refreshAll = useCallback(async (force = false) => {
     if (!user) return;
     
-    // Prevent double fetching within 30 seconds unless forced
+    // Throttling: prevent double fetching within 1 minute unless forced
     const now = Date.now();
     const lastFetch = lastFetchRef.current;
-    if (!force && lastFetch && now - lastFetch < 30000) {
+    if (!force && lastFetch && now - lastFetch < 60000) {
       return;
     }
     
@@ -163,21 +163,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     try {
       lastFetchTimesRef.current = {}; 
       
+      // Multi-phase loading to prioritize UI interactivity
+      // 1. Critical core data
       await Promise.all([
         refreshStudents(),
-        refreshTeachers(),
         refreshClasses(),
-        refreshLevels(),
-        refreshFinances(),
-        refreshTrash(),
+        refreshLevels()
+      ]);
+
+      // 2. Secondary business data
+      await Promise.all([
+        refreshTeachers(),
+        refreshFinances(), // This might be large, but we fetch it
         refreshLibrary(),
         refreshEvaluations()
       ]);
+
       lastFetchRef.current = now;
+    } catch (err) {
+      console.error("RefreshAll error:", err);
     } finally {
       setLoading(false);
     }
-  }, [user, refreshStudents, refreshTeachers, refreshClasses, refreshLevels, refreshFinances, refreshTrash, refreshLibrary, refreshEvaluations]);
+  }, [user, refreshStudents, refreshTeachers, refreshClasses, refreshLevels, refreshFinances, refreshLibrary, refreshEvaluations]);
 
   return (
     <DataContext.Provider value={{

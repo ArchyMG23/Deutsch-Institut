@@ -12,7 +12,7 @@ import { auth } from '../../firebase';
 import { generateWhatsAppLink, APP_NAME_FOR_LINKS } from '../../utils/contactLinks';
 
 const TuitionManagement: React.FC = () => {
-  const { user, profile } = useAuth();
+  const { user, profile, fetchWithAuth } = useAuth();
   const isSuperAdmin = 
     profile?.role === 'admin' || 
     profile?.isSuperAdmin || 
@@ -105,9 +105,12 @@ const TuitionManagement: React.FC = () => {
     setMatricule(student.matricule);
     
     try {
-      // Fetch level info
+      // Fetch targetStudent Level info for tuition totals
       const studentLevel = levels.find(l => l.id === student.levelId);
-      const defaultTuition = studentLevel?.tuition || 110000;
+      const levelTuition = studentLevel?.tuition || 110000;
+      // Add standard registration fee (10,000) to total pool
+      const defaultTuition = levelTuition + 10000;
+      
       const stream = studentLevel?.stream || 'N/A';
       const levelName = studentLevel?.name || 'N/A';
 
@@ -121,14 +124,15 @@ const TuitionManagement: React.FC = () => {
       
       if (scolariteSnap!.exists()) {
         const data = scolariteSnap!.data() as StudentScolarite;
-        // Update stream/level if missing or changed
-        if (data.filiere !== stream || data.niveau !== levelName || (data.montant_total_du !== defaultTuition && data.total_verse === 0)) {
+        // Update stream/level/tuition if changed or inconsistent
+        if (data.filiere !== stream || data.niveau !== levelName || data.montant_total_du !== defaultTuition) {
           const updated = { 
             ...data, 
             filiere: stream, 
             niveau: levelName,
-            montant_total_du: data.total_verse === 0 ? defaultTuition : data.montant_total_du,
-            reste: Math.max(0, (data.total_verse === 0 ? defaultTuition : data.montant_total_du) - data.total_verse)
+            montant_total_du: defaultTuition,
+            reste: Math.max(0, defaultTuition - data.total_verse),
+            surplus: Math.max(0, data.total_verse - defaultTuition)
           };
           await updateDoc(doc(db, 'scolarites', student.uid), updated);
           setScolarite(updated);
@@ -296,7 +300,27 @@ const TuitionManagement: React.FC = () => {
       setScolarite(updatedScolarite);
       setVersements([{ id: vRef.id, ...versementData }, ...versements]);
       
-      // 3. Add to Audit Log
+      // 3. Sync with global finances
+      try {
+        await fetchWithAuth('/api/finances', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            type: 'income',
+            amount: amount,
+            description: `${paymentCategory.charAt(0).toUpperCase() + paymentCategory.slice(1)} - ${targetStudent.firstName} ${targetStudent.lastName} (${targetStudent.matricule})`,
+            category: paymentCategory === 'scolarite' ? 'tuition' : (paymentCategory === 'inscription' ? 'registration' : 'tuition'),
+            date: finalDate,
+            status: 'active'
+          })
+        });
+      } catch (financeErr) {
+        console.error("Finance sync failed:", financeErr);
+      }
+
+      // 4. Add to Audit Log
       addAuditLog("VERSEMENT_AJOUTÉ", targetStudent.uid, { montant: amount, recu: recNumber, categorie: paymentCategory });
 
       toast.success("Versement enregistré !");
