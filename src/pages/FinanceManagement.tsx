@@ -41,6 +41,8 @@ const TransactionTable = React.memo(({
   onSort, 
   sortConfig,
   onDelete,
+  onUpdate,
+  isSuperAdmin,
   isTrash = false,
   limit = 20
 }: { 
@@ -48,12 +50,17 @@ const TransactionTable = React.memo(({
   onSort?: (key: string) => void, 
   sortConfig?: { key: string, direction: 'asc' | 'desc' } | null,
   onDelete?: (id: string) => void,
+  onUpdate?: (id: string, amount: number, desc: string) => void,
+  isSuperAdmin?: boolean,
   isTrash?: boolean,
   limit?: number
 }) => {
   const { t, i18n } = useTranslation();
   const { fetchWithAuth } = useAuth();
   const [displayLimit, setDisplayLimit] = useState(limit);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editAmount, setEditAmount] = useState<number>(0);
+  const [editDesc, setEditDesc] = useState<string>('');
   
   const visibleRecords = React.useMemo(() => records.slice(0, displayLimit), [records, displayLimit]);
   const hasMore = records.length > displayLimit;
@@ -99,7 +106,16 @@ const TransactionTable = React.memo(({
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-bold text-neutral-700 dark:text-neutral-300 group-hover:text-dia-red transition-colors">{record.description || t('common.no_description')}</p>
+                      {editingId === record.id ? (
+                        <input 
+                          type="text" 
+                          value={editDesc} 
+                          onChange={(e) => setEditDesc(e.target.value)}
+                          className="px-2 py-1 bg-white border-2 border-blue-400 rounded-md text-sm outline-none w-full"
+                        />
+                      ) : (
+                        <p className="text-sm font-bold text-neutral-700 dark:text-neutral-300 group-hover:text-dia-red transition-colors">{record.description || t('common.no_description')}</p>
+                      )}
                       {record.status === 'archived' && (
                         <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-neutral-200 dark:bg-neutral-800 text-neutral-500 rounded-md">Archive</span>
                       )}
@@ -114,22 +130,66 @@ const TransactionTable = React.memo(({
               </td>
               {isTrash && <td className="px-6 py-4 text-xs font-bold text-red-500">{record.deletionReason}</td>}
               <td className={cn("px-6 py-4 text-right font-black", record.type === 'income' ? "text-green-600" : "text-red-600")}>
-                {record.type === 'income' ? '+' : '-'}{formatCurrency(record.amount)}
+                {editingId === record.id ? (
+                  <div className="flex items-center justify-end gap-1">
+                    <span className="text-xs text-neutral-400">{record.type === 'income' ? '+' : '-'}</span>
+                    <input 
+                      type="number" 
+                      value={editAmount} 
+                      onChange={(e) => setEditAmount(Number(e.target.value))}
+                      className="w-24 px-2 py-1 bg-white border-2 border-blue-400 rounded-md text-right text-sm outline-none"
+                    />
+                  </div>
+                ) : (
+                  <>{record.type === 'income' ? '+' : '-'}{formatCurrency(record.amount)}</>
+                )}
               </td>
               {!isTrash && (
                 <td className="px-6 py-4 text-right print:hidden">
                   <div className="flex items-center justify-end gap-2">
-                    <button onClick={async (e) => {
-                      e.stopPropagation();
-                      const msg = `DIA_SAAS: Transaction de ${formatCurrency(record.amount)} enregistrée.\nDescription: ${record.description}\nDate: ${record.date ? new Date(record.date).toLocaleDateString() : ''}`;
-                      toast.info("Ouverture de WhatsApp...");
-                      await NotificationService._triggerWhatsApp(fetchWithAuth, "", msg); 
-                    }} className="p-2 text-green-500 hover:bg-green-50 rounded-lg transition-all" title="Partager sur WhatsApp">
-                      <Smartphone size={16} />
-                    </button>
-                    <button onClick={() => onDelete?.(record.id)} className="p-2 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title={t('finances.delete_tooltip')}>
-                      <Trash2 size={16} />
-                    </button>
+                    {editingId === record.id ? (
+                      <>
+                        <button 
+                          onClick={() => {
+                            onUpdate?.(record.id, editAmount, editDesc);
+                            setEditingId(null);
+                          }}
+                          className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-all"
+                        >
+                          <CheckCircle2 size={16} />
+                        </button>
+                        <button onClick={() => setEditingId(null)} className="p-2 text-neutral-400 hover:bg-neutral-50 rounded-lg transition-all">
+                          <X size={16} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={async (e) => {
+                          e.stopPropagation();
+                          const msg = `DIA_SAAS: Transaction de ${formatCurrency(record.amount)} enregistrée.\nDescription: ${record.description}\nDate: ${record.date ? new Date(record.date).toLocaleDateString() : ''}`;
+                          toast.info("Ouverture de WhatsApp...");
+                          await NotificationService._triggerWhatsApp(fetchWithAuth, "", msg); 
+                        }} className="p-2 text-green-500 hover:bg-green-50 rounded-lg transition-all" title="Partager sur WhatsApp">
+                          <Smartphone size={16} />
+                        </button>
+                        {isSuperAdmin && (
+                          <button 
+                            onClick={() => {
+                              setEditingId(record.id);
+                              setEditAmount(record.amount);
+                              setEditDesc(record.description || '');
+                            }}
+                            className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-all"
+                            title="Modifier (Admin)"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                        )}
+                        <button onClick={() => onDelete?.(record.id)} className="p-2 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title={t('finances.delete_tooltip')}>
+                          <Trash2 size={16} />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </td>
               )}
@@ -154,8 +214,37 @@ const TransactionTable = React.memo(({
 export default function FinanceManagement() {
   const { t, i18n } = useTranslation();
   const { finances: allRecords, trashFinances, refreshFinances, refreshTrash, levels, classes } = useData();
-  const { user, fetchWithAuth } = useAuth();
+  const { user, profile, fetchWithAuth } = useAuth();
   
+  const isSuperAdmin = 
+    profile?.role === 'admin' || 
+    profile?.isSuperAdmin || 
+    user?.role === 'admin' || 
+    user?.isSuperAdmin || 
+    user?.email?.toLowerCase() === 'gabrielyombi311@gmail.com' ||
+    user?.email?.toLowerCase() === 'yombivictor@gmail.com';
+  
+  const handleUpdateFinance = async (id: string, newAmount: number, newDesc: string) => {
+    if (!isSuperAdmin) return;
+    try {
+      const res = await fetchWithAuth(`/api/finances/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: newAmount, description: newDesc })
+      });
+      if (res.ok) {
+        toast.success("Transaction mise à jour");
+        refreshFinances();
+      } else {
+        const data = await res.json();
+        toast.error(data.message || "Erreur lors de la mise à jour");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Erreur réseau");
+    }
+  };
+
   const [viewMode, setViewMode] = useState<'active' | 'trash' | 'tuition' | 'dashboard' | 'charges'>('dashboard');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isQuickAddModalOpen, setIsQuickAddModalOpen] = useState(false);
@@ -736,6 +825,8 @@ export default function FinanceManagement() {
                 onSort={handleSort}
                 sortConfig={sortConfig}
                 onDelete={handleDeleteClick}
+                onUpdate={handleUpdateFinance}
+                isSuperAdmin={isSuperAdmin}
                 isTrash={viewMode === 'trash'}
                />
             </div>

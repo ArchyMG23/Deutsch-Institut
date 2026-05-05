@@ -1206,6 +1206,25 @@ async function startServer() {
     }
   });
 
+  app.patch('/api/finances/:id', authenticate, async (req: any, res: any) => {
+    try {
+      const { amount, description } = req.body;
+      if (amount === undefined && !description) {
+        return res.status(400).json({ message: 'Aucune donnée fournie' });
+      }
+      if (req.user.role !== 'admin') {
+        return res.status(403).json({ message: 'Interdit' });
+      }
+      const updateData: any = {};
+      if (amount !== undefined) updateData.amount = Number(amount);
+      if (description) updateData.description = description;
+      await dbAdmin.collection('finances').doc(req.params.id).update(updateData);
+      res.json({ message: 'Transaction mise à jour' });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.delete('/api/finances/:id', authenticate, async (req: any, res) => {
     try {
       // Permanent delete only if explicitly requested or just keep it archived

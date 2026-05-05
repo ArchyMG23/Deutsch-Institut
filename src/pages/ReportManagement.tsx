@@ -29,7 +29,11 @@ const ReportManagement: React.FC = () => {
   const [showQuotaStatus, setShowQuotaStatus] = useState(false);
   const [quotaStats, setQuotaStats] = useState<{ total: number, quota: number, diff: number, status: 'ok' | 'low' | 'high' } | null>(null);
 
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = 
+    user?.role === 'admin' || 
+    user?.isSuperAdmin || 
+    user?.email?.toLowerCase() === 'gabrielyombi311@gmail.com' ||
+    user?.email?.toLowerCase() === 'yombivictor@gmail.com';
 
   useEffect(() => {
     if (filterClass && classes.length > 0) {

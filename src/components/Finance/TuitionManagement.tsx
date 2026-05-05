@@ -13,7 +13,13 @@ import { generateWhatsAppLink, APP_NAME_FOR_LINKS } from '../../utils/contactLin
 
 const TuitionManagement: React.FC = () => {
   const { user, profile } = useAuth();
-  const isSuperAdmin = profile?.role === 'admin' || profile?.isSuperAdmin;
+  const isSuperAdmin = 
+    profile?.role === 'admin' || 
+    profile?.isSuperAdmin || 
+    user?.role === 'admin' || 
+    user?.isSuperAdmin || 
+    user?.email?.toLowerCase() === 'gabrielyombi311@gmail.com' ||
+    user?.email?.toLowerCase() === 'yombivictor@gmail.com';
   
   const handleFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
     const errInfo: FirestoreErrorInfo = {

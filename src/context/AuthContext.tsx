@@ -159,7 +159,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
 
             console.log("AuthProvider: Profile found:", fullProfileData.role);
-            setUser(firebaseUser);
+            setUser({ ...firebaseUser, ...fullProfileData });
             setProfile(fullProfileData);
 
             // Register for Push Notifications (non-blocking)
