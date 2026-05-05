@@ -248,9 +248,22 @@ export default function FinanceManagement() {
   const [viewMode, setViewMode] = useState<'active' | 'trash' | 'tuition' | 'dashboard' | 'charges'>('dashboard');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isQuickAddModalOpen, setIsQuickAddModalOpen] = useState(false);
-  const [quickAddTuition, setQuickAddTuition] = useState(110000);
+  const [quickAddTuition, setQuickAddTuition] = useState<number | ''>('');
   const [quickAddStream, setQuickAddStream] = useState('');
-  
+  const [quickAddLevelId, setQuickAddLevelId] = useState('');
+
+  // Update quick add level when stream changes or modal opens
+  useEffect(() => {
+    if (isQuickAddModalOpen && levels.length > 0) {
+      const filtered = levels.filter(l => !quickAddStream || l.stream === quickAddStream);
+      if (filtered.length > 0) {
+        const first = filtered[0];
+        setQuickAddLevelId(first.id);
+        setQuickAddTuition(first.tuition);
+      }
+    }
+  }, [isQuickAddModalOpen, quickAddStream, levels]);
+
   // Modal Form State
   const [formType, setFormType] = useState<'income' | 'expense'>('income');
   const [formCategory, setFormCategory] = useState('tuition');
@@ -573,7 +586,7 @@ export default function FinanceManagement() {
           ...newStudent,
           inscriptionAmount: formData.get('payInscription') === 'on' ? 10000 : 0,
           vorbereitungAmount: formData.get('payVorbereitung') === 'on' ? (Number(formData.get('vorbereitungAmount')) || 0) : 0,
-          totalTuition: Number(formData.get('totalTuition')) || 110000
+          totalTuition: formData.get('totalTuition') ? Number(formData.get('totalTuition')) : ''
         })
       });
       
@@ -588,14 +601,21 @@ export default function FinanceManagement() {
         }
         
         setIsQuickAddModalOpen(false);
-        await Promise.all([
-          refreshFinances(),
-          refreshStudents()
-        ]);
+        try {
+          await Promise.all([
+            refreshFinances(),
+            refreshStudents()
+          ]);
+        } catch (refreshErr) {
+          console.error("Non-blocking error during refresh:", refreshErr);
+        }
+        
         toast.success(`Élève ${newStudent.firstName} inscrit avec succès ! Matricule: ${student.matricule}`);
         
         // Refresh contexts completely after a short delay
-        setTimeout(() => refreshAll(true), 2000);
+        setTimeout(() => {
+          refreshAll(true).catch(console.error)
+        }, 2000);
       } else {
         const err = await res.json();
         toast.error(err.message || "Erreur d'inscription");
@@ -938,7 +958,9 @@ export default function FinanceManagement() {
                   <select 
                     name="levelId" 
                     required 
+                    value={quickAddLevelId}
                     onChange={(e) => {
+                      setQuickAddLevelId(e.target.value);
                       const level = levels.find(l => l.id === e.target.value);
                       if (level) setQuickAddTuition(level.tuition);
                     }}
@@ -950,22 +972,22 @@ export default function FinanceManagement() {
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Total Scolarité *</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Total Scolarité</label>
                   <input 
                     name="totalTuition" 
                     type="number" 
                     value={quickAddTuition}
-                    onChange={(e) => setQuickAddTuition(Number(e.target.value))}
+                    onChange={(e) => setQuickAddTuition(e.target.value === '' ? '' : Number(e.target.value))}
                     className="w-full px-4 py-2.5 bg-white dark:bg-neutral-800 border-2 border-orange-200 dark:border-orange-900 rounded-xl font-bold text-orange-600 outline-none focus:ring-2 focus:ring-orange-500/20" 
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5 p-4 bg-orange-50 dark:bg-orange-900/10 border-2 border-orange-100 dark:border-orange-900/30 rounded-2xl flex items-center gap-3">
-                  <input name="payInscription" type="checkbox" defaultChecked className="w-5 h-5 accent-orange-600 rounded cursor-pointer" />
+                  <input name="payInscription" type="checkbox" className="w-5 h-5 accent-orange-600 rounded cursor-pointer" />
                   <div>
                     <p className="text-[11px] font-black uppercase text-orange-600 tracking-wider">Inscription</p>
-                    <p className="text-xs font-bold text-orange-500">10 000 FCFA</p>
+                    <p className="text-[10px] font-bold text-orange-500">10 000 FCFA (Optionnel)</p>
                   </div>
                 </div>
                 <div className="space-y-1.5 p-4 bg-blue-50 dark:bg-blue-900/10 border-2 border-blue-100 dark:border-blue-900/30 rounded-2xl flex flex-col justify-center">
@@ -977,8 +999,8 @@ export default function FinanceManagement() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1 font-black">Versement Scolarité (Avance)</label>
-                <input name="amount" type="number" defaultValue={50000} placeholder="Ex: 50000" className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl font-bold text-neutral-900 outline-none focus:ring-2 focus:ring-orange-500/20" />
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1 font-black">Versement Scolarité (Avance) (Optionnel)</label>
+                <input name="amount" type="number" placeholder="Ex: 50000" className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl font-bold text-neutral-900 outline-none focus:ring-2 focus:ring-orange-500/20" />
               </div>
               <div className="pt-4 flex gap-4">
                 <button type="button" onClick={() => setIsQuickAddModalOpen(false)} className="flex-1 py-3 text-sm font-bold text-neutral-500">Annuler</button>

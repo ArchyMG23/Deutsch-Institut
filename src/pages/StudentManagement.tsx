@@ -52,7 +52,7 @@ export default function StudentManagement() {
   const [activeTab, setActiveTab] = useState<'active' | 'former'>('active');
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedTuition, setSelectedTuition] = useState(110000);
+  const [selectedTuition, setSelectedTuition] = useState<number | ''>('');
   const [selectedStream, setSelectedStream] = useState<string>('');
   const itemsPerPage = 20;
   
@@ -193,7 +193,7 @@ export default function StudentManagement() {
           ...newStudent,
           inscriptionAmount,
           vorbereitungAmount,
-          totalTuition: Number(formData.get('totalTuition')) || 110000
+          totalTuition: formData.get('totalTuition') ? Number(formData.get('totalTuition')) : ''
         })
       });
 
@@ -927,12 +927,12 @@ export default function StudentManagement() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Montant Total Scolarité *</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Montant Total Scolarité</label>
                   <input 
                     name="totalTuition" 
                     type="number" 
                     value={selectedTuition}
-                    onChange={(e) => setSelectedTuition(Number(e.target.value))}
+                    onChange={(e) => setSelectedTuition(e.target.value === '' ? '' : Number(e.target.value))}
                     className="w-full px-5 py-3 bg-white dark:bg-neutral-800/50 border-2 border-dia-red/50 rounded-2xl focus:ring-2 focus:ring-dia-red/20 outline-none transition-all font-bold text-dia-red" 
                   />
                 </div>
@@ -945,10 +945,10 @@ export default function StudentManagement() {
                 </div>
                 <div className="space-y-4 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="p-4 bg-orange-50 dark:bg-orange-900/10 border-2 border-orange-100 dark:border-orange-900/30 rounded-2xl flex items-center gap-3">
-                    <input name="payInscription" type="checkbox" defaultChecked className="w-6 h-6 accent-orange-600 rounded cursor-pointer" />
+                    <input name="payInscription" type="checkbox" className="w-6 h-6 accent-orange-600 rounded cursor-pointer" />
                     <div>
                       <p className="text-xs font-black uppercase text-orange-600 tracking-wider">Frais d'Inscription</p>
-                      <p className="text-[10px] font-bold text-orange-500">10 000 FCFA</p>
+                      <p className="text-[10px] font-bold text-orange-500">10 000 FCFA (Optionnel)</p>
                     </div>
                   </div>
                   <div className="p-4 bg-blue-50 dark:bg-blue-900/10 border-2 border-blue-100 dark:border-blue-900/30 rounded-2xl flex flex-col justify-center">
@@ -960,15 +960,15 @@ export default function StudentManagement() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.initial_payment')} (Tranche 1)</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.initial_payment')} (Tranche 1) (Optionnel)</label>
                   <input name="tranche1" type="number" placeholder="0" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.initial_payment')} (Tranche 2)</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.initial_payment')} (Tranche 2) (Optionnel)</label>
                   <input name="tranche2" type="number" placeholder="0" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.initial_payment')} (Tranche 3)</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.initial_payment')} (Tranche 3) (Optionnel)</label>
                   <input name="tranche3" type="number" placeholder="0" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">

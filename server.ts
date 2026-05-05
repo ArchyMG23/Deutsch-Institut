@@ -947,12 +947,19 @@ async function startServer() {
       const totalInitial = initialAmount + inscriptionAmount + vorbereitungAmount;
       
       try {
-        // Fetch tuition info from levels
-        const levelDoc = await dbAdmin.collection('levels').doc(studentData.levelId || 'a1').get();
-        let baseTuition = levelDoc.exists ? (levelDoc.data()?.tuition || 150000) : 150000;
-        
-        // Add Standard Registration fee (10,000) to total due
-        const tuitionTotal = baseTuition + 10000;
+        let tuitionTotal = 0;
+        if (req.body.totalTuition !== undefined && req.body.totalTuition !== '') {
+          tuitionTotal = Number(req.body.totalTuition);
+          const includeInscription = Number(req.body.inscriptionAmount) > 0;
+          tuitionTotal = Number(req.body.totalTuition) + (includeInscription ? 10000 : 0);
+        } else {
+          // Fetch tuition info from levels
+          const levelDoc = await dbAdmin.collection('levels').doc(studentData.levelId || 'a1').get();
+          let baseTuition = levelDoc.exists ? (levelDoc.data()?.tuition || 150000) : 150000;
+          
+          // Add Standard Registration fee (10,000) to total due
+          tuitionTotal = baseTuition + 10000;
+        }
 
         // Create main Tuition record
         await dbAdmin.collection('scolarites').doc(userRecord.uid).set({
