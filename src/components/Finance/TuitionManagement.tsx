@@ -62,12 +62,6 @@ const TuitionManagement: React.FC = () => {
   const hasPaidInscription = versements.some(v => v.categorie === 'inscription');
 
   useEffect(() => {
-    if (targetStudent && hasPaidInscription && paymentCategory === 'inscription') {
-      setPaymentCategory('scolarite');
-    }
-  }, [hasPaidInscription, targetStudent]);
-
-  useEffect(() => {
     if (paymentCategory === 'inscription') {
       setAmount(10000);
     }
@@ -638,9 +632,7 @@ const TuitionManagement: React.FC = () => {
                     )}
                   >
                     <option value="scolarite">Scolarité</option>
-                    {!hasPaidInscription && (
-                      <option value="inscription" className="font-bold text-orange-600">Inscription (10 000 FCFA)</option>
-                    )}
+                    <option value="inscription" className="font-bold text-orange-600">Inscription (10 000 FCFA)</option>
                     <option value="vorbereitung">Vorbereitung</option>
                     <option value="examen">Examen</option>
                     <option value="autre">Autre</option>
