@@ -1160,12 +1160,12 @@ async function startServer() {
       
       const currentUserDoc = await dbAdmin.collection('users').doc(req.user.id).get();
       const userData = currentUserDoc.data();
-      const userEmail = req.user.email?.toLowerCase();
-      const isSuperAdmin = userData?.isSuperAdmin || 
+      const userEmail = (req.user.email || '').toLowerCase();
+      const isSuperAdmin = userData?.isSuperAdmin === true || 
                          userEmail === 'yombivictor@gmail.com' || 
                          userEmail === 'gabrielyombi311@gmail.com';
 
-      console.log(`IsSuperAdmin check: ${isSuperAdmin} (userData.isSuperAdmin: ${userData?.isSuperAdmin}, email: ${userEmail})`);
+      console.log(`[DELETE] Security check for ${userEmail}: isSuperAdmin=${isSuperAdmin}`);
 
       if (!isSuperAdmin) {
         console.warn(`Unauthorized delete attempt by ${req.user.email}`);
@@ -1177,95 +1177,67 @@ async function startServer() {
          return res.status(400).json({ message: 'ID d\'élève invalide' });
       }
 
+      // Metadata first
       const studentDoc = await dbAdmin.collection('students').doc(studentId).get();
       const studentData = studentDoc.exists ? studentDoc.data() as any : {};
       const matricule = studentData.matricule || '';
       
-      console.log(`Starting deletion for student UID: ${studentId}, Matricule: ${matricule}`);
+      console.log(`[DELETE] Starting for ${studentId} (Matricule: ${matricule})`);
 
-      // 1. Delete student from collections
+      // 1. Delete Finance Records (Longest part)
+      // A. By studentId
+      const studentIdSnap = await dbAdmin.collection('finances').where('studentId', '==', studentId).get();
+      if (!studentIdSnap.empty) {
+        let bId = dbAdmin.batch();
+        let cId = 0;
+        for (const doc of studentIdSnap.docs) {
+          bId.delete(doc.ref);
+          cId++;
+          if (cId === 400) { await bId.commit(); bId = dbAdmin.batch(); cId = 0; }
+        }
+        if (cId > 0) await bId.commit();
+      }
+
+      // B. By matricule field
+      if (matricule) {
+        const matSnap = await dbAdmin.collection('finances').where('studentMatricule', '==', matricule).get();
+        if (!matSnap.empty) {
+          let bMat = dbAdmin.batch();
+          let cMat = 0;
+          for (const doc of matSnap.docs) {
+            bMat.delete(doc.ref);
+            cMat++;
+            if (cMat === 400) { await bMat.commit(); bMat = dbAdmin.batch(); cMat = 0; }
+          }
+          if (cMat > 0) await bMat.commit();
+        }
+      }
+
+      // 2. Delete Versement subcollection
+      const versementsSnap = await dbAdmin.collection(`scolarites/${studentId}/versements`).get();
+      if (!versementsSnap.empty) {
+        let bV = dbAdmin.batch();
+        let cV = 0;
+        for (const doc of versementsSnap.docs) {
+          bV.delete(doc.ref);
+          cV++;
+          if (cV === 400) { await bV.commit(); bV = dbAdmin.batch(); cV = 0; }
+        }
+        if (cV > 0) await bV.commit();
+      }
+
+      // 3. Delete Master Records
+      await dbAdmin.collection('scolarites').doc(studentId).delete();
       await dbAdmin.collection('students').doc(studentId).delete();
       await dbAdmin.collection('users').doc(studentId).delete();
       
       try {
         await authAdmin.deleteUser(studentId);
       } catch (err: any) {
-        if (err.code !== 'auth/user-not-found') {
-          console.error("Auth delete error:", err);
-        }
+        if (err.code !== 'auth/user-not-found') console.error("Auth delete error:", err);
       }
 
-      // 2. Delete scolarite document
-      await dbAdmin.collection('scolarites').doc(studentId).delete();
-
-      // 3. Delete versements subcollection
-      const versementsSnap = await dbAdmin.collection(`scolarites/${studentId}/versements`).get();
-      if (!versementsSnap.empty) {
-        let batch = dbAdmin.batch();
-        let count = 0;
-        for (const doc of versementsSnap.docs) {
-          batch.delete(doc.ref);
-          count++;
-          if (count === 400) {
-            await batch.commit();
-            batch = dbAdmin.batch();
-            count = 0;
-          }
-        }
-        if (count > 0) {
-          await batch.commit();
-        }
-      }
-
-      // 4. Delete global finances related to this student
-      const studentIdSnap = await dbAdmin.collection('finances').where('studentId', '==', studentId).get();
-      if (!studentIdSnap.empty) {
-        console.log(`Found ${studentIdSnap.size} finance records by studentId`);
-        let batchId = dbAdmin.batch();
-        let cId = 0;
-        for (const doc of studentIdSnap.docs) {
-          batchId.delete(doc.ref);
-          cId++;
-          if (cId === 400) {
-            await batchId.commit();
-            batchId = dbAdmin.batch();
-            cId = 0;
-          }
-        }
-        if (cId > 0) await batchId.commit();
-      }
-
-      // B. Fallback: Scan descriptions for old records
-      if (matricule) {
-        const financesSnap = await dbAdmin.collection('finances').get();
-        console.log(`Scanning ${financesSnap.size} finance records for matricule fallback`);
-        let batch2 = dbAdmin.batch();
-        let opsCount = 0;
-        let totalDeleted = 0;
-
-        for (const doc of financesSnap.docs) {
-          const data = doc.data();
-          // Skip if already handled by studentId (though delete twice is fine, but good to be clean)
-          if (data.studentId === studentId) continue;
-
-          if (data.description && data.description.includes(matricule)) {
-            batch2.delete(doc.ref);
-            opsCount++;
-            totalDeleted++;
-            
-            if (opsCount === 400) {
-              await batch2.commit();
-              batch2 = dbAdmin.batch();
-              opsCount = 0;
-            }
-          }
-        }
-        
-        if (opsCount > 0) {
-          await batch2.commit();
-        }
-        console.log(`Deleted ${totalDeleted} legacy finance records via scan`);
-      }
+      console.log(`[DELETE] Success for ${studentId}`);
 
       res.json({ message: "L'Étudiant et toutes ses transactions ont été définitivement supprimés." });
     } catch (err: any) {

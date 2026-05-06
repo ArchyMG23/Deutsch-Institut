@@ -42,7 +42,10 @@ import { generateWhatsAppLink, generateSMSLink, APP_NAME_FOR_LINKS } from '../ut
 export default function StudentManagement() {
   const { t } = useTranslation();
   const { fetchWithAuth, user, profile } = useAuth();
-  const { students, classes, levels, loading, refreshStudents, refreshClasses, refreshLevels, refreshFinances } = useData();
+  const { 
+    students, classes, levels, loading, 
+    refreshStudents, refreshClasses, refreshLevels, refreshFinances, refreshAll 
+  } = useData();
 
   const userEmail = (user?.email || profile?.email || '').toLowerCase();
   const isSuperAdmin = (profile as any)?.isSuperAdmin || 
@@ -307,7 +310,7 @@ export default function StudentManagement() {
       if (res.ok) {
         toast.success("Suppression réussie", { id: 'delete-student' });
         await refreshAll(true);
-        setTimeout(() => refreshAll(true), 2000); // Second refresh to be sure
+        setTimeout(() => refreshAll(true), 2000);
       } else {
         const errorData = await res.json();
         toast.error(errorData.message || "Erreur lors de la suppression", { id: 'delete-student' });

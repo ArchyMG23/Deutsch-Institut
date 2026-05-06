@@ -34,6 +34,7 @@ const TuitionManagement: React.FC = () => {
     console.error('Firestore Error Detailed (Tuition): ', JSON.stringify(errInfo));
     throw new Error(JSON.stringify(errInfo));
   };
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [matricule, setMatricule] = useState('');
   const [targetStudent, setTargetStudent] = useState<Student | null>(null);
   const [scolarite, setScolarite] = useState<StudentScolarite | null>(null);
@@ -93,6 +94,24 @@ const TuitionManagement: React.FC = () => {
     };
     fetchData();
   }, []);
+
+  const filteredVersements = versements.filter(v => {
+    const d = new Date(v.date || v.recu_genere_at || '');
+    return d.getFullYear() === selectedYear;
+  });
+
+  const yearlyTotals = React.useMemo(() => {
+    if (!scolarite) return null;
+    const totalPaid = filteredVersements.reduce((acc, v) => acc + (Number(v.montant) || 0), 0);
+    const totalDue = scolarite.montant_total_du || 0;
+    const remains = Math.max(0, totalDue - totalPaid);
+    const surplus = Math.max(0, totalPaid - totalDue);
+    let status: StudentScolarite['statut_paiement'] = 'NON PAYÉ';
+    if (surplus > 0 || (totalPaid >= totalDue && totalDue > 0)) status = 'SOLDÉ';
+    else if (totalPaid > 0) status = 'EN COURS';
+
+    return { totalPaid, remains, surplus, status };
+  }, [filteredVersements, scolarite, selectedYear]);
 
   const selectStudent = async (student: Student) => {
     setLoading(true);
@@ -825,7 +844,7 @@ const TuitionManagement: React.FC = () => {
                 <History size={20} className="text-dia-red" /> Historique des versements
               </h3>
               <div className="space-y-4">
-                {versements.map((v) => (
+                {filteredVersements.map((v) => (
                   <div key={v.id} className="flex flex-col p-4 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-100 dark:border-neutral-700 rounded-xl group hover:border-dia-red/30 transition-colors">
                     <div className="flex items-center justify-between">
                       {editingVersementId === v.id ? (
@@ -958,7 +977,26 @@ const TuitionManagement: React.FC = () => {
                   <User size={40} className="text-neutral-400" />
                 </div>
                 <h4 className="font-black text-xl">{targetStudent.firstName} {targetStudent.lastName}</h4>
-                <p className="text-sm text-dia-red font-bold uppercase">{targetStudent.matricule}</p>
+                <p className="text-sm text-dia-red font-bold uppercase mb-3">{targetStudent.matricule}</p>
+                
+                {/* YEAR SELECTOR */}
+                <div className="flex items-center gap-2 mb-4 p-1 bg-neutral-100 dark:bg-neutral-800 rounded-lg">
+                  {[2024, 2025, 2026, 2027].map(y => (
+                    <button
+                      key={y}
+                      onClick={() => setSelectedYear(y)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-md text-[10px] font-black transition-all",
+                        selectedYear === y 
+                          ? "bg-dia-red text-white shadow-sm" 
+                          : "text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                      )}
+                    >
+                      {y}
+                    </button>
+                  ))}
+                </div>
+
                 <div className="mt-2 flex flex-col gap-2 items-center">
                   <div className="flex gap-1">
                     <span className="px-3 py-1 bg-neutral-100 dark:bg-neutral-800 rounded-full text-[10px] font-black uppercase text-neutral-500">
@@ -974,41 +1012,44 @@ const TuitionManagement: React.FC = () => {
                     </span>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
-                    scolarite.statut_paiement === 'SOLDÉ' ? 'bg-green-100 text-green-700' : 
-                    scolarite.statut_paiement === 'SURPLUS' ? 'bg-blue-100 text-blue-700' :
+                    yearlyTotals?.status === 'SOLDÉ' ? 'bg-green-100 text-green-700' : 
+                    yearlyTotals?.status === 'SURPLUS' ? 'bg-blue-100 text-blue-700' :
                     'bg-orange-100 text-orange-700'
                   }`}>
-                    {scolarite.statut_paiement}
+                    {yearlyTotals?.status}
                   </span>
                 </div>
               </div>
 
               <div className="space-y-4 border-t pt-6 border-neutral-100 dark:border-neutral-800">
+                <div className="flex justify-between items-center text-[10px] font-black text-neutral-400 uppercase tracking-tighter mb-[-8px]">
+                   <span>Scolarité en {selectedYear}</span>
+                </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-neutral-500">Total à payer</span>
                   <span className="font-bold">{formatCurrency(scolarite.montant_total_du)}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-neutral-500">Total versé</span>
-                  <span className="font-bold text-green-600">{formatCurrency(scolarite.total_verse)}</span>
+                  <span className="text-sm text-neutral-500">Total versé ({selectedYear})</span>
+                  <span className="font-bold text-green-600">{formatCurrency(yearlyTotals?.totalPaid || 0)}</span>
                 </div>
                 <div className="h-px bg-neutral-100 dark:bg-neutral-800 my-2" />
                 <div className="flex justify-between items-center pb-2">
-                  <span className="text-sm font-black uppercase">Reste</span>
+                  <span className="text-sm font-black uppercase">Reste ({selectedYear})</span>
                   <span className={cn(
                     "text-2xl font-black",
-                    scolarite.reste > 0 ? "text-dia-red" : "text-green-600"
+                    (yearlyTotals?.remains || 0) > 0 ? "text-dia-red" : "text-green-600"
                   )}>
-                    {formatCurrency(scolarite.reste)}
+                    {formatCurrency(yearlyTotals?.remains || 0)}
                   </span>
                 </div>
 
-                {scolarite.reste > 0 && (
+                {(yearlyTotals?.remains || 0) > 0 && (
                   <div className="pt-2 flex flex-col gap-2">
                     <p className="text-[10px] font-bold text-neutral-400 uppercase text-center mb-1">Rappels rapides</p>
                     <button 
                       onClick={() => {
-                        const msg = `📢 *RAPPEL DE PAIEMENT - ${APP_NAME_FOR_LINKS}*\n\nBonjour,\nSauf erreur de notre part, il reste un solde de *${formatCurrency(scolarite.reste)}* à régler pour la scolarité de ${targetStudent.firstName} ${targetStudent.lastName}.\n\nMerci de passer en caisse ou d'effectuer un virement mobile.\nCordialement.`;
+                        const msg = `📢 *RAPPEL DE PAIEMENT - ${APP_NAME_FOR_LINKS}*\n\nBonjour,\nSauf erreur de notre part, il reste un solde de *${formatCurrency(yearlyTotals?.remains || 0)}* à régler pour la scolarité de ${targetStudent.firstName} ${targetStudent.lastName} en ${selectedYear}.\n\nMerci de passer en caisse ou d'effectuer un virement mobile.\nCordialement.`;
                         const a = document.createElement('a');
                         a.href = generateWhatsAppLink(targetStudent.parentPhone || targetStudent.phone || '', msg);
                         a.target = '_blank';
