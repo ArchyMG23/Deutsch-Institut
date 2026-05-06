@@ -20,17 +20,22 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { cn, formatCurrency } from '../utils';
-import { Student, ClassRoom, Level, LibraryItem, Evaluation, Communique } from '../types';
+import { Student, ClassRoom, Level, LibraryItem, Evaluation, Communique, StudentScolarite, Versement } from '../types';
 import { useNavigate } from 'react-router-dom';
+import { db } from '../firebase';
+import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 
 export default function StudentDashboard() {
   const { t, i18n } = useTranslation();
-  const { profile, updateProfile, fetchWithAuth } = useAuth();
+  const { profile, updateProfile, fetchWithAuth, user } = useAuth();
   const { classes, levels, library, evaluations, communiques, loading, refreshStudents, refreshClasses, refreshLevels, refreshLibrary, refreshEvaluations, refreshCommuniques } = useData();
   const student = profile as Student;
   const navigate = useNavigate();
   
   const [isPaymentHistoryOpen, setIsPaymentHistoryOpen] = useState(false);
+  const [scolarite, setScolarite] = useState<StudentScolarite | null>(null);
+  const [versements, setVersements] = useState<Versement[]>([]);
+  const [loadingFinances, setLoadingFinances] = useState(true);
 
   useEffect(() => {
     const syncProfile = async () => {
@@ -45,6 +50,25 @@ export default function StudentDashboard() {
       }
     };
 
+    const fetchFinances = async () => {
+      if (!user?.uid) return;
+      try {
+        const scolariteSnap = await getDoc(doc(db, 'scolarites', user.uid));
+        if (scolariteSnap.exists()) {
+          setScolarite(scolariteSnap.data() as StudentScolarite);
+        }
+        
+        const versementsSnap = await getDocs(collection(db, 'scolarites', user.uid, 'versements'));
+        const vList = versementsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Versement));
+        vList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setVersements(vList);
+      } catch(e) {
+        console.error("Error fetching finances", e);
+      } finally {
+        setLoadingFinances(false);
+      }
+    };
+
     refreshStudents();
     refreshClasses();
     refreshLevels();
@@ -52,7 +76,8 @@ export default function StudentDashboard() {
     refreshEvaluations();
     refreshCommuniques();
     syncProfile();
-  }, [refreshStudents, refreshClasses, refreshLevels, refreshLibrary, refreshEvaluations, refreshCommuniques, fetchWithAuth, updateProfile]);
+    fetchFinances();
+  }, [refreshStudents, refreshClasses, refreshLevels, refreshLibrary, refreshEvaluations, refreshCommuniques, fetchWithAuth, updateProfile, user?.uid]);
 
   const studentClass = student.classId ? classes.find(c => c.id === student.classId) || null : null;
   const studentLevel = student.levelId ? levels.find(l => l.id === student.levelId) || null : null;
@@ -67,7 +92,7 @@ export default function StudentDashboard() {
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 3);
 
-  if (loading) {
+  if (loading || loadingFinances) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-dia-red"></div>
@@ -75,12 +100,10 @@ export default function StudentDashboard() {
     );
   }
 
-  const tuitionPaid = student.payments?.filter(p => p.tranche !== undefined).reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
-  const otherPaid = student.payments?.filter(p => p.tranche === undefined).reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
-  const totalPaid = tuitionPaid + otherPaid;
-  const tuition = studentLevel?.tuition || 0;
-  const balance = tuition - tuitionPaid;
-  const paymentProgress = tuition > 0 ? (tuitionPaid / tuition) * 100 : 0;
+  const totalPaid = scolarite ? (scolarite.total_verse || 0) : (student.payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0);
+  const tuition = scolarite ? (scolarite.montant_total_du || 0) : (studentLevel?.tuition || 0);
+  const balance = scolarite ? (scolarite.reste || 0) : Math.max(0, tuition - totalPaid);
+  const paymentProgress = tuition > 0 ? (totalPaid / tuition) * 100 : 0;
 
   return (
     <div className="space-y-8 pb-10">
@@ -402,7 +425,34 @@ export default function StudentDashboard() {
             </div>
             <div className="p-8 max-h-[70vh] overflow-y-auto">
               <div className="space-y-4">
-                {student.payments && student.payments.length > 0 ? (
+                {(versements && versements.length > 0) ? (
+                  versements.map((v, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50">
+                      <div className="flex items-center gap-4">
+                        <div className={cn(
+                          "w-10 h-10 rounded-xl flex items-center justify-center",
+                          v.montant > 0 ? "bg-emerald-500/10 text-emerald-500" : "bg-neutral-200 text-neutral-400"
+                        )}>
+                          {v.montant > 0 ? <CheckCircle2 size={20} /> : <Clock size={20} />}
+                        </div>
+                        <div>
+                          <h5 className="font-bold text-sm uppercase">
+                            {v.categorie ? v.categorie.toUpperCase().replace('_', ' ') : 'Frais Divers'}
+                          </h5>
+                          <p className="text-[10px] font-bold uppercase text-neutral-400 tracking-wider">
+                            {v.date ? new Date(v.date).toLocaleDateString('fr-FR') : 'En attente'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-sm">{formatCurrency(v.montant || 0)}</p>
+                        <p className="text-[10px] font-bold uppercase text-neutral-400">
+                          {v.montant > 0 ? 'Réglé' : 'Non réglé'}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : student.payments && student.payments.length > 0 ? (
                   student.payments.map((payment, idx) => (
                     <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50">
                       <div className="flex items-center gap-4">

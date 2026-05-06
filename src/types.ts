@@ -198,6 +198,7 @@ export interface Versement {
   notes?: string;
   recu_genere_at?: string;
   recu_genere_par?: string;
+  financeId?: string;
 }
 
 export interface AuditLog {

@@ -45,8 +45,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return now - last > 5000; // 5 second throttle
   }, []);
 
-  const refreshStudents = useCallback(async () => {
-    if (!shouldFetch('students')) return;
+  const refreshStudents = useCallback(async (force: boolean = false) => {
+    if (!force && !shouldFetch('students')) return;
     try {
       const res = await fetchWithAuth('/api/students');
       if (res.ok) {
@@ -58,8 +58,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchWithAuth, shouldFetch]);
 
-  const refreshTeachers = useCallback(async () => {
-    if (!shouldFetch('teachers')) return;
+  const refreshTeachers = useCallback(async (force: boolean = false) => {
+    if (!force && !shouldFetch('teachers')) return;
     try {
       const res = await fetchWithAuth('/api/teachers');
       if (res.ok) {
@@ -71,8 +71,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchWithAuth, shouldFetch]);
 
-  const refreshClasses = useCallback(async () => {
-    if (!shouldFetch('classes')) return;
+  const refreshClasses = useCallback(async (force: boolean = false) => {
+    if (!force && !shouldFetch('classes')) return;
     try {
       const res = await fetchWithAuth('/api/classes');
       if (res.ok) {
@@ -84,8 +84,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchWithAuth, shouldFetch]);
 
-  const refreshLevels = useCallback(async () => {
-    if (!shouldFetch('levels')) return;
+  const refreshLevels = useCallback(async (force: boolean = false) => {
+    if (!force && !shouldFetch('levels')) return;
     try {
       const res = await fetchWithAuth('/api/levels');
       if (res.ok) {
@@ -97,8 +97,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchWithAuth, shouldFetch]);
 
-  const refreshFinances = useCallback(async () => {
-    if (!shouldFetch('finances')) return;
+  const refreshFinances = useCallback(async (force: boolean = false) => {
+    if (!force && !shouldFetch('finances')) return;
     try {
       const res = await fetchWithAuth('/api/finances');
       if (res.ok) {

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
-import { collection, query, where, getDocs, doc, setDoc, updateDoc, getDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, setDoc, updateDoc, getDoc, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { Student, StudentScolarite, Versement, SchoolConfig, Level } from '../../types';
-import { Search, CreditCard, Printer, History, AlertCircle, CheckCircle2, User, Landmark, Share2, Send, MessageCircle, Edit2, X, Check } from 'lucide-react';
+import { Search, CreditCard, Printer, History, AlertCircle, CheckCircle2, User, Landmark, Share2, Send, MessageCircle, Edit2, X, Check, Trash2 } from 'lucide-react';
 import { formatCurrency, cn } from '../../utils';
 import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
@@ -58,6 +58,7 @@ const TuitionManagement: React.FC = () => {
   const [editingVersementId, setEditingVersementId] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState<number>(0);
   const [editNotes, setEditNotes] = useState('');
+  const [editDate, setEditDate] = useState<string>('');
 
   const hasPaidInscription = versements.some(v => v.categorie === 'inscription');
 
@@ -257,6 +258,35 @@ const TuitionManagement: React.FC = () => {
         ? new Date().toISOString() 
         : new Date(paymentDate + 'T12:00:00Z').toISOString();
 
+      // 1. Add Versement to subcollection placeholder (we update it after finance sync)
+      let financeId: string | undefined;
+
+      // 3. Sync with global finances
+      try {
+        const finRes = await fetchWithAuth('/api/finances', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            type: 'income',
+            amount: amount,
+            description: `${paymentCategory.charAt(0).toUpperCase() + paymentCategory.slice(1)} - ${targetStudent.firstName} ${targetStudent.lastName} (${targetStudent.matricule})`,
+            category: paymentCategory === 'scolarite' ? 'tuition' : (paymentCategory === 'inscription' ? 'registration' : 'tuition'),
+            date: finalDate,
+            status: 'active',
+            studentId: targetStudent.uid,
+            studentMatricule: targetStudent.matricule
+          })
+        });
+        if (finRes.ok) {
+          const finData = await finRes.json();
+          financeId = finData.id;
+        }
+      } catch (financeErr) {
+        console.error("Finance sync failed:", financeErr);
+      }
+
       const versementData: Omit<Versement, 'id'> = {
         montant: amount,
         date: finalDate,
@@ -266,10 +296,10 @@ const TuitionManagement: React.FC = () => {
         caissier_id: user?.uid || 'Unknown',
         notes: notes,
         recu_genere_at: new Date().toISOString(),
-        recu_genere_par: user?.uid
+        recu_genere_par: user?.uid,
+        financeId: financeId
       };
 
-      // 1. Add Versement to subcollection
       const vRef = await addDoc(collection(db, 'scolarites', targetStudent.uid, 'versements'), versementData);
 
       // 2. Update Master Scolarite
@@ -292,27 +322,14 @@ const TuitionManagement: React.FC = () => {
       await setDoc(doc(db, 'scolarites', targetStudent.uid), updatedScolarite);
       
       setScolarite(updatedScolarite);
-      setVersements([{ id: vRef.id, ...versementData }, ...versements]);
       
-      // 3. Sync with global finances
-      try {
-        await fetchWithAuth('/api/finances', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            type: 'income',
-            amount: amount,
-            description: `${paymentCategory.charAt(0).toUpperCase() + paymentCategory.slice(1)} - ${targetStudent.firstName} ${targetStudent.lastName} (${targetStudent.matricule})`,
-            category: paymentCategory === 'scolarite' ? 'tuition' : (paymentCategory === 'inscription' ? 'registration' : 'tuition'),
-            date: finalDate,
-            status: 'active'
-          })
-        });
-      } catch (financeErr) {
-        console.error("Finance sync failed:", financeErr);
-      }
+      const newVersementsList = [{ id: vRef.id, ...versementData }, ...versements];
+      newVersementsList.sort((a,b) => {
+        const dateA = a.date ? new Date(a.date).getTime() : 0;
+        const dateB = b.date ? new Date(b.date).getTime() : 0;
+        return dateB - dateA;
+      });
+      setVersements(newVersementsList);
 
       // 4. Add to Audit Log
       addAuditLog("VERSEMENT_AJOUTÉ", targetStudent.uid, { montant: amount, recu: recNumber, categorie: paymentCategory });
@@ -408,23 +425,146 @@ const TuitionManagement: React.FC = () => {
     doc.save(`Recu_${versement.recu_numero}.pdf`);
   };
 
+  const handleDeletePayment = async (versementId: string) => {
+    if (!targetStudent || !scolarite || !isSuperAdmin) return;
+    
+    if (!window.confirm("Êtes-vous sûr de vouloir supprimer définitivement ce versement ?")) return;
+
+    setLoading(true);
+    try {
+      const versementToDelete = versements.find(v => v.id === versementId);
+      if (!versementToDelete) return;
+
+      // 1. Delete from subcollection
+      await deleteDoc(doc(db, 'scolarites', targetStudent.uid, 'versements', versementId));
+
+      // 2. Sync with global finances if financeId exists
+      if (versementToDelete.financeId) {
+        try {
+          await fetchWithAuth(`/api/finances/${versementToDelete.financeId}`, {
+            method: 'DELETE'
+          });
+        } catch (finErr) {
+          console.error("Finance deletion failed:", finErr);
+        }
+      }
+
+      // 3. Recalculate totals
+      const newTotalVerse = (scolarite.total_verse || 0) - versementToDelete.montant;
+      const newReste = Math.max(0, scolarite.montant_total_du - newTotalVerse);
+      const newSurplus = Math.max(0, newTotalVerse - scolarite.montant_total_du);
+      
+      let newStatut: StudentScolarite['statut_paiement'] = 'EN COURS';
+      if (newSurplus > 0) newStatut = 'SURPLUS';
+      else if (newReste === 0) newStatut = 'SOLDÉ';
+      else if (newTotalVerse === 0) newStatut = 'IMPAYÉ';
+
+      const updatedScolarite = {
+        ...scolarite,
+        total_verse: newTotalVerse,
+        reste: newReste,
+        surplus: newSurplus,
+        statut_paiement: newStatut
+      };
+
+      await updateDoc(doc(db, 'scolarites', targetStudent.uid), updatedScolarite);
+      
+      setScolarite(updatedScolarite);
+      setVersements(versements.filter(v => v.id !== versementId));
+      
+      addAuditLog("VERSEMENT_SUPPRIMÉ", targetStudent.uid, { 
+        versementId, 
+        montant: versementToDelete.montant,
+        recu_numero: versementToDelete.recu_numero 
+      });
+
+      toast.success("Versement supprimé avec succès !");
+    } catch (err) {
+      console.error(err);
+      toast.error("Erreur lors de la suppression du versement");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleUpdatePayment = async (versementId: string) => {
     if (!targetStudent || !scolarite || !isSuperAdmin) return;
 
     setLoading(true);
     try {
+      const versementToUpdate = versements.find(v => v.id === versementId);
+      if (!versementToUpdate) return;
+
       // 1. Update the versement in subcollection
-      await updateDoc(doc(db, 'scolarites', targetStudent.uid, 'versements', versementId), {
+      const newDateStr = editDate ? new Date(editDate + 'T12:00:00Z').toISOString() : undefined;
+      const updateData: any = {
         montant: editAmount,
         notes: editNotes,
         updated_at: serverTimestamp(),
         updated_by: user.uid
-      });
+      };
+      if (newDateStr) {
+          updateData.date = newDateStr;
+      }
+      
+      await updateDoc(doc(db, 'scolarites', targetStudent.uid, 'versements', versementId), updateData);
 
-      // 2. Recalculate totals
-      const updatedVersements = versements.map(v => 
-        v.id === versementId ? { ...v, montant: editAmount, notes: editNotes } : v
+      // 2. Sync with global finances if financeId exists
+      if (versementToUpdate.financeId) {
+        try {
+          await fetchWithAuth(`/api/finances/${versementToUpdate.financeId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              amount: editAmount,
+              date: newDateStr || versementToUpdate.date
+            })
+          });
+        } catch (finErr) {
+          console.error("Finance update failed:", finErr);
+        }
+      } else {
+        // Fallback: try to find the finance record by studentId and older amount
+        try {
+            const financesRes = await fetchWithAuth('/api/finances');
+            if (financesRes.ok) {
+                const allFinances = await financesRes.json();
+                const relatedFinance = allFinances.find((f: any) => 
+                    (f.studentId === targetStudent.uid || (f.description && f.description.includes(targetStudent.matricule))) && 
+                    f.amount === versementToUpdate.montant &&
+                    new Date(f.date).toDateString() === new Date(versementToUpdate.date).toDateString()
+                );
+                if (relatedFinance) {
+                    await fetchWithAuth(`/api/finances/${relatedFinance.id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            amount: editAmount,
+                            date: newDateStr || versementToUpdate.date
+                        })
+                    });
+                    // Store the found ID back to the versement for future use
+                    await updateDoc(doc(db, 'scolarites', targetStudent.uid, 'versements', versementId), {
+                        financeId: relatedFinance.id
+                    });
+                }
+            }
+        } catch (fallbackErr) {
+            console.error("Finance fallback update failed:", fallbackErr);
+        }
+      }
+
+      // 3. Recalculate totals
+      let updatedVersements = versements.map(v => 
+        v.id === versementId ? { ...v, montant: editAmount, notes: editNotes, date: newDateStr || v.date } : v
       );
+
+      // 4. Re-sort local list so it "moves" to correct position
+      updatedVersements.sort((a,b) => {
+        const dateA = a.date ? new Date(a.date).getTime() : 0;
+        const dateB = b.date ? new Date(b.date).getTime() : 0;
+        return dateB - dateA;
+      });
       
       const newTotalPaid = updatedVersements.reduce((acc, v) => acc + (Number(v.montant) || 0), 0);
       const newReste = Math.max(0, scolarite.montant_total_du - newTotalPaid);
@@ -699,6 +839,14 @@ const TuitionManagement: React.FC = () => {
                             />
                             <span className="text-xs font-bold text-neutral-400">FCFA</span>
                           </div>
+                          <div className="flex items-center gap-2">
+                            <input 
+                              type="date"
+                              value={editDate}
+                              onChange={(e) => setEditDate(e.target.value)}
+                              className="flex-1 px-3 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg text-xs outline-none font-bold text-neutral-500"
+                            />
+                          </div>
                           <input 
                             type="text"
                             value={editNotes}
@@ -744,17 +892,27 @@ const TuitionManagement: React.FC = () => {
                         ) : (
                           <>
                             {isSuperAdmin && (
-                              <button 
-                                onClick={() => {
-                                  setEditingVersementId(v.id);
-                                  setEditAmount(v.montant);
-                                  setEditNotes(v.notes || '');
-                                }}
-                                className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-blue-600 hover:scale-110 transition-transform"
-                                title="Modifier ce versement (Super Admin)"
-                              >
-                                <Edit2 size={18} />
-                              </button>
+                              <>
+                                <button 
+                                  onClick={() => {
+                                    setEditingVersementId(v.id);
+                                    setEditAmount(v.montant);
+                                    setEditNotes(v.notes || '');
+                                    setEditDate(v.date ? (v.date.includes('T') ? v.date.split('T')[0] : v.date) : new Date().toISOString().split('T')[0]);
+                                  }}
+                                  className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-blue-600 hover:scale-110 transition-transform"
+                                  title="Modifier ce versement (Super Admin)"
+                                >
+                                  <Edit2 size={18} />
+                                </button>
+                                <button 
+                                  onClick={() => handleDeletePayment(v.id)}
+                                  className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-red-600 hover:scale-110 hover:bg-red-50 transition-transform"
+                                  title="Supprimer ce versement (Super Admin)"
+                                >
+                                  <Trash2 size={18} />
+                                </button>
+                              </>
                             )}
                             <button 
                               onClick={() => handleGeneratePDF(v)}

@@ -321,14 +321,44 @@ export default function RealFinanceDashboard() {
         });
       }
 
-      // 5. Fetch Global Scolarite Status
+      // 5. Fetch Global Scolarite Status and Yearly Progress
       let scolariteFinalSnap;
       try {
         scolariteFinalSnap = await getDocs(collection(db, 'scolarites'));
       } catch (e) {
         console.error("Error fetching scolarites for summary:", e);
       }
-      const scolarites = scolariteFinalSnap?.docs.map(d => d.data()) || [];
+      
+      const allVersementsSnap = await getDocs(collectionGroup(db, 'versements'));
+      const versementsByStudent: Record<string, number> = {};
+      allVersementsSnap.forEach(vDoc => {
+        const v = vDoc.data();
+        const vDate = new Date(v.date || v.recu_genere_at);
+        if (vDate.getFullYear() === selectedYear) {
+          const studentId = vDoc.ref.parent.parent?.id;
+          if (studentId) {
+            versementsByStudent[studentId] = (versementsByStudent[studentId] || 0) + (Number(v.montant) || 0);
+          }
+        }
+      });
+
+      const scolarites = scolariteFinalSnap?.docs.map(d => {
+        const s = d.data();
+        const yearlyPaid = versementsByStudent[d.id] || 0;
+        const totalDue = s.montant_total_du || 0;
+        const reste = Math.max(0, totalDue - yearlyPaid);
+        
+        let statut = 'NON PAYÉ';
+        if (yearlyPaid >= totalDue) statut = 'SOLDÉ';
+        else if (yearlyPaid > 0) statut = 'EN COURS';
+
+        return {
+          ...s,
+          total_verse: yearlyPaid, // Only show what was paid this year
+          reste: reste,
+          statut_paiement: statut
+        };
+      }) || [];
 
       // Formatter l'historique pour le graphique
       const history = Array.from({ length: 12 }, (_, i) => ({

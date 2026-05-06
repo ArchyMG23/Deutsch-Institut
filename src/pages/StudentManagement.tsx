@@ -24,7 +24,8 @@ import {
   ChevronDown,
   Laptop,
   Smartphone,
-  Camera
+  Camera,
+  DollarSign
 } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import { useTranslation } from 'react-i18next';
@@ -40,8 +41,14 @@ import { generateWhatsAppLink, generateSMSLink, APP_NAME_FOR_LINKS } from '../ut
 
 export default function StudentManagement() {
   const { t } = useTranslation();
-  const { fetchWithAuth } = useAuth();
+  const { fetchWithAuth, user, profile } = useAuth();
   const { students, classes, levels, loading, refreshStudents, refreshClasses, refreshLevels, refreshFinances } = useData();
+
+  const userEmail = (user?.email || profile?.email || '').toLowerCase();
+  const isSuperAdmin = (profile as any)?.isSuperAdmin || 
+                       (user as any)?.isSuperAdmin || 
+                       userEmail === 'yombivictor@gmail.com' || 
+                       userEmail === 'gabrielyombi311@gmail.com';
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -282,21 +289,32 @@ export default function StudentManagement() {
     }
   };
 
-  const handleHardDeleteStudent = async (id: string) => {
-    if (!window.confirm(t('students.confirm_delete'))) return;
+  const handleHardDeleteStudent = async (student: any) => {
+    if (!student?.id) return;
     
+    const confirmMsg = `VOUS ALLEZ SUPPRIMER DÉFINITIVEMENT :\n- L'élève : ${student.firstName} ${student.lastName}\n- Son compte utilisateur\n- Ses scolarités\n- Toutes ses transactions financières\n\nCette action est IRRÉVERSIBLE. Continuer ?`;
+    
+    if (!window.confirm(confirmMsg)) return;
+    
+    setSubmitting(true);
+    toast.loading("Suppression en cours...", { id: 'delete-student' });
     try {
-      setSubmitting(true);
-      const res = await fetchWithAuth(`/api/students/${id}`, {
+      console.log("Delete call for:", student.id);
+      const res = await fetchWithAuth(`/api/students/${student.id}`, {
         method: 'DELETE'
       });
+      
       if (res.ok) {
-        toast.success(t('students.student_deleted'));
-        refreshStudents();
+        toast.success("Suppression réussie", { id: 'delete-student' });
+        await refreshAll(true);
+        setTimeout(() => refreshAll(true), 2000); // Second refresh to be sure
+      } else {
+        const errorData = await res.json();
+        toast.error(errorData.message || "Erreur lors de la suppression", { id: 'delete-student' });
       }
     } catch (err) {
-      console.error("Error deleting student:", err);
-      toast.error(t('common.error'));
+      console.error("Delete error:", err);
+      toast.error("Erreur réseau lors de la suppression", { id: 'delete-student' });
     } finally {
       setSubmitting(false);
     }
@@ -375,21 +393,27 @@ export default function StudentManagement() {
     }
   };
 
-  const handleUpdatePayment = async (tranche: number | undefined, amount: number, category?: string) => {
+  const handleUpdatePayment = async (tranche: number | undefined, amount: number, category?: string, dateStr?: string) => {
     if (!selectedStudent) return;
     
     let updatedPayments: TuitionPayment[];
+    const dt = dateStr ? new Date(dateStr).toISOString() : new Date().toISOString();
     
     if (tranche !== undefined) {
       // It's a tuition tranche
       updatedPayments = selectedStudent.payments.map(p => 
-        p.tranche === tranche ? { ...p, amount, date: new Date().toISOString(), receiptId: `REC-${Date.now()}` } : p
+        p.tranche === tranche ? { 
+          ...p, 
+          amount, 
+          date: dateStr ? dt : (p.amount === 0 && amount > 0 ? dt : p.date), 
+          receiptId: p.receiptId || `REC-${Date.now()}` 
+        } : p
       );
     } else {
       // It's a generic payment
       const newPayment: TuitionPayment = {
         amount,
-        date: new Date().toISOString(),
+        date: dt,
         receiptId: `REC-${Date.now()}`,
         category: category as any || 'autre',
         method: 'Espèces'
@@ -738,16 +762,22 @@ export default function StudentManagement() {
                           >
                             <Edit size={18} />
                           </button>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleHardDeleteStudent(student.id);
-                            }}
-                            className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-red-600 font-bold"
-                            title={t('common.delete_forever')}
-                          >
-                            <Trash2 size={18} />
-                          </button>
+                          {isSuperAdmin && (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleHardDeleteStudent(student);
+                              }}
+                              disabled={submitting}
+                              className={cn(
+                                "p-2 rounded-lg transition-colors text-red-600 font-bold hover:bg-red-50",
+                                submitting && "opacity-50"
+                              )}
+                              title={t('common.delete_forever')}
+                            >
+                              <Trash2 size={18} className={submitting ? "animate-pulse" : ""} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -837,12 +867,22 @@ export default function StudentManagement() {
                     >
                       <Edit size={18} />
                     </button>
-                    <button 
-                      onClick={() => handleHardDeleteStudent(student.id)}
-                      className="p-2 bg-red-50 text-red-600 rounded-lg active:bg-red-100"
-                    >
-                      <Trash2 size={18} />
-                    </button>
+                    {isSuperAdmin && (
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleHardDeleteStudent(student);
+                        }}
+                        disabled={submitting}
+                        className={cn(
+                          "p-2 rounded-lg active:bg-red-100",
+                          submitting ? "opacity-50 cursor-not-allowed bg-neutral-100" : "bg-red-50 text-red-600"
+                        )}
+                        title="Supprimer"
+                      >
+                        <Trash2 size={18} className={submitting ? "animate-pulse" : ""} />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -898,10 +938,7 @@ export default function StudentManagement() {
                     onChange={(e) => {
                       const stream = e.target.value;
                       setSelectedStream(stream);
-                      const filtered = levels.filter(l => !stream || l.stream === stream);
-                      if (filtered.length > 0) {
-                        setSelectedTuition(filtered[0].tuition);
-                      }
+                      setSelectedTuition('');
                     }}
                     className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 outline-none"
                   >
@@ -921,6 +958,7 @@ export default function StudentManagement() {
                     }}
                     className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all"
                   >
+                    <option value="">Sélectionner un niveau</option>
                     {levels.filter(l => !selectedStream || l.stream === selectedStream).map(l => (
                       <option key={l.id} value={l.id}>{l.name}</option>
                     ))}
@@ -956,7 +994,7 @@ export default function StudentManagement() {
                       <input name="payVorbereitung" type="checkbox" className="w-6 h-6 accent-blue-600 rounded cursor-pointer" />
                       <p className="text-xs font-black uppercase text-blue-600 tracking-wider">Vorbereitung</p>
                     </div>
-                    <input name="vorbereitungAmount" type="number" defaultValue={50000} className="w-full text-xs bg-transparent border-b border-blue-200 outline-none font-bold text-blue-700" placeholder="Montant" />
+                    <input name="vorbereitungAmount" type="number" className="w-full text-xs bg-transparent border-b border-blue-200 outline-none font-bold text-blue-700" placeholder="Montant variable (ex: 50000)" />
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -1329,61 +1367,21 @@ export default function StudentManagement() {
                     </button>
                   </div>
 
-                  {/* Tuition Tranches */}
-                  {selectedStudent.payments.filter(p => p.tranche !== undefined).map((p) => (
-                    <div key={p.tranche} className="p-5 bg-neutral-50 dark:bg-neutral-800/50 rounded-2xl border border-neutral-100 dark:border-neutral-800">
-                      <div className="flex items-center justify-between mb-4">
-                        <span className="text-sm font-bold uppercase tracking-wider text-neutral-400">{t('students.tranche')} {p.tranche}</span>
-                        {p.amount > 0 && <span className="text-[10px] font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">{t('students.paid_on')} {new Date(p.date!).toLocaleDateString()}</span>}
-                      </div>
-                      <div className="flex gap-3">
-                        <input 
-                          type="number" 
-                          defaultValue={p.amount}
-                          placeholder={t('students.amount')}
-                          className="flex-1 px-4 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-dia-red/20 font-bold"
-                          onBlur={(e) => {
-                            const val = parseInt(e.target.value);
-                            if (val !== p.amount) handleUpdatePayment(p.tranche, val);
-                          }}
-                        />
-                      </div>
+                  {/* Redirect to Finance Module */}
+                  <div className="flex flex-col items-center justify-center p-8 bg-neutral-50 dark:bg-neutral-800/50 rounded-2xl border border-neutral-100 dark:border-neutral-800 text-center space-y-4">
+                    <div className="p-4 rounded-full mb-2 bg-dia-red/10 text-dia-red border border-dia-red/20 shadow-inner">
+                      <DollarSign size={32} />
                     </div>
-                  ))}
-
-                  {/* Add Other Payment Form */}
-                  <div className="p-5 bg-dia-red/5 rounded-2xl border border-dia-red/10 space-y-4">
-                    <p className="text-xs font-bold uppercase tracking-widest text-dia-red">Autres justifications d'entrée</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="col-span-2">
-                        <label className="text-[10px] font-bold uppercase text-neutral-400 mb-1 ml-1">Type de frais</label>
-                        <select 
-                          id="other_category"
-                          className="w-full px-4 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none text-sm font-bold"
-                        >
-                          <option value="inscription">Frais d'Inscription</option>
-                          <option value="scolarite_anglais">Scolarité Anglais</option>
-                          <option value="vorbereitung">Frais Vorbereitung</option>
-                          <option value="connexion">Frais de Connexion (WiFi)</option>
-                          <option value="autre">Autre</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold uppercase text-neutral-400 mb-1 ml-1">Montant</label>
-                        <input id="other_amount" type="number" placeholder="0" className="w-full px-4 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none text-sm font-bold" />
-                      </div>
-                      <div className="flex items-end">
-                        <button 
-                          onClick={() => {
-                            const cat = (document.getElementById('other_category') as HTMLSelectElement).value;
-                            const amt = parseInt((document.getElementById('other_amount') as HTMLInputElement).value);
-                            if (amt > 0) handleUpdatePayment(undefined, amt, cat);
-                          }}
-                          className="w-full py-2 bg-dia-red text-white text-xs font-bold rounded-xl hover:bg-dia-red/90 transition-all active:scale-95"
-                        >
-                          Ajouter
-                        </button>
-                      </div>
+                    <div>
+                      <h4 className="font-black text-lg text-neutral-800 dark:text-neutral-200">Point de Caisse Centralisé</h4>
+                      <p className="text-sm font-medium text-neutral-500 max-w-sm mt-2 leading-relaxed">
+                        Pour des raisons de sécurité et de cohérence des données financières, l'encaissement et l'édition des reçus ont été migrés vers le module de caisse officiel.
+                      </p>
+                    </div>
+                    <div className="pt-2">
+                       <p className="bg-dia-red text-white py-2 px-6 rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-dia-red/20 inline-block">
+                         Menu principal ➡️ Finances
+                       </p>
                     </div>
                   </div>
                 </div>

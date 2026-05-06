@@ -18,7 +18,9 @@ import { TrendingUp,
   CreditCard,
   History,
   UserCheck,
-  Download
+  Download,
+  Edit2,
+  CheckCircle2
 } from 'lucide-react';
 import { cn, formatCurrency, generateMatricule } from '../utils';
 import { FinanceRecord, Student, StudentScolarite, Versement } from '../types';
@@ -254,15 +256,11 @@ export default function FinanceManagement() {
 
   // Update quick add level when stream changes or modal opens
   useEffect(() => {
-    if (isQuickAddModalOpen && levels.length > 0) {
-      const filtered = levels.filter(l => !quickAddStream || l.stream === quickAddStream);
-      if (filtered.length > 0) {
-        const first = filtered[0];
-        setQuickAddLevelId(first.id);
-        setQuickAddTuition(first.tuition);
-      }
+    if (isQuickAddModalOpen) {
+      setQuickAddLevelId('');
+      setQuickAddTuition('');
     }
-  }, [isQuickAddModalOpen, quickAddStream, levels]);
+  }, [isQuickAddModalOpen, quickAddStream]);
 
   // Modal Form State
   const [formType, setFormType] = useState<'income' | 'expense'>('income');
@@ -966,6 +964,7 @@ export default function FinanceManagement() {
                     }}
                     className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20"
                   >
+                    <option value="">Sélectionner un niveau</option>
                     {levels.filter(l => !quickAddStream || l.stream === quickAddStream).map(l => (
                       <option key={l.id} value={l.id}>{l.name}</option>
                     ))}
@@ -995,7 +994,7 @@ export default function FinanceManagement() {
                     <input name="payVorbereitung" type="checkbox" className="w-5 h-5 accent-blue-600 rounded cursor-pointer" />
                     <p className="text-[11px] font-black uppercase text-blue-600 tracking-wider">Vorbereitung</p>
                   </div>
-                  <input name="vorbereitungAmount" type="number" defaultValue={50000} className="w-full text-xs bg-transparent border-b border-blue-200 outline-none font-bold text-blue-700" placeholder="Montant" />
+                  <input name="vorbereitungAmount" type="number" className="w-full text-xs bg-transparent border-b border-blue-200 outline-none font-bold text-blue-700" placeholder="Montant variable (ex: 50000)" />
                 </div>
               </div>
               <div className="space-y-1.5">

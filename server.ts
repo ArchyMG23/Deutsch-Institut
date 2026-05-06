@@ -160,9 +160,10 @@ async function startServer() {
           { id: 'b1_de', name: 'B1 (Allemand)', stream: 'Allemand', tuition: 120000, hours: 160 },
           { id: 'b2_de', name: 'B2 (Allemand)', stream: 'Allemand', tuition: 120000, hours: 180 },
           { id: 'c1_de', name: 'C1 (Allemand)', stream: 'Allemand', tuition: 130000, hours: 200 },
-          { id: 'a1_en', name: 'A1 (Anglais)', stream: 'Anglais', tuition: 110000, hours: 120 },
-          { id: 'a2_en', name: 'A2 (Anglais)', stream: 'Anglais', tuition: 110000, hours: 120 },
-          { id: 'b1_en', name: 'B1 (Anglais)', stream: 'Anglais', tuition: 120000, hours: 160 },
+          { id: 'a1_en', name: 'A1 (Anglais)', stream: 'Anglais', tuition: 50000, hours: 120 },
+          { id: 'a2_en', name: 'A2 (Anglais)', stream: 'Anglais', tuition: 50000, hours: 120 },
+          { id: 'b1_en', name: 'B1 (Anglais)', stream: 'Anglais', tuition: 90000, hours: 160 },
+          { id: 'b2_en', name: 'B2 (Anglais)', stream: 'Anglais', tuition: 90000, hours: 160 },
           { id: 'vorbereitung', name: 'Vorbereitung', stream: 'Allemand', tuition: 50000, hours: 60 }
         ];
         // Enforce definitively
@@ -178,9 +179,10 @@ async function startServer() {
           { id: 'b1_de', name: 'B1 (Allemand)', stream: 'Allemand', tuition: 120000 },
           { id: 'b2_de', name: 'B2 (Allemand)', stream: 'Allemand', tuition: 120000 },
           { id: 'c1_de', name: 'C1 (Allemand)', stream: 'Allemand', tuition: 130000 },
-          { id: 'a1_en', name: 'A1 (Anglais)', stream: 'Anglais', tuition: 110000 },
-          { id: 'a2_en', name: 'A2 (Anglais)', stream: 'Anglais', tuition: 110000 },
-          { id: 'b1_en', name: 'B1 (Anglais)', stream: 'Anglais', tuition: 120000 },
+          { id: 'a1_en', name: 'A1 (Anglais)', stream: 'Anglais', tuition: 50000 },
+          { id: 'a2_en', name: 'A2 (Anglais)', stream: 'Anglais', tuition: 50000 },
+          { id: 'b1_en', name: 'B1 (Anglais)', stream: 'Anglais', tuition: 90000 },
+          { id: 'b2_en', name: 'B2 (Anglais)', stream: 'Anglais', tuition: 90000 },
           { id: 'vorbereitung', name: 'Vorbereitung', stream: 'Allemand', tuition: 50000 }
         ];
         for (const level of forcedLevels) {
@@ -299,6 +301,30 @@ async function startServer() {
       timestamp: new Date().toISOString()
     });
   });
+
+  // Self-repair: Ensure Super Admins exist in DB
+  const ensureSuperAdmins = async () => {
+    if (!isFirebaseAdminInitialized) return;
+    const admins = ['gabrielyombi311@gmail.com', 'yombivictor@gmail.com'];
+    for (const email of admins) {
+      try {
+        const snap = await dbAdmin.collection('users').where('email', '==', email).get();
+        if (!snap.empty) {
+          for (const doc of snap.docs) {
+             const data = doc.data();
+             if (!data.isSuperAdmin || data.role !== 'admin') {
+               await doc.ref.update({ isSuperAdmin: true, role: 'admin' });
+               console.log(`Updated ${email} to be Super Admin in DB`);
+             }
+          }
+        }
+      } catch (err) {
+        console.error(`Failed to ensure super admin for ${email}:`, err);
+      }
+    }
+  };
+  // Run once after a short delay to ensure DB is ready
+  setTimeout(ensureSuperAdmins, 5000);
 
   app.get('/api/health/config', authenticate, (req: any, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ message: 'Interdit' });
@@ -950,15 +976,13 @@ async function startServer() {
         let tuitionTotal = 0;
         if (req.body.totalTuition !== undefined && req.body.totalTuition !== '') {
           tuitionTotal = Number(req.body.totalTuition);
-          const includeInscription = Number(req.body.inscriptionAmount) > 0;
-          tuitionTotal = Number(req.body.totalTuition) + (includeInscription ? 10000 : 0);
         } else {
           // Fetch tuition info from levels
           const levelDoc = await dbAdmin.collection('levels').doc(studentData.levelId || 'a1').get();
           let baseTuition = levelDoc.exists ? (levelDoc.data()?.tuition || 150000) : 150000;
           
-          // Add Standard Registration fee (10,000) to total due
-          tuitionTotal = baseTuition + 10000;
+          // Add Standard Registration fee (10,000) to total due if not specified
+          tuitionTotal = baseTuition;
         }
 
         // Create main Tuition record
@@ -1130,12 +1154,120 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/students/:id', authenticate, async (req, res) => {
+  app.delete('/api/students/:id', authenticate, async (req: any, res) => {
     try {
-      await dbAdmin.collection('students').doc(req.params.id).delete();
-      await dbAdmin.collection('users').doc(req.params.id).delete();
-      await authAdmin.deleteUser(req.params.id);
-      res.json({ message: 'L\'Étudiant et son compte utilisateur ont été définitivement supprimés.' });
+      console.log(`[DELETE] Request to delete student ${req.params.id} by user ${req.user.email} (ID: ${req.user.id})`);
+      
+      const currentUserDoc = await dbAdmin.collection('users').doc(req.user.id).get();
+      const userData = currentUserDoc.data();
+      const userEmail = req.user.email?.toLowerCase();
+      const isSuperAdmin = userData?.isSuperAdmin || 
+                         userEmail === 'yombivictor@gmail.com' || 
+                         userEmail === 'gabrielyombi311@gmail.com';
+
+      console.log(`IsSuperAdmin check: ${isSuperAdmin} (userData.isSuperAdmin: ${userData?.isSuperAdmin}, email: ${userEmail})`);
+
+      if (!isSuperAdmin) {
+        console.warn(`Unauthorized delete attempt by ${req.user.email}`);
+        return res.status(403).json({ message: 'Seul le Super Administrateur peut supprimer un élève et ses transactions' });
+      }
+
+      const studentId = req.params.id;
+      if (!studentId || studentId === 'undefined') {
+         return res.status(400).json({ message: 'ID d\'élève invalide' });
+      }
+
+      const studentDoc = await dbAdmin.collection('students').doc(studentId).get();
+      const studentData = studentDoc.exists ? studentDoc.data() as any : {};
+      const matricule = studentData.matricule || '';
+      
+      console.log(`Starting deletion for student UID: ${studentId}, Matricule: ${matricule}`);
+
+      // 1. Delete student from collections
+      await dbAdmin.collection('students').doc(studentId).delete();
+      await dbAdmin.collection('users').doc(studentId).delete();
+      
+      try {
+        await authAdmin.deleteUser(studentId);
+      } catch (err: any) {
+        if (err.code !== 'auth/user-not-found') {
+          console.error("Auth delete error:", err);
+        }
+      }
+
+      // 2. Delete scolarite document
+      await dbAdmin.collection('scolarites').doc(studentId).delete();
+
+      // 3. Delete versements subcollection
+      const versementsSnap = await dbAdmin.collection(`scolarites/${studentId}/versements`).get();
+      if (!versementsSnap.empty) {
+        let batch = dbAdmin.batch();
+        let count = 0;
+        for (const doc of versementsSnap.docs) {
+          batch.delete(doc.ref);
+          count++;
+          if (count === 400) {
+            await batch.commit();
+            batch = dbAdmin.batch();
+            count = 0;
+          }
+        }
+        if (count > 0) {
+          await batch.commit();
+        }
+      }
+
+      // 4. Delete global finances related to this student
+      const studentIdSnap = await dbAdmin.collection('finances').where('studentId', '==', studentId).get();
+      if (!studentIdSnap.empty) {
+        console.log(`Found ${studentIdSnap.size} finance records by studentId`);
+        let batchId = dbAdmin.batch();
+        let cId = 0;
+        for (const doc of studentIdSnap.docs) {
+          batchId.delete(doc.ref);
+          cId++;
+          if (cId === 400) {
+            await batchId.commit();
+            batchId = dbAdmin.batch();
+            cId = 0;
+          }
+        }
+        if (cId > 0) await batchId.commit();
+      }
+
+      // B. Fallback: Scan descriptions for old records
+      if (matricule) {
+        const financesSnap = await dbAdmin.collection('finances').get();
+        console.log(`Scanning ${financesSnap.size} finance records for matricule fallback`);
+        let batch2 = dbAdmin.batch();
+        let opsCount = 0;
+        let totalDeleted = 0;
+
+        for (const doc of financesSnap.docs) {
+          const data = doc.data();
+          // Skip if already handled by studentId (though delete twice is fine, but good to be clean)
+          if (data.studentId === studentId) continue;
+
+          if (data.description && data.description.includes(matricule)) {
+            batch2.delete(doc.ref);
+            opsCount++;
+            totalDeleted++;
+            
+            if (opsCount === 400) {
+              await batch2.commit();
+              batch2 = dbAdmin.batch();
+              opsCount = 0;
+            }
+          }
+        }
+        
+        if (opsCount > 0) {
+          await batch2.commit();
+        }
+        console.log(`Deleted ${totalDeleted} legacy finance records via scan`);
+      }
+
+      res.json({ message: "L'Étudiant et toutes ses transactions ont été définitivement supprimés." });
     } catch (err: any) {
       console.error("Hard delete error:", err);
       res.status(500).json({ message: err.message });
@@ -1428,16 +1560,33 @@ async function startServer() {
 
   app.patch('/api/finances/:id', authenticate, async (req: any, res: any) => {
     try {
-      const { amount, description } = req.body;
-      if (amount === undefined && !description) {
+      const { amount, description, date, category, status } = req.body;
+      if (amount === undefined && !description && !date && !category && !status) {
         return res.status(400).json({ message: 'Aucune donnée fournie' });
       }
       if (req.user.role !== 'admin') {
-        return res.status(403).json({ message: 'Interdit' });
+        const userDoc = await dbAdmin.collection('users').doc(req.user.id).get();
+        const userData = userDoc.data();
+        const userEmail = req.user.email?.toLowerCase();
+        if (!userData?.isSuperAdmin && userEmail !== 'yombivictor@gmail.com' && userEmail !== 'gabrielyombi311@gmail.com') {
+           return res.status(403).json({ message: 'Interdit' });
+        }
       }
       const updateData: any = {};
       if (amount !== undefined) updateData.amount = Number(amount);
       if (description) updateData.description = description;
+      if (date) {
+        updateData.date = date;
+        // Auto-archival logic: if year is less than current year
+        const currentYear = new Date().getFullYear();
+        const d = new Date(date);
+        if (!isNaN(d.getTime())) {
+          updateData.status = d.getFullYear() < currentYear ? 'archived' : 'active';
+        }
+      }
+      if (category) updateData.category = category;
+      if (status) updateData.status = status;
+      
       await dbAdmin.collection('finances').doc(req.params.id).update(updateData);
       res.json({ message: 'Transaction mise à jour' });
     } catch (err: any) {

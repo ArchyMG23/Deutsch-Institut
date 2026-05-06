@@ -31,6 +31,8 @@ export default function ChargeManagement() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
+  const [selectedMonth, setSelectedMonth] = useState('all');
 
   const fetchCharges = async () => {
     setLoading(true);
@@ -82,10 +84,14 @@ export default function ChargeManagement() {
     }
   };
 
-  const filteredCharges = charges.filter(c => 
-    c.libelle.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    c.categorie.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredCharges = charges.filter(c => {
+    const d = new Date(c.date);
+    const yearMatch = d.getFullYear().toString() === selectedYear;
+    const monthMatch = selectedMonth === 'all' || d.getMonth().toString() === selectedMonth;
+    const searchMatch = c.libelle.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                      c.categorie.toLowerCase().includes(searchTerm.toLowerCase());
+    return yearMatch && monthMatch && searchMatch;
+  });
 
   const getCategoryIcon = (cat: string) => {
     switch (cat) {
@@ -108,6 +114,18 @@ export default function ChargeManagement() {
             placeholder="Rechercher une charge..."
             className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl outline-none focus:ring-2 focus:ring-dia-red/20"
           />
+        </div>
+        <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800">
+          <Calendar size={18} className="text-dia-red" />
+          <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="bg-transparent text-sm font-bold outline-none">
+            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="bg-transparent text-sm font-bold outline-none">
+            <option value="all">Tous les mois</option>
+            {Array.from({ length: 12 }).map((_, i) => (
+              <option key={i} value={i}>{new Date(2000, i).toLocaleDateString('fr-FR', { month: 'long' })}</option>
+            ))}
+          </select>
         </div>
         <button onClick={() => setIsModalOpen(true)} className="btn-primary flex items-center justify-center gap-2 px-6">
           <Plus size={18} />
