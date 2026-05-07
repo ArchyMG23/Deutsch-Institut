@@ -23,7 +23,7 @@ import { TrendingUp,
   CheckCircle2
 } from 'lucide-react';
 import { cn, formatCurrency, generateMatricule } from '../utils';
-import { FinanceRecord, Student, StudentScolarite, Versement } from '../types';
+import { FinanceRecord, Student, StudentScolarite, Versement, Level } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { toast } from 'sonner';
@@ -46,7 +46,8 @@ const TransactionTable = React.memo(({
   onUpdate,
   isSuperAdmin,
   isTrash = false,
-  limit = 20
+  limit = 20,
+  levels = []
 }: { 
   records: FinanceRecord[], 
   onSort?: (key: string) => void, 
@@ -55,7 +56,8 @@ const TransactionTable = React.memo(({
   onUpdate?: (id: string, amount: number, desc: string) => void,
   isSuperAdmin?: boolean,
   isTrash?: boolean,
-  limit?: number
+  limit?: number,
+  levels?: Level[]
 }) => {
   const { t, i18n } = useTranslation();
   const { fetchWithAuth } = useAuth();
@@ -64,6 +66,14 @@ const TransactionTable = React.memo(({
   const [editAmount, setEditAmount] = useState<number>(0);
   const [editDesc, setEditDesc] = useState<string>('');
   
+  const levelsMap = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    (levels || []).forEach(l => {
+      map[l.id] = l.name;
+    });
+    return map;
+  }, [levels]);
+
   const visibleRecords = React.useMemo(() => records.slice(0, displayLimit), [records, displayLimit]);
   const hasMore = records.length > displayLimit;
 
@@ -89,6 +99,9 @@ const TransactionTable = React.memo(({
             </th>
             <th className={cn("px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 transition-colors", onSort && "cursor-pointer hover:text-dia-red")} onClick={() => onSort?.('category')}>
               <div className="flex items-center gap-1">{t('common.category')} <SortIcon column="category" /></div>
+            </th>
+            <th className={cn("px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 transition-colors", onSort && "cursor-pointer hover:text-dia-red")} onClick={() => onSort?.('levelId')}>
+              <div className="flex items-center gap-1">Niveau <SortIcon column="levelId" /></div>
             </th>
             {isTrash && <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500">{t('finances.reason_by')}</th>}
             <th className={cn("px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 text-right transition-colors", onSort && "cursor-pointer hover:text-dia-red")} onClick={() => onSort?.('amount')}>
@@ -129,6 +142,11 @@ const TransactionTable = React.memo(({
                 <span className="text-[10px] font-bold uppercase px-2 py-1 bg-neutral-100 dark:bg-neutral-800 rounded-full text-neutral-500 border border-neutral-200 dark:border-neutral-700">
                   {t(`finances.categories.${String(record.category || 'other').toLowerCase()}`) || record.category || 'Other'}
                 </span>
+              </td>
+              <td className="px-6 py-4">
+                <p className="text-[10px] font-black uppercase text-neutral-400">
+                  {record.levelId ? (levelsMap[record.levelId] || 'N/A') : 'N/A'}
+                </p>
               </td>
               {isTrash && <td className="px-6 py-4 text-xs font-bold text-red-500">{record.deletionReason}</td>}
               <td className={cn("px-6 py-4 text-right font-black", record.type === 'income' ? "text-green-600" : "text-red-600")}>
@@ -654,7 +672,7 @@ export default function FinanceManagement() {
           console.error("Non-blocking error during refresh:", refreshErr);
         }
         
-        toast.success(`Élève ${newStudent.firstName} inscrit avec succès ! Matricule: ${student.matricule}`);
+        toast.success(`Élève ${newStudent.lastName} ${newStudent.firstName} inscrit avec succès ! Matricule: ${student.matricule}`);
         
         // Refresh contexts completely after a short delay
         setTimeout(() => {
@@ -775,6 +793,7 @@ export default function FinanceManagement() {
                 onUpdate={handleUpdateFinance}
                 isSuperAdmin={isSuperAdmin}
                 isTrash={viewMode === 'trash'}
+                levels={levels}
                />
             </div>
           </motion.div>
@@ -853,7 +872,7 @@ export default function FinanceManagement() {
                   {verifiedStudent && (
                     <div className="mt-2 p-2 bg-white dark:bg-neutral-800 rounded-lg flex flex-col gap-1">
                       <div className="text-[10px] font-black text-green-600 uppercase flex items-center gap-1">
-                        <Plus size={10} /> {verifiedStudent.firstName} {verifiedStudent.lastName}
+                        <Plus size={10} /> {verifiedStudent.lastName} {verifiedStudent.firstName}
                       </div>
                       <div className="text-[9px] font-bold text-neutral-400 uppercase">
                         Niveau: {levels.find(l => l.id === verifiedStudent.levelId)?.name || 'Non défini'}
