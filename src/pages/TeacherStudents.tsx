@@ -89,11 +89,11 @@ export default function TeacherStudents() {
                 <div className="flex items-start justify-between mb-6">
                   <div className="flex items-center gap-4">
                     <div className="w-14 h-14 rounded-2xl bg-dia-red/5 flex items-center justify-center text-xl font-bold text-dia-red">
-                      {student.firstName[0]}{student.lastName[0]}
+                      {student.lastName[0]}{student.firstName[0]}
                     </div>
                     <div>
                       <h4 className="font-bold text-neutral-900 group-hover:text-dia-red transition-colors">
-                        {student.firstName} {student.lastName}
+                        {student.lastName} {student.firstName}
                       </h4>
                       <p className="text-xs text-neutral-500 font-mono">{student.matricule}</p>
                     </div>

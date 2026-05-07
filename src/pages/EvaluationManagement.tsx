@@ -122,7 +122,7 @@ export default function EvaluationManagement() {
 
     const evaluationData = {
       ...formData,
-      studentName: student ? `${student.firstName} ${student.lastName}` : t('common.unknown'),
+      studentName: student ? `${student.lastName} ${student.firstName}` : t('common.unknown'),
       total,
       average,
       levelId: cls?.levelId || 'A1',
@@ -447,7 +447,7 @@ export default function EvaluationManagement() {
                     {formData.classId ? (
                       students
                         .filter(s => s.classId === formData.classId)
-                        .map(s => <option key={s.uid} value={s.uid}>{s.firstName} {s.lastName}</option>)
+                        .map(s => <option key={s.uid} value={s.uid}>{s.lastName} {s.firstName}</option>)
                     ) : (
                       <option disabled>{t('evaluations.select_class_first')}</option>
                     )}

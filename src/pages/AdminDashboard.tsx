@@ -34,7 +34,7 @@ import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 
 export default function AdminDashboard() {
-  const { students, teachers, finances, evaluations, loading, refreshAll } = useData();
+  const { students, teachers, finances, charges, evaluations, loading, refreshAll } = useData();
   const { user, profile, fetchWithAuth } = useAuth();
   const { t } = useTranslation();
   const [configStatus, setConfigStatus] = useState<any>(null);
@@ -135,12 +135,17 @@ export default function AdminDashboard() {
     }
   };
 
-  const { totalIncome, totalExpense } = React.useMemo(() => {
+  const { totalIncome, totalExpense, balance } = React.useMemo(() => {
+    const inc = (finances || []).filter(f => f.type === 'income').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+    const ledgerExp = (finances || []).filter(f => f.type === 'expense').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+    const fixedExp = (charges || []).reduce((acc, curr) => acc + (Number(curr.montant) || 0), 0);
+    const totalExp = ledgerExp + fixedExp;
     return {
-      totalIncome: (finances || []).filter(f => f.type === 'income').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0),
-      totalExpense: (finances || []).filter(f => f.type === 'expense').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0)
+      totalIncome: inc,
+      totalExpense: totalExp,
+      balance: inc - totalExp
     };
-  }, [finances]);
+  }, [finances, charges]);
   
   const chartData = React.useMemo(() => [
     { name: 'Jan', income: 0, expense: 0 },
@@ -171,20 +176,6 @@ export default function AdminDashboard() {
           trendType="up"
         />
         <StatCard 
-          title={t('sidebar.teachers')} 
-          value={teachers.length.toString()} 
-          icon={GraduationCap} 
-          trend="+100%" 
-          trendType="up"
-        />
-        <StatCard 
-          title={t('sidebar.evaluations')} 
-          value={evaluations.length.toString()} 
-          icon={FileText} 
-          trend="Goethe" 
-          trendType="up"
-        />
-        <StatCard 
           title={t('dashboard.revenue')} 
           value={formatCurrency(totalIncome)} 
           icon={TrendingUp} 
@@ -197,6 +188,20 @@ export default function AdminDashboard() {
           icon={TrendingDown} 
           trend="+100%" 
           trendType="down"
+        />
+        <StatCard 
+          title="Solde Global"
+          value={formatCurrency(balance)} 
+          icon={TrendingUp} 
+          trend="Total" 
+          trendType={balance >= 0 ? 'up' : 'down'}
+        />
+        <StatCard 
+          title={t('sidebar.evaluations')} 
+          value={evaluations.length.toString()} 
+          icon={FileText} 
+          trend="Goethe" 
+          trendType="up"
         />
       </div>
 
@@ -220,10 +225,10 @@ export default function AdminDashboard() {
               <div key={member.uid} className="p-4 rounded-2xl bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 flex items-center justify-between group">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-dia-red/10 text-dia-red flex items-center justify-center font-bold text-xs">
-                    {member.firstName[0]}{member.lastName[0]}
+                    {member.lastName[0]}{member.firstName[0]}
                   </div>
                   <div>
-                    <p className="text-sm font-bold truncate max-w-[100px]">{member.firstName} {member.lastName}</p>
+                    <p className="text-sm font-bold truncate max-w-[100px]">{member.lastName} {member.firstName}</p>
                     <p className="text-[10px] text-neutral-400 capitalize">{member.role}</p>
                   </div>
                 </div>
@@ -404,7 +409,7 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-2 text-green-500 text-xs font-bold mb-1">
                       <CheckCircle2 size={14} /> {t('common.found')}
                     </div>
-                    <p className="text-xs"><strong>{t('common.name')} :</strong> {diagResult.user.firstName} {diagResult.user.lastName}</p>
+                    <p className="text-xs"><strong>{t('common.name')} :</strong> {diagResult.user.lastName} {diagResult.user.firstName}</p>
                     <p className="text-[10px]"><strong>Email :</strong> {diagResult.user.email}</p>
                     <p className="text-[10px]"><strong>Role :</strong> <span className="capitalize">{diagResult.user.role}</span></p>
                   </div>

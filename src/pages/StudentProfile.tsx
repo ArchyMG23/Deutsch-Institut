@@ -207,7 +207,7 @@ export default function StudentProfile() {
             </div>
             
             <div>
-              <h4 className="text-xl font-bold">{student.firstName} {student.lastName}</h4>
+              <h4 className="text-xl font-bold">{student.lastName} {student.firstName}</h4>
               <p className="text-sm font-bold text-dia-red uppercase tracking-wider">{student.matricule}</p>
             </div>
 

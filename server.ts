@@ -1499,6 +1499,16 @@ async function startServer() {
     }
   });
 
+  app.get('/api/charges', authenticate, async (req: any, res: any) => {
+    try {
+      const snapshot = await dbAdmin.collection('charges').orderBy('date', 'desc').get();
+      const records = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+      res.json(records);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post('/api/finances', authenticate, async (req, res) => {
     try {
       const id = Date.now().toString();

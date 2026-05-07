@@ -122,7 +122,7 @@ const TuitionManagement: React.FC = () => {
     );
 
     if (duplicates.length > 0) {
-      toast.warning(`${duplicates.length} autre(s) compte(s) trouvé(s) pour "${student.firstName} ${student.lastName}". Les versements pourraient être dispersés.`);
+      toast.warning(`${duplicates.length} autre(s) compte(s) trouvé(s) pour "${student.lastName} ${student.firstName}". Les versements pourraient être dispersés.`);
     }
 
     try {
@@ -167,7 +167,7 @@ const TuitionManagement: React.FC = () => {
           id: student.uid,
           eleve_id: student.uid,
           matricule: student.matricule,
-          nom_eleve: `${student.firstName} ${student.lastName}`,
+          nom_eleve: `${student.lastName} ${student.firstName}`,
           classe_id: student.classId || 'N/A',
           filiere: stream,
           niveau: levelName,
@@ -291,7 +291,7 @@ const TuitionManagement: React.FC = () => {
           id: student.uid,
           eleve_id: student.uid,
           matricule: student.matricule,
-          nom_eleve: `${student.firstName} ${student.lastName}`,
+          nom_eleve: `${student.lastName} ${student.firstName}`,
           classe_id: student.classId || 'N/A',
           filiere: stream,
           niveau: levelName,
@@ -356,7 +356,7 @@ const TuitionManagement: React.FC = () => {
           body: JSON.stringify({
             type: 'income',
             amount: amount,
-            description: `${paymentCategory.charAt(0).toUpperCase() + paymentCategory.slice(1)} - ${targetStudent.firstName} ${targetStudent.lastName} (${targetStudent.matricule})`,
+            description: `${paymentCategory.charAt(0).toUpperCase() + paymentCategory.slice(1)} - ${targetStudent.lastName} ${targetStudent.firstName} (${targetStudent.matricule})`,
             category: paymentCategory === 'scolarite' ? 'tuition' : (paymentCategory === 'inscription' ? 'registration' : 'tuition'),
             date: finalDate,
             accountType: accountType,
@@ -470,7 +470,7 @@ const TuitionManagement: React.FC = () => {
 
     // Student Info
     doc.setFontSize(isThermic ? 9 : 12);
-    doc.text(`Élève: ${targetStudent.firstName} ${targetStudent.lastName}`, margin, y);
+    doc.text(`Élève: ${targetStudent.lastName} ${targetStudent.firstName}`, margin, y);
     y += 6;
     doc.text(`Matricule: ${targetStudent.matricule}`, margin, y);
     y += 6;
@@ -776,7 +776,7 @@ const TuitionManagement: React.FC = () => {
                   <User size={18} />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-black truncate">{s.firstName} {s.lastName}</p>
+                  <p className="text-xs font-black truncate">{s.lastName} {s.firstName}</p>
                   <p className={cn("text-[10px] font-bold", targetStudent?.uid === s.uid ? "text-white/70" : "text-dia-red")}>{s.matricule}</p>
                 </div>
               </button>

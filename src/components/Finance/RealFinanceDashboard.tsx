@@ -366,7 +366,7 @@ export default function RealFinanceDashboard() {
       if (financesSnap) {
         financesSnap.forEach(doc => {
           const f = doc.data();
-          if (!f || f.type !== 'income') return;
+          if (!f || f.type !== 'income' || f.deletedAt) return;
           
           const amount = Number(f.amount) || 0;
           if (amount <= 0) return;
@@ -513,6 +513,7 @@ export default function RealFinanceDashboard() {
       }
 
       let totalChargesFixes = 0;
+      let totalAllTimeCharges = 0;
       const monthlyCharges: Record<string, number> = {};
 
       if (chargesSnap) {
@@ -520,24 +521,27 @@ export default function RealFinanceDashboard() {
           const c = doc.data() as Charge;
           if (!c || !c.date) return;
           const date = new Date(c.date);
+          const montant = Number(c.montant) || 0;
+          totalAllTimeCharges += montant;
+
           if (!isNaN(date.getTime()) && date.getFullYear() === selectedYear) {
-            totalChargesFixes += Number(c.montant) || 0;
+            totalChargesFixes += montant;
             const mKey = date.getMonth();
-            monthlyCharges[mKey] = (monthlyCharges[mKey] || 0) + (Number(c.montant) || 0);
+            monthlyCharges[mKey] = (monthlyCharges[mKey] || 0) + montant;
           }
         });
       }
 
       // 4. Aggreger les TRANSACTIONS DU GRAND LIVRE (finances)
       // This includes expenses (incomes already counted in step 2)
-      let caisseBalance = 0;
+      let caisseBalance = -totalAllTimeCharges;
       let banqueBalance = 0;
       const allFinances: any[] = [];
 
       if (financesSnap) {
         financesSnap.forEach(doc => {
           const f = { id: doc.id, ...doc.data() } as any;
-          if (!f || !f.date) return;
+          if (!f || !f.date || f.deletedAt) return;
           
           allFinances.push(f);
           const date = new Date(f.date);
@@ -588,7 +592,7 @@ export default function RealFinanceDashboard() {
       if (financesSnap) {
         financesSnap.forEach(doc => {
           const f = doc.data();
-          if (f.type !== 'income' || !f.studentId) return;
+          if (f.type !== 'income' || !f.studentId || f.deletedAt) return;
           financesByStudent[f.studentId] = (financesByStudent[f.studentId] || 0) + (Number(f.amount) || 0);
         });
       }
@@ -613,6 +617,7 @@ export default function RealFinanceDashboard() {
           id: studentId,
           eleve_id: studentId,
           ...s,
+          nom_eleve: s.nom_eleve || '', // Ensure nom_eleve is available for sorting
           total_verse: totalPaid,
           reste: reste,
           statut_paiement: statut

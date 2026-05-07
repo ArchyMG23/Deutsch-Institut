@@ -101,7 +101,7 @@ export default function StudentManagement() {
       doc.setFont('helvetica', 'bold');
       doc.text(t('students.student_info'), 20, 60);
       doc.setFont('helvetica', 'normal');
-      doc.text(`${t('students.lastName')} : ${selectedStudent.firstName} ${selectedStudent.lastName}`, 20, 70);
+      doc.text(`${t('students.lastName')} : ${selectedStudent.lastName} ${selectedStudent.firstName}`, 20, 70);
       doc.text(`${t('students.matricule')} : ${selectedStudent.matricule}`, 20, 75);
       doc.text(`${t('students.level')} : ${levels.find(l => l.id === selectedStudent.levelId)?.name || 'N/A'}`, 20, 85);
 
@@ -166,7 +166,7 @@ export default function StudentManagement() {
     );
 
     if (duplicate) {
-      if (!window.confirm(`Un étudiant nommé "${firstName} ${lastName}" existe déjà dans le système.\n\nSouhaitez-vous plutôt mettre à jour ses informations et être redirigé vers sa gestion ?`)) {
+      if (!window.confirm(`Un étudiant nommé "${lastName} ${firstName}" existe déjà dans le système.\n\nSouhaitez-vous plutôt mettre à jour ses informations et être redirigé vers sa gestion ?`)) {
         return;
       }
       // If user confirms, we "merge" or rather treat this as an edit/view
@@ -317,7 +317,7 @@ export default function StudentManagement() {
   const handleHardDeleteStudent = async (student: any) => {
     if (!student?.id) return;
     
-    const confirmMsg = `VOUS ALLEZ SUPPRIMER DÉFINITIVEMENT :\n- L'élève : ${student.firstName} ${student.lastName}\n- Son compte utilisateur\n- Ses scolarités\n- Toutes ses transactions financières\n\nCette action est IRRÉVERSIBLE. Continuer ?`;
+    const confirmMsg = `VOUS ALLEZ SUPPRIMER DÉFINITIVEMENT :\n- L'élève : ${student.lastName} ${student.firstName}\n- Son compte utilisateur\n- Ses scolarités\n- Toutes ses transactions financières\n\nCette action est IRRÉVERSIBLE. Continuer ?`;
     
     if (!window.confirm(confirmMsg)) return;
     
@@ -518,7 +518,7 @@ export default function StudentManagement() {
 
   const sortedStudents = React.useMemo(() => {
     const filtered = students.filter(s => {
-      const matchesSearch = `${s.firstName} ${s.lastName} ${s.matricule}`.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = `${s.lastName} ${s.firstName} ${s.matricule}`.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesTab = activeTab === 'active' ? !s.isFormer : s.isFormer;
       return matchesSearch && matchesTab;
     });
@@ -742,10 +742,10 @@ export default function StudentManagement() {
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full bg-dia-red/10 text-dia-red flex items-center justify-center font-bold">
-                            {student.firstName[0]}{student.lastName[0]}
+                            {student.lastName[0]}{student.firstName[0]}
                           </div>
                           <div>
-                            <p className="font-bold text-sm">{student.firstName} {student.lastName}</p>
+                            <p className="font-bold text-sm">{student.lastName} {student.firstName}</p>
                           </div>
                         </div>
                       </td>
@@ -862,10 +862,10 @@ export default function StudentManagement() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-dia-red/10 text-dia-red flex items-center justify-center font-bold">
-                      {student.firstName[0]}{student.lastName[0]}
+                      {student.lastName[0]}{student.firstName[0]}
                     </div>
                     <div>
-                      <p className="font-bold text-sm tracking-tight">{student.firstName} {student.lastName}</p>
+                      <p className="font-bold text-sm tracking-tight">{student.lastName} {student.firstName}</p>
                       <p className="text-[10px] font-mono text-neutral-400">{student.matricule}</p>
                     </div>
                   </div>
@@ -1228,7 +1228,7 @@ export default function StudentManagement() {
                     {selectedStudent.photoURL ? (
                       <img src={selectedStudent.photoURL} alt="Student" className="w-full h-full object-cover" />
                     ) : (
-                      <>{selectedStudent.firstName[0]}{selectedStudent.lastName[0]}</>
+                      <>{selectedStudent.lastName[0]}{selectedStudent.firstName[0]}</>
                     )}
                   </div>
                   <button 
@@ -1271,7 +1271,7 @@ export default function StudentManagement() {
                   </button>
                 </div>
                 <div>
-                  <h4 className="text-2xl font-bold">{selectedStudent.firstName} {selectedStudent.lastName}</h4>
+                  <h4 className="text-2xl font-bold">{selectedStudent.lastName} {selectedStudent.firstName}</h4>
                   <p className="text-neutral-500 font-mono">{selectedStudent.matricule}</p>
                 </div>
               </div>
@@ -1369,7 +1369,7 @@ export default function StudentManagement() {
             <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
               <div>
                 <h3 className="text-2xl font-bold tracking-tight">{t('students.receipt')}</h3>
-                <p className="text-neutral-500 text-sm">{selectedStudent.firstName} {selectedStudent.lastName} ({selectedStudent.matricule})</p>
+                <p className="text-neutral-500 text-sm">{selectedStudent.lastName} {selectedStudent.firstName} ({selectedStudent.matricule})</p>
               </div>
               <div className="flex gap-2">
                 <button 
@@ -1471,7 +1471,7 @@ export default function StudentManagement() {
                   <div className="space-y-4 mb-8">
                     <div className="flex justify-between text-sm">
                       <span className="text-neutral-500">{t('students.student_label')}:</span>
-                      <span className="font-bold">{selectedStudent.firstName} {selectedStudent.lastName}</span>
+                      <span className="font-bold">{selectedStudent.lastName} {selectedStudent.firstName}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-neutral-500">{t('students.matricule')}:</span>

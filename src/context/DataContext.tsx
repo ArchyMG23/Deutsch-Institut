@@ -8,6 +8,7 @@ interface DataContextType {
   classes: ClassRoom[];
   levels: Level[];
   finances: FinanceRecord[];
+  charges: any[];
   trashFinances: FinanceRecord[];
   library: LibraryItem[];
   evaluations: Evaluation[];
@@ -18,6 +19,7 @@ interface DataContextType {
   refreshClasses: () => Promise<void>;
   refreshLevels: () => Promise<void>;
   refreshFinances: () => Promise<void>;
+  refreshCharges: () => Promise<void>;
   refreshTrash: () => Promise<void>;
   refreshLibrary: () => Promise<void>;
   refreshEvaluations: () => Promise<void>;
@@ -32,6 +34,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [classes, setClasses] = useState<ClassRoom[]>([]);
   const [levels, setLevels] = useState<Level[]>([]);
   const [finances, setFinances] = useState<FinanceRecord[]>([]);
+  const [charges, setCharges] = useState<any[]>([]);
   const [trashFinances, setTrashFinances] = useState<FinanceRecord[]>([]);
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
@@ -110,6 +113,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchWithAuth, shouldFetch]);
 
+  const refreshCharges = useCallback(async (force: boolean = false) => {
+    if (!force && !shouldFetch('charges')) return;
+    try {
+      const res = await fetchWithAuth('/api/charges');
+      if (res.ok) {
+        setCharges(await res.json());
+        lastFetchTimesRef.current['charges'] = Date.now();
+      }
+    } catch (err) {
+      console.error("Error fetching charges:", err);
+    }
+  }, [fetchWithAuth, shouldFetch]);
+
   const refreshTrash = useCallback(async () => {
     if (!shouldFetch('trash')) return;
     try {
@@ -174,7 +190,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       // 2. Secondary business data
       await Promise.all([
         refreshTeachers(),
-        refreshFinances(), // This might be large, but we fetch it
+        refreshFinances(), 
+        refreshCharges(), // Synchronized account data
         refreshLibrary(),
         refreshEvaluations()
       ]);
@@ -185,7 +202,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [user, refreshStudents, refreshTeachers, refreshClasses, refreshLevels, refreshFinances, refreshLibrary, refreshEvaluations]);
+  }, [user, refreshStudents, refreshTeachers, refreshClasses, refreshLevels, refreshFinances, refreshCharges, refreshLibrary, refreshEvaluations]);
 
   return (
     <DataContext.Provider value={{
@@ -194,6 +211,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       classes,
       levels,
       finances,
+      charges,
       trashFinances,
       library,
       evaluations,
@@ -204,6 +222,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       refreshClasses,
       refreshLevels,
       refreshFinances,
+      refreshCharges,
       refreshTrash,
       refreshLibrary,
       refreshEvaluations
