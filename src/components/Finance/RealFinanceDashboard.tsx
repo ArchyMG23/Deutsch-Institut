@@ -16,14 +16,27 @@ import {
   Search,
   Plus,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  Smartphone,
+  ChevronLeft,
+  ChevronRight,
+  ShieldCheck,
+  ShieldAlert,
+  Users,
+  X,
+  PieChart,
+  Share2
 } from 'lucide-react';
 import { 
   collection, 
   query, 
   where, 
   getDocs, 
-  collectionGroup 
+  collectionGroup,
+  addDoc,
+  deleteDoc,
+  updateDoc,
+  doc
 } from 'firebase/firestore';
 import { db, auth } from '../../firebase';
 import { formatCurrency } from '../../utils';
@@ -31,7 +44,6 @@ import { Charge, Session, Versement, DailyReport } from '../../types';
 import { motion } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import { generateWhatsAppLink, APP_NAME_FOR_LINKS } from '../../utils/contactLinks';
-import { Smartphone, Share2 } from 'lucide-react';
 import { 
   BarChart, 
   Bar, 
@@ -81,9 +93,11 @@ export default function RealFinanceDashboard() {
     scolarites: [] as any[],
     caisseBalance: 0,
     banqueBalance: 0,
-    allFinances: [] as any[]
+    allFinances: [] as any[],
+    levelsMap: {} as Record<string, { identifier?: string; name: string; hours?: number; tuition?: number; stream?: string; [key: string]: any }>
   });
   const [activeTab, setActiveTab] = useState<'all' | 'caisse' | 'banque'>('all');
+  const [selectedLevel, setSelectedLevel] = useState<string>('all');
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(2026);
   const [showTransferModal, setShowTransferModal] = useState(false);
@@ -93,6 +107,110 @@ export default function RealFinanceDashboard() {
   const [sessionSort, setSessionSort] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
   const [scolaSort, setScolaSort] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'reste', direction: 'desc' });
   const [financeSort, setFinanceSort] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
+  const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
+  const [maintenanceStatus, setMaintenanceStatus] = useState<'idle' | 'scanning' | 'ready'>('idle');
+  const [maintenanceLoading, setMaintenanceLoading] = useState(false);
+  const [duplicates, setDuplicates] = useState<any[]>([]);
+
+  const scanForDuplicates = () => {
+    setMaintenanceStatus('scanning');
+    const nameMap: Record<string, any[]> = {};
+    data.scolarites.forEach(s => {
+      const name = s.nom_eleve?.toLowerCase()?.trim();
+      if (!name) return;
+      if (!nameMap[name]) nameMap[name] = [];
+      nameMap[name].push(s);
+    });
+
+    const foundDuplicates = Object.values(nameMap).filter(list => list.length > 1);
+    setDuplicates(foundDuplicates);
+    setMaintenanceStatus('ready');
+  };
+
+  const handleAuditRepair = async () => {
+    try {
+      setMaintenanceLoading(true);
+      const financesSnap = await getDocs(query(collection(db, 'finances'), where('type', '==', 'income')));
+      let repairs = 0;
+
+      for (const fDoc of financesSnap.docs) {
+        const f = fDoc.data();
+        if (!f.studentId) continue;
+
+        // Ensure student has a matching versement in their scolarite subcollection
+        const vSnap = await getDocs(query(collection(db, 'scolarites', f.studentId, 'versements'), where('financeId', '==', fDoc.id)));
+        
+        if (vSnap.empty) {
+          // Re-syncing
+          await addDoc(collection(db, 'scolarites', f.studentId, 'versements'), {
+            montant: Number(f.amount),
+            date: f.date || new Date().toISOString(),
+            mode_paiement: f.paymentMode || 'Autre',
+            categorie: (f.category === 'registration' ? 'inscription' : 'scolarite'),
+            recu_numero: f.receiptNumber || `REPAIR-${fDoc.id.slice(-4)}`,
+            caissier_id: f.initiatedBy || 'System',
+            notes: 'Synchronisé via Audit de Maintenance',
+            financeId: fDoc.id
+          });
+          repairs++;
+        }
+      }
+
+      alert(`Audit terminé. ${repairs} enregistrements ont été synchronisés.`);
+      fetchFinanceStats();
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de l'audit");
+    } finally {
+      setMaintenanceLoading(false);
+    }
+  };
+
+  const handleMerge = async (survivor: any, victim: any) => {
+    if (!window.confirm(`Êtes-vous sûr ? Tous les paiements de ${victim.nom_eleve} seront transférés vers le compte principal, et le doublon sera supprimé.`)) {
+      return;
+    }
+
+    try {
+      setMaintenanceLoading(true);
+      // 1. Move versements
+      const versementsSnap = await getDocs(collection(db, 'scolarites', victim.eleve_id, 'versements'));
+      for (const vDoc of versementsSnap.docs) {
+        const vData = vDoc.data();
+        await addDoc(collection(db, 'scolarites', survivor.eleve_id, 'versements'), vData);
+        await deleteDoc(vDoc.ref);
+      }
+
+      // 2. Update Finance records
+      const qFin = query(collection(db, 'finances'), where('studentId', '==', victim.eleve_id));
+      const finSnap = await getDocs(qFin);
+      for (const fDoc of finSnap.docs) {
+        const fData = fDoc.data();
+        let newDesc = fData.description || '';
+        if (victim.matricule && survivor.matricule) {
+          newDesc = newDesc.replace(new RegExp(victim.matricule, 'g'), survivor.matricule);
+        }
+        await updateDoc(fDoc.ref, { 
+          studentId: survivor.eleve_id,
+          studentMatricule: survivor.matricule,
+          description: newDesc
+        });
+      }
+
+      // 3. Delete victim student and their scolarite
+      await deleteDoc(doc(db, 'users', victim.eleve_id));
+      await deleteDoc(doc(db, 'scolarites', victim.eleve_id));
+
+      alert("Fusion réussie !");
+      await fetchFinanceStats();
+      scanForDuplicates();
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de la fusion: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setMaintenanceLoading(false);
+    }
+  };
 
   const handleTransfer = async () => {
     if (transferAmount <= 0) return;
@@ -419,49 +537,46 @@ export default function RealFinanceDashboard() {
       const allVersementsSnap = await getDocs(collectionGroup(db, 'versements'));
       const versementsByStudent: Record<string, number> = {};
       
-      // 5a. Aggregate from scolarites subcollections
+      // 5a. Aggregate from scolarites subcollections (CUMULATIVE for status)
       allVersementsSnap.forEach(vDoc => {
         const v = vDoc.data();
-        const vDate = new Date(v.date || v.recu_genere_at);
-        if (vDate.getFullYear() === selectedYear) {
-          const studentId = vDoc.ref.parent.parent?.id;
-          if (studentId) {
-            versementsByStudent[studentId] = (versementsByStudent[studentId] || 0) + (Number(v.montant) || 0);
-          }
+        const studentId = vDoc.ref.parent.parent?.id;
+        if (studentId) {
+          versementsByStudent[studentId] = (versementsByStudent[studentId] || 0) + (Number(v.montant) || 0);
         }
       });
-
+ 
       // 5b. CROSS-SYNC: Also aggregate from general finances (the "confirmed" list)
       const financesByStudent: Record<string, number> = {};
       if (financesSnap) {
         financesSnap.forEach(doc => {
           const f = doc.data();
           if (f.type !== 'income' || !f.studentId) return;
-          const fDate = new Date(f.date || f.createdAt);
-          if (fDate.getFullYear() === selectedYear) {
-             financesByStudent[f.studentId] = (financesByStudent[f.studentId] || 0) + (Number(f.amount) || 0);
-          }
+          financesByStudent[f.studentId] = (financesByStudent[f.studentId] || 0) + (Number(f.amount) || 0);
         });
       }
-
+ 
       const scolarites = scolariteFinalSnap?.docs.map(d => {
         const s = d.data();
-        const subCollectionPaid = versementsByStudent[d.id] || 0;
-        const financeReportedPaid = financesByStudent[d.id] || 0;
+        const studentId = d.id;
+        const subCollectionPaid = versementsByStudent[studentId] || 0;
+        const financeReportedPaid = financesByStudent[studentId] || 0;
         
         // Use the maximum of both to ensure we don't miss confirmed payments
-        const yearlyPaid = Math.max(subCollectionPaid, financeReportedPaid);
+        const totalPaid = Math.max(subCollectionPaid, financeReportedPaid);
         
         const totalDue = s.montant_total_du || 0;
-        const reste = Math.max(0, totalDue - yearlyPaid);
+        const reste = Math.max(0, totalDue - totalPaid);
         
         let statut = 'NON PAYÉ';
-        if (yearlyPaid >= totalDue) statut = 'SOLDÉ';
-        else if (yearlyPaid > 0) statut = 'EN COURS';
-
+        if (totalPaid >= totalDue && totalDue > 0) statut = 'SOLDÉ';
+        else if (totalPaid > 0) statut = 'EN COURS';
+ 
         return {
+          id: studentId,
+          eleve_id: studentId,
           ...s,
-          total_verse: yearlyPaid, // Only show what was paid this year
+          total_verse: totalPaid,
           reste: reste,
           statut_paiement: statut
         };
@@ -486,7 +601,8 @@ export default function RealFinanceDashboard() {
         scolarites: scolarites || [],
         caisseBalance,
         banqueBalance,
-        allFinances: allFinances.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        allFinances: allFinances.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+        levelsMap
       });
     } catch (err) {
       console.error("Erreur Dashboard Financier (Détails):", err);
@@ -507,17 +623,10 @@ export default function RealFinanceDashboard() {
     return currentSort.direction === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />;
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-dia-red"></div>
-      </div>
-    );
-  }
-
   const filteredFinances = data.allFinances.filter(f => {
-    if (activeTab === 'all') return true;
-    return (f.accountType || 'caisse') === activeTab;
+    const matchesAccount = activeTab === 'all' || (f.accountType || 'caisse') === activeTab;
+    const matchesLevel = selectedLevel === 'all' || f.levelId === selectedLevel;
+    return matchesAccount && matchesLevel;
   });
 
   const sortedSessions = React.useMemo(() => {
@@ -574,6 +683,14 @@ export default function RealFinanceDashboard() {
     });
   }, [filteredFinances, financeSort]);
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-dia-red"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Date Filter */}
@@ -587,6 +704,15 @@ export default function RealFinanceDashboard() {
         >
           {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
         </select>
+        <button 
+          onClick={() => {
+            setShowMaintenanceModal(true);
+            scanForDuplicates();
+          }}
+          className="px-4 py-2 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 rounded-xl text-[10px] font-black uppercase hover:bg-neutral-200 transition-all flex items-center gap-2 border border-neutral-200 dark:border-neutral-700 ml-4"
+        >
+          <Search size={14} /> Maintenance & Doublons
+        </button>
         <button onClick={fetchFinanceStats} className="ml-auto p-2 bg-dia-red/5 text-dia-red rounded-lg hover:bg-dia-red/10">
           <Activity size={18} />
         </button>
@@ -634,34 +760,52 @@ export default function RealFinanceDashboard() {
       </div>
 
       {/* Account Tabs */}
-      <div className="flex p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl w-fit">
-        <button 
-          onClick={() => setActiveTab('all')}
-          className={cn(
-            "px-6 py-2 rounded-lg text-xs font-black uppercase transition-all",
-            activeTab === 'all' ? "bg-white dark:bg-neutral-900 text-dia-red shadow-sm" : "text-neutral-400"
-          )}
-        >
-          Vue d'ensemble
-        </button>
-        <button 
-          onClick={() => setActiveTab('caisse')}
-          className={cn(
-            "px-6 py-2 rounded-lg text-xs font-black uppercase transition-all",
-            activeTab === 'caisse' ? "bg-white dark:bg-neutral-900 text-dia-red shadow-sm" : "text-neutral-400"
-          )}
-        >
-          Comptabilité Caisse
-        </button>
-        <button 
-          onClick={() => setActiveTab('banque')}
-          className={cn(
-            "px-6 py-2 rounded-lg text-xs font-black uppercase transition-all",
-            activeTab === 'banque' ? "bg-white dark:bg-neutral-900 text-blue-600 shadow-sm" : "text-neutral-400"
-          )}
-        >
-          Comptabilité Banque
-        </button>
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl w-fit">
+          <button 
+            onClick={() => setActiveTab('all')}
+            className={cn(
+              "px-6 py-2 rounded-lg text-xs font-black uppercase transition-all",
+              activeTab === 'all' ? "bg-white dark:bg-neutral-900 text-dia-red shadow-sm" : "text-neutral-400"
+            )}
+          >
+            Vue d'ensemble
+          </button>
+          <button 
+            onClick={() => setActiveTab('caisse')}
+            className={cn(
+              "px-6 py-2 rounded-lg text-xs font-black uppercase transition-all",
+              activeTab === 'caisse' ? "bg-white dark:bg-neutral-900 text-dia-red shadow-sm" : "text-neutral-400"
+            )}
+          >
+            Comptabilité Caisse
+          </button>
+          <button 
+            onClick={() => setActiveTab('banque')}
+            className={cn(
+              "px-6 py-2 rounded-lg text-xs font-black uppercase transition-all",
+              activeTab === 'banque' ? "bg-white dark:bg-neutral-900 text-blue-600 shadow-sm" : "text-neutral-400"
+            )}
+          >
+            Comptabilité Banque
+          </button>
+        </div>
+
+        {activeTab !== 'all' && (
+          <div className="flex items-center gap-2 bg-neutral-100 dark:bg-neutral-800 px-4 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700">
+            <span className="text-[10px] font-black uppercase text-neutral-400">Filtrer par Niveau:</span>
+            <select 
+              value={selectedLevel}
+              onChange={(e) => setSelectedLevel(e.target.value)}
+              className="bg-transparent border-none outline-none text-[10px] font-bold"
+            >
+              <option value="all">Tous les niveaux</option>
+              {Object.entries(data.levelsMap).map(([id, level]: [string, any]) => (
+                <option key={id} value={id}>{level.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {activeTab === 'all' ? (
@@ -996,6 +1140,9 @@ export default function RealFinanceDashboard() {
                   <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 cursor-pointer hover:text-dia-red transition-all" onClick={() => setFinanceSort(p => ({ key: 'description', direction: p.key === 'description' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
                     <div className="flex items-center gap-1">Description <SortIcon currentSort={financeSort} column="description" /></div>
                   </th>
+                  <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 cursor-pointer hover:text-dia-red transition-all" onClick={() => setFinanceSort(p => ({ key: 'levelId', direction: p.key === 'levelId' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
+                    <div className="flex items-center gap-1">Niveau <SortIcon currentSort={financeSort} column="levelId" /></div>
+                  </th>
                   <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-center cursor-pointer hover:text-dia-red transition-all" onClick={() => setFinanceSort(p => ({ key: 'category', direction: p.key === 'category' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
                     <div className="flex items-center justify-center gap-1">Catégorie <SortIcon currentSort={financeSort} column="category" /></div>
                   </th>
@@ -1024,6 +1171,11 @@ export default function RealFinanceDashboard() {
                       </td>
                       <td className="px-6 py-4">
                         <p className="font-bold text-xs">{f.description}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="text-[10px] font-black uppercase text-neutral-400">
+                          {f.levelId ? (data.levelsMap[f.levelId]?.name || 'N/A') : 'N/A'}
+                        </p>
                       </td>
                       <td className="px-6 py-4 text-center">
                         <span className="text-[10px] bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-md font-bold text-neutral-500 uppercase">{f.category}</span>
@@ -1102,6 +1254,120 @@ export default function RealFinanceDashboard() {
                 >
                   Confirmé le Dépôt
                 </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Maintenance Modal */}
+      {showMaintenanceModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]"
+          >
+            <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 bg-neutral-900 text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-black uppercase flex items-center gap-2">
+                  <ShieldCheck size={24} className="text-dia-red" /> Outil de Maintenance
+                </h3>
+                <p className="text-neutral-400 text-xs mt-1 font-bold">Correction des doublons et intégrité financière</p>
+              </div>
+              <button onClick={() => setShowMaintenanceModal(false)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
+                 <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-8 overflow-y-auto space-y-8">
+              {/* Duplicates Section */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                   <h4 className="text-sm font-black uppercase tracking-widest text-dia-red flex items-center gap-2">
+                     <Users size={18} /> Doublons Détectés ({duplicates.length})
+                   </h4>
+                   <button 
+                    onClick={scanForDuplicates}
+                    className="p-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg group"
+                   >
+                     <Activity size={16} className={cn("transition-all", maintenanceStatus === 'scanning' && "animate-spin")} />
+                   </button>
+                </div>
+
+                {maintenanceStatus === 'scanning' ? (
+                  <div className="p-10 text-center border-2 border-dashed border-neutral-100 dark:border-neutral-800 rounded-3xl">
+                     <p className="text-neutral-400 font-bold italic">Analyse de la base de données en cours...</p>
+                  </div>
+                ) : duplicates.length === 0 ? (
+                  <div className="p-10 text-center bg-green-50/50 border-2 border-dashed border-green-100 rounded-3xl">
+                     <p className="text-green-600 font-bold">Aucun doublon de nom détecté. Votre base est propre.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                      {duplicates.map((group, idx) => (
+                      <div key={idx} className="bg-neutral-50 dark:bg-neutral-800/50 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-700">
+                        <p className="font-black text-sm uppercase mb-3 text-neutral-600">{group[0].nom_eleve}</p>
+                        <div className="grid grid-cols-2 gap-4">
+                          {group.map((student: any) => (
+                            <div key={student.eleve_id} className="bg-white dark:bg-neutral-900 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800 shadow-sm relative group/item">
+                              <p className="text-xs font-black">{student.matricule}</p>
+                              <p className="text-[10px] text-neutral-400">{student.niveau} - {student.filiere}</p>
+                              <p className="text-[10px] font-bold mt-1 text-dia-red">Reste: {formatCurrency(student.reste)}</p>
+                              
+                              {/* Merge Action: Survivor is the first one by default, victim is current if not first */}
+                              {student.eleve_id !== group[0].eleve_id && (
+                                <button 
+                                  onClick={() => handleMerge(group[0], student)}
+                                  disabled={maintenanceLoading}
+                                  className={cn(
+                                    "absolute top-2 right-2 p-2 bg-dia-red/10 text-dia-red rounded-lg transition-all",
+                                    maintenanceLoading ? "opacity-50 cursor-not-allowed" : "opacity-0 group-hover/item:opacity-100 hover:bg-dia-red hover:text-white"
+                                  )}
+                                  title="Fusionner vers le compte principal"
+                                >
+                                  {maintenanceLoading ? <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <ArrowRightLeft size={12} />}
+                                </button>
+                              )}
+                              {student.eleve_id === group[0].eleve_id && (
+                                <span className="absolute top-2 right-2 px-2 py-0.5 bg-neutral-900 text-white text-[8px] font-black uppercase rounded">Principal</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Data Integrity Section */}
+              <div className="pt-6 border-t border-neutral-100 dark:border-neutral-800">
+                 <h4 className="text-sm font-black uppercase tracking-widest text-neutral-400 mb-4 flex items-center gap-2">
+                   <ShieldAlert size={18} /> Intégrité Financière
+                 </h4>
+                 <div className="bg-neutral-50 dark:bg-neutral-800/50 p-6 rounded-3xl border border-neutral-200 dark:border-neutral-700 text-center">
+                    <p className="text-xs font-medium text-neutral-500 mb-4 max-w-sm mx-auto">
+                      Cette action vérifie que chaque centime au Grand Livre est répercuté sur la fiche de l'élève correspondant.
+                    </p>
+                    <button 
+                      onClick={handleAuditRepair}
+                      disabled={maintenanceLoading}
+                      className={cn(
+                        "px-6 py-3 bg-neutral-900 text-white rounded-2xl text-[10px] font-black uppercase transition-all shadow-lg flex items-center gap-2 mx-auto disabled:opacity-50",
+                        !maintenanceLoading && "hover:bg-dia-red"
+                      )}
+                    >
+                      {maintenanceLoading ? (
+                        <>
+                          <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Traitement...
+                        </>
+                      ) : (
+                        "Audit complet du Grand Livre"
+                      )}
+                    </button>
+                 </div>
               </div>
             </div>
           </motion.div>

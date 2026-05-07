@@ -193,7 +193,60 @@ const TuitionManagement: React.FC = () => {
         handleFirestoreError(e, OperationType.LIST, `scolarites/${student.uid}/versements`);
       }
       
-      const vList = versemntsSnap!.docs.map(d => ({ id: d.id, ...d.data() } as Versement)).sort((a,b) => {
+      const vList = versemntsSnap!.docs.map(d => ({ id: d.id, ...d.data() } as Versement));
+      
+      // --- CROSS-SYNC WITH GENERAL FINANCES ---
+      // Fetch any finance records linked to this student that might not be in the subcollection
+      let financeList: any[] = [];
+      try {
+        // 1. Precise match by studentId
+        const qFin = query(collection(db, 'finances'), where('studentId', '==', student.uid), where('type', '==', 'income'));
+        const finSnap = await getDocs(qFin);
+        financeList = finSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // 2. Fuzzy match by matricule in description (for records missing studentId)
+        const allFinSnap = await getDocs(query(collection(db, 'finances'), where('type', '==', 'income')));
+        allFinSnap.forEach(d => {
+           const f = d.data();
+           if (!f.studentId && f.description && f.description.includes(student.matricule)) {
+              if (!financeList.find(existing => existing.id === d.id)) {
+                 financeList.push({ id: d.id, ...f });
+              }
+           }
+        });
+      } catch (finErr) {
+        console.error("Failed to fetch general finances for sync:", finErr);
+      }
+
+      // Identify finance records NOT yet in vList
+      const linkedFinanceIds = new Set(vList.filter(v => v.financeId).map(v => v.financeId));
+      const missingFromScolarite = financeList.filter(f => !linkedFinanceIds.has(f.id));
+
+      if (missingFromScolarite.length > 0) {
+        for (const f of missingFromScolarite) {
+          const healingVersement = {
+            montant: Number(f.amount),
+            date: f.date || new Date().toISOString(),
+            mode_paiement: (f.paymentMode || 'Autre') as any,
+            categorie: (f.category === 'registration' ? 'inscription' : 'scolarite') as any,
+            recu_numero: f.receiptNumber || `SYNC-FIN-${f.id.slice(-4)}`,
+            caissier_id: f.initiatedBy || 'System',
+            notes: f.description || 'Importé depuis Finances Générales',
+            financeId: f.id
+          };
+          try {
+            const vRef = await addDoc(collection(db, 'scolarites', student.uid, 'versements'), healingVersement);
+            vList.push({ id: vRef.id, ...healingVersement } as Versement);
+          } catch (healErr) {
+            console.error("Inner healing failed:", healErr);
+          }
+        }
+        if (missingFromScolarite.length > 0) {
+          toast.info(`${missingFromScolarite.length} paiement(s) "confirmés" en Finance ont été ajoutés ici.`);
+        }
+      }
+
+      vList.sort((a,b) => {
         const dateA = a.date ? new Date(a.date).getTime() : 0;
         const dateB = b.date ? new Date(b.date).getTime() : 0;
         return dateB - dateA;
@@ -310,7 +363,9 @@ const TuitionManagement: React.FC = () => {
             initiatedBy: initiatedBy,
             status: 'active',
             studentId: targetStudent.uid,
-            studentMatricule: targetStudent.matricule
+            studentMatricule: targetStudent.matricule,
+            levelId: targetStudent.levelId,
+            classId: targetStudent.classId
           })
         });
         if (finRes.ok) {
@@ -739,6 +794,11 @@ const TuitionManagement: React.FC = () => {
             </div>
             <h3 className="text-xl font-black mb-2">Sélectionnez un élève</h3>
             <p className="text-neutral-500 max-w-sm text-sm">Choisissez un élève dans la liste de gauche pour gérer ses versements, voir son historique ou générer un reçu.</p>
+          </div>
+        ) : (loading || !scolarite) ? (
+          <div className="flex flex-col items-center justify-center h-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl p-10 text-center">
+            <div className="w-16 h-16 border-4 border-dia-red border-t-transparent rounded-full animate-spin mb-4" />
+            <p className="text-neutral-500 font-bold">Chargement des données de {targetStudent.firstName}...</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">

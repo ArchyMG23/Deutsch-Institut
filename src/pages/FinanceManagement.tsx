@@ -360,7 +360,9 @@ export default function FinanceManagement() {
       date: selectedDate.toISOString(),
       status: isArchived ? 'archived' : 'active',
       studentId: target?.uid,
-      studentMatricule: target?.matricule
+      studentMatricule: target?.matricule,
+      levelId: target?.levelId,
+      classId: target?.classId
     };
 
     try {
