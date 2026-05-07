@@ -25,8 +25,10 @@ import {
   Users,
   X,
   PieChart,
-  Share2
+  Share2,
+  GraduationCap
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { 
   collection, 
   query, 
@@ -105,7 +107,7 @@ export default function RealFinanceDashboard() {
   const [transferNotes, setTransferNotes] = useState('');
 
   const [sessionSort, setSessionSort] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
-  const [scolaSort, setScolaSort] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'reste', direction: 'desc' });
+  const [scolaSort, setScolaSort] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'nom_eleve', direction: 'asc' });
   const [financeSort, setFinanceSort] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
   const [maintenanceStatus, setMaintenanceStatus] = useState<'idle' | 'scanning' | 'ready'>('idle');
@@ -125,6 +127,41 @@ export default function RealFinanceDashboard() {
     const foundDuplicates = Object.values(nameMap).filter(list => list.length > 1);
     setDuplicates(foundDuplicates);
     setMaintenanceStatus('ready');
+  };
+
+  const handleRepairLevels = async () => {
+    try {
+      setMaintenanceLoading(true);
+      const financesSnap = await getDocs(collection(db, 'finances'));
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const userMap: Record<string, any> = {};
+      usersSnap.forEach(u => {
+        userMap[u.id] = u.data();
+      });
+
+      let repairedCount = 0;
+      for (const fDoc of financesSnap.docs) {
+        const data = fDoc.data();
+        if (!data.levelId && data.studentId && userMap[data.studentId]) {
+          const userLevelId = userMap[data.studentId].levelId;
+          const userClassId = userMap[data.studentId].classId;
+          if (userLevelId) {
+            await updateDoc(fDoc.ref, { 
+              levelId: userLevelId,
+              classId: userClassId || null
+            });
+            repairedCount++;
+          }
+        }
+      }
+      toast.success(`${repairedCount} enregistrements financiers mis à jour avec le niveau de l'élève !`);
+      fetchFinanceStats();
+    } catch (err) {
+      console.error("Repair error:", err);
+      toast.error("Erreur lors de la réparation des niveaux.");
+    } finally {
+      setMaintenanceLoading(false);
+    }
   };
 
   const handleAuditRepair = async () => {
@@ -652,12 +689,14 @@ export default function RealFinanceDashboard() {
       if (key === 'reste' || key === 'total_verse' || key === 'montant_total_du') {
         aVal = Number(aVal || 0);
         bVal = Number(bVal || 0);
+        if (aVal < bVal) return direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return direction === 'asc' ? 1 : -1;
       } else {
-        aVal = String(aVal || '').toLowerCase();
-        bVal = String(bVal || '').toLowerCase();
+        const sA = String(aVal || '').trim();
+        const sB = String(bVal || '').trim();
+        const comp = sA.localeCompare(sB, 'fr', { sensitivity: 'base' });
+        return direction === 'asc' ? comp : -comp;
       }
-      if (aVal < bVal) return direction === 'asc' ? -1 : 1;
-      if (aVal > bVal) return direction === 'asc' ? 1 : -1;
       return 0;
     });
   }, [data.scolarites, scolaSort]);
@@ -673,6 +712,9 @@ export default function RealFinanceDashboard() {
       } else if (key === 'amount') {
         aVal = Number(aVal || 0);
         bVal = Number(bVal || 0);
+      } else if (key === 'levelId') {
+        aVal = aVal ? (data.levelsMap[aVal]?.name || '').toLowerCase() : '';
+        bVal = bVal ? (data.levelsMap[bVal]?.name || '').toLowerCase() : '';
       } else {
         aVal = String(aVal || '').toLowerCase();
         bVal = String(bVal || '').toLowerCase();
@@ -1061,19 +1103,19 @@ export default function RealFinanceDashboard() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="bg-neutral-50 dark:bg-neutral-800/50 border-b border-neutral-200 dark:border-neutral-800">
-                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 cursor-pointer hover:text-dia-red transition-all" onClick={() => setScolaSort(p => ({ key: 'nom_eleve', direction: p.key === 'nom_eleve' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 cursor-pointer hover:text-dia-red transition-all" onClick={() => setScolaSort(p => ({ key: 'nom_eleve', direction: p.key === 'nom_eleve' && p.direction === 'asc' ? 'desc' : 'asc' }))}>
                   <div className="flex items-center gap-1">Élève <SortIcon currentSort={scolaSort} column="nom_eleve" /></div>
                 </th>
-                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 cursor-pointer hover:text-dia-red transition-all" onClick={() => setScolaSort(p => ({ key: 'statut_paiement', direction: p.key === 'statut_paiement' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 cursor-pointer hover:text-dia-red transition-all" onClick={() => setScolaSort(p => ({ key: 'statut_paiement', direction: p.key === 'statut_paiement' && p.direction === 'asc' ? 'desc' : 'asc' }))}>
                   <div className="flex items-center gap-1">Statut <SortIcon currentSort={scolaSort} column="statut_paiement" /></div>
                 </th>
-                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-right cursor-pointer hover:text-dia-red transition-all" onClick={() => setScolaSort(p => ({ key: 'montant_total_du', direction: p.key === 'montant_total_du' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-right cursor-pointer hover:text-dia-red transition-all" onClick={() => setScolaSort(p => ({ key: 'montant_total_du', direction: p.key === 'montant_total_du' && p.direction === 'asc' ? 'desc' : 'asc' }))}>
                   <div className="flex items-center justify-end gap-1">Total Dû <SortIcon currentSort={scolaSort} column="montant_total_du" /></div>
                 </th>
-                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-right cursor-pointer hover:text-dia-red transition-all" onClick={() => setScolaSort(p => ({ key: 'total_verse', direction: p.key === 'total_verse' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-right cursor-pointer hover:text-dia-red transition-all" onClick={() => setScolaSort(p => ({ key: 'total_verse', direction: p.key === 'total_verse' && p.direction === 'asc' ? 'desc' : 'asc' }))}>
                   <div className="flex items-center justify-end gap-1">Versé <SortIcon currentSort={scolaSort} column="total_verse" /></div>
                 </th>
-                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-right text-dia-red cursor-pointer hover:text-dia-red transition-all" onClick={() => setScolaSort(p => ({ key: 'reste', direction: p.key === 'reste' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-right text-dia-red cursor-pointer hover:text-dia-red transition-all" onClick={() => setScolaSort(p => ({ key: 'reste', direction: p.key === 'reste' && p.direction === 'asc' ? 'desc' : 'asc' }))}>
                   <div className="flex items-center justify-end gap-1">Reste <SortIcon currentSort={scolaSort} column="reste" /></div>
                 </th>
               </tr>
@@ -1342,31 +1384,45 @@ export default function RealFinanceDashboard() {
               </div>
 
               {/* Data Integrity Section */}
-              <div className="pt-6 border-t border-neutral-100 dark:border-neutral-800">
+              <div className="pt-6 border-t border-neutral-100 dark:border-neutral-800 space-y-6">
                  <h4 className="text-sm font-black uppercase tracking-widest text-neutral-400 mb-4 flex items-center gap-2">
                    <ShieldAlert size={18} /> Intégrité Financière
                  </h4>
-                 <div className="bg-neutral-50 dark:bg-neutral-800/50 p-6 rounded-3xl border border-neutral-200 dark:border-neutral-700 text-center">
-                    <p className="text-xs font-medium text-neutral-500 mb-4 max-w-sm mx-auto">
-                      Cette action vérifie que chaque centime au Grand Livre est répercuté sur la fiche de l'élève correspondant.
-                    </p>
-                    <button 
-                      onClick={handleAuditRepair}
-                      disabled={maintenanceLoading}
-                      className={cn(
-                        "px-6 py-3 bg-neutral-900 text-white rounded-2xl text-[10px] font-black uppercase transition-all shadow-lg flex items-center gap-2 mx-auto disabled:opacity-50",
-                        !maintenanceLoading && "hover:bg-dia-red"
-                      )}
-                    >
-                      {maintenanceLoading ? (
-                        <>
-                          <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          Traitement...
-                        </>
-                      ) : (
-                        "Audit complet du Grand Livre"
-                      )}
-                    </button>
+                 
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="bg-neutral-50 dark:bg-neutral-800/50 p-6 rounded-3xl border border-neutral-200 dark:border-neutral-700 flex flex-col justify-between">
+                       <p className="text-[10px] font-medium text-neutral-500 mb-4 uppercase text-center">
+                         Synchronisation Scolarité/Grand Livre
+                       </p>
+                       <button 
+                        onClick={handleAuditRepair}
+                        disabled={maintenanceLoading}
+                        className={cn(
+                          "w-full py-3 bg-neutral-900 text-white rounded-2xl text-[9px] font-black uppercase transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50",
+                          !maintenanceLoading && "hover:bg-dia-red"
+                        )}
+                      >
+                        {maintenanceLoading ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <ShieldCheck size={14} />}
+                        Audit Global
+                      </button>
+                    </div>
+
+                    <div className="bg-neutral-50 dark:bg-neutral-800/50 p-6 rounded-3xl border border-neutral-200 dark:border-neutral-700 flex flex-col justify-between">
+                       <p className="text-[10px] font-medium text-neutral-500 mb-4 uppercase text-center">
+                         Assigner Niveaux Historiques
+                       </p>
+                       <button 
+                        onClick={handleRepairLevels}
+                        disabled={maintenanceLoading}
+                        className={cn(
+                          "w-full py-3 bg-blue-600 text-white rounded-2xl text-[9px] font-black uppercase transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50",
+                          !maintenanceLoading && "hover:bg-blue-700"
+                        )}
+                      >
+                        {maintenanceLoading ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <GraduationCap size={14} />}
+                        Réparer Niveaux
+                      </button>
+                    </div>
                  </div>
               </div>
             </div>

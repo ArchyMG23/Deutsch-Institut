@@ -60,7 +60,7 @@ export default function StudentManagement() {
   const [searchQuery, setSearchQuery] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<'active' | 'former'>('active');
-  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedTuition, setSelectedTuition] = useState<number | ''>('');
   const [selectedStream, setSelectedStream] = useState<string>('');
@@ -535,8 +535,10 @@ export default function StudentManagement() {
         const firstNameA = a.firstName || '';
         const lastNameB = b.lastName || '';
         const firstNameB = b.firstName || '';
-        aValue = `${lastNameA} ${firstNameA}`.toLowerCase();
-        bValue = `${lastNameB} ${firstNameB}`.toLowerCase();
+        const fullA = `${lastNameA} ${firstNameA}`.trim();
+        const fullB = `${lastNameB} ${firstNameB}`.trim();
+        const comp = fullA.localeCompare(fullB, 'fr', { sensitivity: 'base' });
+        return direction === 'asc' ? comp : -comp;
       } else if (key === 'matricule') {
         aValue = (a.matricule || '').toLowerCase();
         bValue = (b.matricule || '').toLowerCase();
@@ -573,11 +575,10 @@ export default function StudentManagement() {
   }, [searchQuery, activeTab]);
 
   const handleSort = (key: string) => {
-    let direction: 'asc' | 'desc' = 'asc';
-    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key, direction });
+    setSortConfig(p => ({
+      key,
+      direction: p.key === key && p.direction === 'asc' ? 'desc' : 'asc'
+    }));
   };
 
   const SortIcon = ({ column }: { column: string }) => {

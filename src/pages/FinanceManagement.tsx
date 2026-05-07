@@ -487,15 +487,15 @@ export default function FinanceManagement() {
       const bVal = b[sortConfig.key as keyof FinanceRecord];
 
       if (sortConfig.key === 'amount') {
-        return sortConfig.direction === 'asc' ? Number(aVal) - Number(bVal) : Number(bVal) - Number(aVal);
+        const nA = Number(aVal || 0);
+        const nB = Number(bVal || 0);
+        return sortConfig.direction === 'asc' ? nA - nB : nB - nA;
       }
 
-      const aStr = String(aVal || '').toLowerCase();
-      const bStr = String(bVal || '').toLowerCase();
-
-      if (aStr < bStr) return sortConfig.direction === 'asc' ? -1 : 1;
-      if (aStr > bStr) return sortConfig.direction === 'asc' ? 1 : -1;
-      return 0;
+      const sA = String(aVal || '').trim();
+      const sB = String(bVal || '').trim();
+      const comp = sA.localeCompare(sB, 'fr', { sensitivity: 'base' });
+      return sortConfig.direction === 'asc' ? comp : -comp;
     });
   }, [viewMode, trashFinances, filteredByDate, sortConfig]);
 
