@@ -34,7 +34,6 @@ const TuitionManagement: React.FC = () => {
     console.error('Firestore Error Detailed (Tuition): ', JSON.stringify(errInfo));
     throw new Error(JSON.stringify(errInfo));
   };
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [matricule, setMatricule] = useState('');
   const [targetStudent, setTargetStudent] = useState<Student | null>(null);
   const [scolarite, setScolarite] = useState<StudentScolarite | null>(null);
@@ -56,6 +55,8 @@ const TuitionManagement: React.FC = () => {
   const [paymentCategory, setPaymentCategory] = useState<Versement['categorie']>('scolarite');
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
+  const [accountType, setAccountType] = useState<'caisse' | 'banque'>('caisse');
+  const [initiatedBy, setInitiatedBy] = useState<'student' | 'secretary'>('student');
   const [editingVersementId, setEditingVersementId] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState<number>(0);
   const [editNotes, setEditNotes] = useState('');
@@ -95,14 +96,9 @@ const TuitionManagement: React.FC = () => {
     fetchData();
   }, []);
 
-  const filteredVersements = versements.filter(v => {
-    const d = new Date(v.date || v.recu_genere_at || '');
-    return d.getFullYear() === selectedYear;
-  });
-
-  const yearlyTotals = React.useMemo(() => {
+  const cumulativeTotals = React.useMemo(() => {
     if (!scolarite) return null;
-    const totalPaid = filteredVersements.reduce((acc, v) => acc + (Number(v.montant) || 0), 0);
+    const totalPaid = versements.reduce((acc, v) => acc + (Number(v.montant) || 0), 0);
     const totalDue = scolarite.montant_total_du || 0;
     const remains = Math.max(0, totalDue - totalPaid);
     const surplus = Math.max(0, totalPaid - totalDue);
@@ -111,13 +107,24 @@ const TuitionManagement: React.FC = () => {
     else if (totalPaid > 0) status = 'EN COURS';
 
     return { totalPaid, remains, surplus, status };
-  }, [filteredVersements, scolarite, selectedYear]);
+  }, [versements, scolarite]);
 
   const selectStudent = async (student: Student) => {
     setLoading(true);
     setTargetStudent(student);
     setMatricule(student.matricule);
     
+    // DUPLICATE DETECTOR & AUTO-MERGE: Check if there are other student accounts with same name
+    const duplicates = studentsList.filter(s => 
+      s.uid !== student.uid && 
+      s.firstName.toLowerCase() === student.firstName.toLowerCase() && 
+      s.lastName.toLowerCase() === student.lastName.toLowerCase()
+    );
+
+    if (duplicates.length > 0) {
+      toast.warning(`${duplicates.length} autre(s) compte(s) trouvé(s) pour "${student.firstName} ${student.lastName}". Les versements pourraient être dispersés.`);
+    }
+
     try {
       // Fetch targetStudent Level info for tuition totals
       const studentLevel = levels.find(l => l.id === student.levelId);
@@ -138,15 +145,16 @@ const TuitionManagement: React.FC = () => {
       
       if (scolariteSnap!.exists()) {
         const data = scolariteSnap!.data() as StudentScolarite;
-        // Update stream/level/tuition if changed or inconsistent
-        if (data.filiere !== stream || data.niveau !== levelName || data.montant_total_du !== defaultTuition) {
+        // ONLY update stream/level names, but keep the EXISTING tuition amount unless it is 0
+        if (data.filiere !== stream || data.niveau !== levelName) {
           const updated = { 
             ...data, 
             filiere: stream, 
             niveau: levelName,
-            montant_total_du: defaultTuition,
-            reste: Math.max(0, defaultTuition - data.total_verse),
-            surplus: Math.max(0, data.total_verse - defaultTuition)
+            // Keep existing montant_total_du if it's already set (> 0)
+            montant_total_du: data.montant_total_du || defaultTuition,
+            reste: Math.max(0, (data.montant_total_du || defaultTuition) - data.total_verse),
+            surplus: Math.max(0, data.total_verse - (data.montant_total_du || defaultTuition))
           };
           await updateDoc(doc(db, 'scolarites', student.uid), updated);
           setScolarite(updated);
@@ -222,19 +230,24 @@ const TuitionManagement: React.FC = () => {
 
       // --- DYNAMIC RE-CALCULATION ---
       const totalPaid = vList.reduce((acc, v) => acc + (Number(v.montant) || 0), 0);
+      const existingData = scolariteSnap!.exists() ? scolariteSnap!.data() as StudentScolarite : null;
+      const finalTuition = existingData?.montant_total_du || defaultTuition;
+
       const updatedScolarite = {
-        ...(scolariteSnap!.exists() ? scolariteSnap!.data() as StudentScolarite : {
+        ...(existingData || {
           id: student.uid,
           eleve_id: student.uid,
           matricule: student.matricule,
           nom_eleve: `${student.firstName} ${student.lastName}`,
           classe_id: student.classId || 'N/A',
+          filiere: stream,
+          niveau: levelName,
         }),
-        montant_total_du: defaultTuition,
+        montant_total_du: finalTuition,
         total_verse: totalPaid,
-        reste: Math.max(0, defaultTuition - totalPaid),
-        surplus: Math.max(0, totalPaid - defaultTuition),
-        statut_paiement: totalPaid >= defaultTuition ? 'SOLDÉ' : (totalPaid > 0 ? 'EN COURS' : 'NON PAYÉ')
+        reste: Math.max(0, finalTuition - totalPaid),
+        surplus: Math.max(0, totalPaid - finalTuition),
+        statut_paiement: totalPaid >= finalTuition ? 'SOLDÉ' : (totalPaid > 0 ? 'EN COURS' : 'NON PAYÉ')
       } as StudentScolarite;
 
       setScolarite(updatedScolarite);
@@ -293,6 +306,8 @@ const TuitionManagement: React.FC = () => {
             description: `${paymentCategory.charAt(0).toUpperCase() + paymentCategory.slice(1)} - ${targetStudent.firstName} ${targetStudent.lastName} (${targetStudent.matricule})`,
             category: paymentCategory === 'scolarite' ? 'tuition' : (paymentCategory === 'inscription' ? 'registration' : 'tuition'),
             date: finalDate,
+            accountType: accountType,
+            initiatedBy: initiatedBy,
             status: 'active',
             studentId: targetStudent.uid,
             studentMatricule: targetStudent.matricule
@@ -310,6 +325,8 @@ const TuitionManagement: React.FC = () => {
         montant: amount,
         date: finalDate,
         mode_paiement: paymentMode,
+        accountType: accountType,
+        initiatedBy: initiatedBy,
         categorie: paymentCategory,
         recu_numero: recNumber,
         caissier_id: user?.uid || 'Unknown',
@@ -622,82 +639,112 @@ const TuitionManagement: React.FC = () => {
     }
   };
 
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sidebarSort, setSidebarSort] = useState<'name' | 'matricule' | 'date'>('name');
+
+  const filteredStudentsList = React.useMemo(() => {
+    const filtered = studentsList.filter(s => 
+      s.firstName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      s.lastName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      s.matricule.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    return [...filtered].sort((a, b) => {
+      if (sidebarSort === 'name') {
+        return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`);
+      } else if (sidebarSort === 'matricule') {
+        return a.matricule.localeCompare(b.matricule);
+      } else if (sidebarSort === 'date') {
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      }
+      return 0;
+    });
+  }, [studentsList, searchTerm, sidebarSort]);
+
   return (
-    <div className="space-y-6">
-      <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 shadow-sm">
-        <div className="flex flex-col md:flex-row gap-4 items-end">
-          <div className="flex-1 space-y-2">
-            <label className="text-sm font-bold text-neutral-500 uppercase tracking-wider flex items-center gap-2">
-              <Search size={16} /> Matricule de l'élève
-            </label>
+    <div className="flex flex-col xl:flex-row gap-6 h-[calc(100vh-200px)] overflow-hidden">
+      {/* LEFT SIDEBAR: Navigable Student List */}
+      <div className="xl:w-80 flex flex-col bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-neutral-100 dark:border-neutral-800 space-y-4">
+          <div className="flex justify-between items-center">
+            <h3 className="font-black uppercase text-[10px] flex items-center gap-2">
+              <User size={14} className="text-dia-red" /> Liste des Élèves
+            </h3>
+            <select 
+              value={sidebarSort}
+              onChange={(e) => setSidebarSort(e.target.value as any)}
+              className="text-[10px] font-bold bg-neutral-100 dark:bg-neutral-800 rounded px-2 py-1 outline-none border-none"
+            >
+              <option value="name">A-Z</option>
+              <option value="matricule">N° Matricule</option>
+              <option value="date">Date d'ajout</option>
+            </select>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
             <input 
               type="text"
-              value={matricule}
-              onChange={(e) => setMatricule(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="Ex: S26001"
-              className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border-2 border-neutral-100 dark:border-neutral-700 rounded-xl focus:ring-4 focus:ring-dia-red/10 focus:border-dia-red outline-none transition-all font-black text-xl"
+              placeholder="Rechercher un élève..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-dia-red/20"
             />
           </div>
-          <button 
-            onClick={handleSearch}
-            disabled={loading}
-            className="px-8 py-4 bg-dia-red text-white rounded-xl font-bold hover:bg-red-700 transition-colors shadow-lg shadow-dia-red/20 disabled:opacity-50"
-          >
-            Rechercher
-          </button>
         </div>
-      </div>
-
-      <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 overflow-x-auto">
-        <div className="flex gap-4 min-w-max pb-2">
-          {studentsList.length === 0 ? (
-            <p className="text-xs text-neutral-400 italic">Chargement des élèves...</p>
+        
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {loading && studentsList.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 gap-2 opacity-50">
+               <div className="w-8 h-8 border-2 border-dia-red border-t-transparent rounded-full animate-spin" />
+               <p className="text-xs font-bold">Chargement...</p>
+            </div>
+          ) : filteredStudentsList.length === 0 ? (
+            <div className="text-center py-10 opacity-50">
+               <p className="text-xs italic">Aucun élève trouvé</p>
+            </div>
           ) : (
-            studentsList.slice(0, 15).map(s => (
+            filteredStudentsList.map(s => (
               <button 
                 key={s.uid}
                 onClick={() => selectStudent(s)}
                 className={cn(
-                  "flex flex-col items-center gap-2 p-3 rounded-2xl border transition-all min-w-[100px]",
+                  "w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left",
                   targetStudent?.uid === s.uid 
-                    ? "bg-dia-red/5 border-dia-red text-dia-red" 
-                    : "bg-neutral-50 dark:bg-neutral-800 border-neutral-100 dark:border-neutral-700 hover:border-dia-red/30"
+                    ? "bg-dia-red text-white shadow-lg shadow-dia-red/20" 
+                    : "hover:bg-neutral-50 dark:hover:bg-neutral-800 group"
                 )}
               >
-                <div className="w-10 h-10 bg-neutral-200 dark:bg-neutral-700 rounded-full flex items-center justify-center">
+                <div className={cn(
+                  "w-10 h-10 rounded-full flex items-center justify-center shrink-0",
+                  targetStudent?.uid === s.uid ? "bg-white/20" : "bg-neutral-100 dark:bg-neutral-800 group-hover:bg-white dark:group-hover:bg-neutral-700"
+                )}>
                   <User size={18} />
                 </div>
-                <div className="text-center">
-                  <p className="text-[10px] font-bold truncate max-w-[80px]">{s.firstName}</p>
-                  <p className="text-[8px] opacity-60 mb-1">{s.matricule}</p>
-                  {s.levelId && (
-                    <span className={cn(
-                      "text-[7px] font-black uppercase px-1.5 py-0.5 rounded-full",
-                      levels.find(l => l.id === s.levelId)?.stream === 'Allemand' 
-                        ? "bg-orange-100 text-orange-600" 
-                        : "bg-blue-100 text-blue-600"
-                    )}>
-                      {levels.find(l => l.id === s.levelId)?.stream || 'N/A'}
-                    </span>
-                  )}
+                <div className="min-w-0">
+                  <p className="text-xs font-black truncate">{s.firstName} {s.lastName}</p>
+                  <p className={cn("text-[10px] font-bold", targetStudent?.uid === s.uid ? "text-white/70" : "text-dia-red")}>{s.matricule}</p>
                 </div>
               </button>
             ))
           )}
-          {studentsList.length > 15 && (
-            <div className="flex items-center px-4 text-xs font-bold text-neutral-400">
-              +{studentsList.length - 15} autres...
-            </div>
-          )}
         </div>
       </div>
 
-      {targetStudent && scolarite && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            {/* Level & Target Tuition Setup */}
-            <div className="bg-neutral-50 dark:bg-neutral-800/50 border-2 border-dashed border-neutral-200 dark:border-neutral-700 rounded-2xl p-4 flex flex-wrap items-center gap-4">
+      {/* RIGHT CONTENT AREA */}
+      <div className="flex-1 overflow-y-auto pr-2 space-y-6">
+        {!targetStudent ? (
+          <div className="flex flex-col items-center justify-center h-full bg-white dark:bg-neutral-900 border-2 border-dashed border-neutral-200 dark:border-neutral-800 rounded-3xl p-10 text-center">
+            <div className="w-20 h-20 bg-neutral-100 dark:bg-neutral-800 rounded-full flex items-center justify-center mb-4 text-neutral-400">
+               <Landmark size={40} />
+            </div>
+            <h3 className="text-xl font-black mb-2">Sélectionnez un élève</h3>
+            <p className="text-neutral-500 max-w-sm text-sm">Choisissez un élève dans la liste de gauche pour gérer ses versements, voir son historique ou générer un reçu.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="lg:col-span-2 space-y-6">
+              {/* Level & Target Tuition Setup */}
+              <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 flex flex-wrap items-center gap-4">
               <div className="flex-1 min-w-[200px]">
                 <p className="text-[10px] font-black uppercase text-neutral-400 mb-1">Filière / Niveau Actuel</p>
                 <div className="flex gap-2">
@@ -709,14 +756,11 @@ const TuitionManagement: React.FC = () => {
                       if (level) {
                         try {
                           await updateDoc(doc(db, 'users', targetStudent.uid), { levelId: newLevelId });
-                          const newTotal = level.tuition;
                           const newScolarite = { 
-                            ...scolarite, 
+                            ...scolarite!, 
                             filiere: level.stream || 'N/A',
                             niveau: level.name,
-                            montant_total_du: newTotal,
-                            reste: Math.max(0, newTotal - scolarite.total_verse),
-                            surplus: Math.max(0, scolarite.total_verse - newTotal)
+                            // Keep the same tuition, only update labels
                           };
                           await updateDoc(doc(db, 'scolarites', targetStudent.uid), newScolarite);
                           setScolarite(newScolarite);
@@ -727,7 +771,7 @@ const TuitionManagement: React.FC = () => {
                         }
                       }
                     }}
-                    className="flex-1 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg p-2 text-xs font-bold"
+                    className="flex-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg p-2 text-xs font-bold"
                   >
                     <option value="">Sélectionner un niveau</option>
                     {levels.map(l => (
@@ -749,7 +793,7 @@ const TuitionManagement: React.FC = () => {
                       reste: Math.max(0, newTotal - scolarite.total_verse),
                       surplus: Math.max(0, scolarite.total_verse - newTotal)
                     };
-                    setScolarite(newScolarite); // Instant feedback
+                    setScolarite(newScolarite);
                   }}
                   onBlur={async (e) => {
                     const newTotal = Number(e.target.value);
@@ -760,7 +804,7 @@ const TuitionManagement: React.FC = () => {
                     });
                     toast.success("Montant total mis à jour");
                   }}
-                  className="w-full bg-white dark:bg-neutral-900 border-2 border-dia-red/20 rounded-lg p-2 text-xs font-black text-dia-red"
+                  className="w-full bg-neutral-50 dark:bg-neutral-800 border-2 border-dia-red/20 rounded-lg p-2 text-xs font-black text-dia-red"
                 />
               </div>
             </div>
@@ -810,7 +854,13 @@ const TuitionManagement: React.FC = () => {
                   <label className="text-xs font-bold text-neutral-400 uppercase">Mode de paiement *</label>
                   <select 
                     value={paymentMode}
-                    onChange={(e) => setPaymentMode(e.target.value as any)}
+                    onChange={(e) => {
+                      const mode = e.target.value as Versement['mode_paiement'];
+                      setPaymentMode(mode);
+                      // Default account based on mode
+                      if (mode === 'Espèces') setAccountType('caisse');
+                      else if (mode === 'Virement') setAccountType('banque');
+                    }}
                     className="w-full p-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl font-bold"
                   >
                     <option value="Espèces">Espèces</option>
@@ -818,6 +868,66 @@ const TuitionManagement: React.FC = () => {
                     <option value="Virement">Virement</option>
                     <option value="Autre">Autre</option>
                   </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-neutral-400 uppercase">Compte de destination *</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAccountType('caisse')}
+                      className={cn(
+                        "py-3 px-2 rounded-xl text-[10px] font-black uppercase transition-all border-2 flex items-center justify-center gap-1",
+                        accountType === 'caisse' 
+                          ? "bg-dia-red/10 border-dia-red text-dia-red" 
+                          : "bg-neutral-50 dark:bg-neutral-800 border-neutral-100 dark:border-neutral-700 text-neutral-400"
+                      )}
+                    >
+                      <Landmark size={12} /> Caisse
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAccountType('banque')}
+                      className={cn(
+                        "py-3 px-2 rounded-xl text-[10px] font-black uppercase transition-all border-2 flex items-center justify-center gap-1",
+                        accountType === 'banque' 
+                          ? "bg-blue-50 border-blue-500 text-blue-600" 
+                          : "bg-neutral-50 dark:bg-neutral-800 border-neutral-100 dark:border-neutral-700 text-neutral-400"
+                      )}
+                    >
+                      <CreditCard size={12} /> Banque
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-neutral-400 uppercase">Effectué par *</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setInitiatedBy('student')}
+                      className={cn(
+                        "py-3 px-1 rounded-xl text-[10px] font-black uppercase transition-all border-2",
+                        initiatedBy === 'student' 
+                          ? "bg-dia-red/10 border-dia-red text-dia-red" 
+                          : "bg-neutral-50 dark:bg-neutral-800 border-neutral-100 dark:border-neutral-700 text-neutral-400"
+                      )}
+                    >
+                      L'Élève
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInitiatedBy('secretary')}
+                      className={cn(
+                        "py-3 px-1 rounded-xl text-[10px] font-black uppercase transition-all border-2",
+                        initiatedBy === 'secretary' 
+                          ? "bg-purple-50 border-purple-500 text-purple-600" 
+                          : "bg-neutral-50 dark:bg-neutral-800 border-neutral-100 dark:border-neutral-700 text-neutral-400"
+                      )}
+                    >
+                      Secrétariat
+                    </button>
+                  </div>
                 </div>
               </div>
               <div className="mt-4 space-y-2">
@@ -844,7 +954,7 @@ const TuitionManagement: React.FC = () => {
                 <History size={20} className="text-dia-red" /> Historique des versements
               </h3>
               <div className="space-y-4">
-                {filteredVersements.map((v) => (
+                {versements.map((v) => (
                   <div key={v.id} className="flex flex-col p-4 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-100 dark:border-neutral-700 rounded-xl group hover:border-dia-red/30 transition-colors">
                     <div className="flex items-center justify-between">
                       {editingVersementId === v.id ? (
@@ -978,24 +1088,6 @@ const TuitionManagement: React.FC = () => {
                 </div>
                 <h4 className="font-black text-xl">{targetStudent.firstName} {targetStudent.lastName}</h4>
                 <p className="text-sm text-dia-red font-bold uppercase mb-3">{targetStudent.matricule}</p>
-                
-                {/* YEAR SELECTOR */}
-                <div className="flex items-center gap-2 mb-4 p-1 bg-neutral-100 dark:bg-neutral-800 rounded-lg">
-                  {[2024, 2025, 2026, 2027].map(y => (
-                    <button
-                      key={y}
-                      onClick={() => setSelectedYear(y)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-md text-[10px] font-black transition-all",
-                        selectedYear === y 
-                          ? "bg-dia-red text-white shadow-sm" 
-                          : "text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                      )}
-                    >
-                      {y}
-                    </button>
-                  ))}
-                </div>
 
                 <div className="mt-2 flex flex-col gap-2 items-center">
                   <div className="flex gap-1">
@@ -1012,44 +1104,44 @@ const TuitionManagement: React.FC = () => {
                     </span>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
-                    yearlyTotals?.status === 'SOLDÉ' ? 'bg-green-100 text-green-700' : 
-                    yearlyTotals?.status === 'SURPLUS' ? 'bg-blue-100 text-blue-700' :
+                    cumulativeTotals?.status === 'SOLDÉ' ? 'bg-green-100 text-green-700' : 
+                    cumulativeTotals?.status === 'SURPLUS' ? 'bg-blue-100 text-blue-700' :
                     'bg-orange-100 text-orange-700'
                   }`}>
-                    {yearlyTotals?.status}
+                    {cumulativeTotals?.status}
                   </span>
                 </div>
               </div>
 
               <div className="space-y-4 border-t pt-6 border-neutral-100 dark:border-neutral-800">
                 <div className="flex justify-between items-center text-[10px] font-black text-neutral-400 uppercase tracking-tighter mb-[-8px]">
-                   <span>Scolarité en {selectedYear}</span>
+                   <span>Bilan de Scolarité</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-neutral-500">Total à payer</span>
+                  <span className="text-sm text-neutral-500">Exigible total</span>
                   <span className="font-bold">{formatCurrency(scolarite.montant_total_du)}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-neutral-500">Total versé ({selectedYear})</span>
-                  <span className="font-bold text-green-600">{formatCurrency(yearlyTotals?.totalPaid || 0)}</span>
+                  <span className="text-sm text-neutral-500">Total versé (Cumulé)</span>
+                  <span className="font-bold text-green-600">{formatCurrency(cumulativeTotals?.totalPaid || 0)}</span>
                 </div>
                 <div className="h-px bg-neutral-100 dark:bg-neutral-800 my-2" />
                 <div className="flex justify-between items-center pb-2">
-                  <span className="text-sm font-black uppercase">Reste ({selectedYear})</span>
+                  <span className="text-sm font-black uppercase">Solde Restal</span>
                   <span className={cn(
                     "text-2xl font-black",
-                    (yearlyTotals?.remains || 0) > 0 ? "text-dia-red" : "text-green-600"
+                    (cumulativeTotals?.remains || 0) > 0 ? "text-dia-red" : "text-green-600"
                   )}>
-                    {formatCurrency(yearlyTotals?.remains || 0)}
+                    {formatCurrency(cumulativeTotals?.remains || 0)}
                   </span>
                 </div>
 
-                {(yearlyTotals?.remains || 0) > 0 && (
+                {(cumulativeTotals?.remains || 0) > 0 && (
                   <div className="pt-2 flex flex-col gap-2">
                     <p className="text-[10px] font-bold text-neutral-400 uppercase text-center mb-1">Rappels rapides</p>
                     <button 
                       onClick={() => {
-                        const msg = `📢 *RAPPEL DE PAIEMENT - ${APP_NAME_FOR_LINKS}*\n\nBonjour,\nSauf erreur de notre part, il reste un solde de *${formatCurrency(yearlyTotals?.remains || 0)}* à régler pour la scolarité de ${targetStudent.firstName} ${targetStudent.lastName} en ${selectedYear}.\n\nMerci de passer en caisse ou d'effectuer un virement mobile.\nCordialement.`;
+                        const msg = `📢 *RAPPEL DE PAIEMENT - ${APP_NAME_FOR_LINKS}*\n\nBonjour,\nSauf erreur de notre part, il reste un solde de *${formatCurrency(cumulativeTotals?.remains || 0)}* à régler pour la scolarité de ${targetStudent.firstName} ${targetStudent.lastName}.\n\nMerci de passer en caisse ou d'effectuer un virement mobile.\nCordialement.`;
                         const a = document.createElement('a');
                         a.href = generateWhatsAppLink(targetStudent.parentPhone || targetStudent.phone || '', msg);
                         a.target = '_blank';
@@ -1086,7 +1178,8 @@ const TuitionManagement: React.FC = () => {
         </div>
       )}
     </div>
-  );
+  </div>
+);
 };
 
 export default TuitionManagement;

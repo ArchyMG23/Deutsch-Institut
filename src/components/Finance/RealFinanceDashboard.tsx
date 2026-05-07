@@ -9,7 +9,14 @@ import {
   ArrowDownRight,
   Activity,
   Filter,
-  Clock
+  Clock,
+  Landmark,
+  CreditCard,
+  ArrowRightLeft,
+  Search,
+  Plus,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import { 
   collection, 
@@ -71,10 +78,75 @@ export default function RealFinanceDashboard() {
     history: [] as any[],
     classQuotas: [] as any[],
     sessionDetails: [] as any[],
-    scolarites: [] as any[]
+    scolarites: [] as any[],
+    caisseBalance: 0,
+    banqueBalance: 0,
+    allFinances: [] as any[]
   });
+  const [activeTab, setActiveTab] = useState<'all' | 'caisse' | 'banque'>('all');
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState(2026);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferAmount, setTransferAmount] = useState(0);
+  const [transferNotes, setTransferNotes] = useState('');
+
+  const [sessionSort, setSessionSort] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
+  const [scolaSort, setScolaSort] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'reste', direction: 'desc' });
+  const [financeSort, setFinanceSort] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
+
+  const handleTransfer = async () => {
+    if (transferAmount <= 0) return;
+    if (transferAmount > data.caisseBalance) {
+      alert("Fonds insuffisants en caisse");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const now = new Date().toISOString();
+      
+      // 1. Expense from Cash
+      await fetch('/api/finances', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'expense',
+          amount: transferAmount,
+          description: `Transfert vers Banque: ${transferNotes || 'Dépôt hebdomadaire'}`,
+          category: 'transfer',
+          date: now,
+          accountType: 'caisse',
+          initiatedBy: 'secretary',
+          status: 'active'
+        })
+      });
+
+      // 2. Income to Bank
+      await fetch('/api/finances', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'income',
+          amount: transferAmount,
+          description: `Réception de Caisse: ${transferNotes || 'Dépôt hebdomadaire'}`,
+          category: 'transfer',
+          date: now,
+          accountType: 'banque',
+          initiatedBy: 'secretary',
+          status: 'active'
+        })
+      });
+
+      setShowTransferModal(false);
+      setTransferAmount(0);
+      setTransferNotes('');
+      fetchFinanceStats();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
     const errInfo: FirestoreErrorInfo = {
@@ -303,15 +375,30 @@ export default function RealFinanceDashboard() {
 
       // 4. Aggreger les TRANSACTIONS DU GRAND LIVRE (finances)
       // This includes expenses (incomes already counted in step 2)
+      let caisseBalance = 0;
+      let banqueBalance = 0;
+      const allFinances: any[] = [];
+
       if (financesSnap) {
         financesSnap.forEach(doc => {
-          const f = doc.data();
+          const f = { id: doc.id, ...doc.data() } as any;
           if (!f || !f.date) return;
           
+          allFinances.push(f);
           const date = new Date(f.date);
+          const amount = Number(f.amount || 0);
+          const isIncome = f.type === 'income';
+          const accType = f.accountType || 'caisse';
+
+          // Update balances regardless of year filter (cumulative)
+          if (accType === 'banque') {
+            banqueBalance += isIncome ? amount : -amount;
+          } else {
+            caisseBalance += isIncome ? amount : -amount;
+          }
+
           if (!isNaN(date.getTime()) && date.getFullYear() === selectedYear) {
             const mKey = date.getMonth();
-            const amount = Number(f.amount || 0);
   
             if (f.type === 'expense') {
               totalChargesFixes += amount;
@@ -331,6 +418,8 @@ export default function RealFinanceDashboard() {
       
       const allVersementsSnap = await getDocs(collectionGroup(db, 'versements'));
       const versementsByStudent: Record<string, number> = {};
+      
+      // 5a. Aggregate from scolarites subcollections
       allVersementsSnap.forEach(vDoc => {
         const v = vDoc.data();
         const vDate = new Date(v.date || v.recu_genere_at);
@@ -342,9 +431,27 @@ export default function RealFinanceDashboard() {
         }
       });
 
+      // 5b. CROSS-SYNC: Also aggregate from general finances (the "confirmed" list)
+      const financesByStudent: Record<string, number> = {};
+      if (financesSnap) {
+        financesSnap.forEach(doc => {
+          const f = doc.data();
+          if (f.type !== 'income' || !f.studentId) return;
+          const fDate = new Date(f.date || f.createdAt);
+          if (fDate.getFullYear() === selectedYear) {
+             financesByStudent[f.studentId] = (financesByStudent[f.studentId] || 0) + (Number(f.amount) || 0);
+          }
+        });
+      }
+
       const scolarites = scolariteFinalSnap?.docs.map(d => {
         const s = d.data();
-        const yearlyPaid = versementsByStudent[d.id] || 0;
+        const subCollectionPaid = versementsByStudent[d.id] || 0;
+        const financeReportedPaid = financesByStudent[d.id] || 0;
+        
+        // Use the maximum of both to ensure we don't miss confirmed payments
+        const yearlyPaid = Math.max(subCollectionPaid, financeReportedPaid);
+        
         const totalDue = s.montant_total_du || 0;
         const reste = Math.max(0, totalDue - yearlyPaid);
         
@@ -376,7 +483,10 @@ export default function RealFinanceDashboard() {
         history: history || [],
         classQuotas: classQuotas || [],
         sessionDetails: sessionDetails || [],
-        scolarites: scolarites || []
+        scolarites: scolarites || [],
+        caisseBalance,
+        banqueBalance,
+        allFinances: allFinances.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       });
     } catch (err) {
       console.error("Erreur Dashboard Financier (Détails):", err);
@@ -392,6 +502,11 @@ export default function RealFinanceDashboard() {
   const totalCharges = data.chargesFixes + data.chargesSalariales;
   const resultatNet = data.revenus - totalCharges;
 
+  const SortIcon = ({ currentSort, column }: { currentSort: { key: string, direction: 'asc' | 'desc' }, column: string }) => {
+    if (currentSort.key !== column) return <ArrowRightLeft size={10} className="rotate-90 opacity-20" />;
+    return currentSort.direction === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />;
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -399,6 +514,65 @@ export default function RealFinanceDashboard() {
       </div>
     );
   }
+
+  const filteredFinances = data.allFinances.filter(f => {
+    if (activeTab === 'all') return true;
+    return (f.accountType || 'caisse') === activeTab;
+  });
+
+  const sortedSessions = React.useMemo(() => {
+    return [...(data.sessionDetails || [])].sort((a, b) => {
+      const { key, direction } = sessionSort;
+      let aVal = a[key];
+      let bVal = b[key];
+      if (key === 'date') {
+        aVal = new Date(aVal || 0).getTime();
+        bVal = new Date(bVal || 0).getTime();
+      }
+      if (aVal < bVal) return direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [data.sessionDetails, sessionSort]);
+
+  const sortedScolarites = React.useMemo(() => {
+    return [...(data.scolarites || [])].sort((a, b) => {
+      const { key, direction } = scolaSort;
+      let aVal = a[key];
+      let bVal = b[key];
+      if (key === 'reste' || key === 'total_verse' || key === 'montant_total_du') {
+        aVal = Number(aVal || 0);
+        bVal = Number(bVal || 0);
+      } else {
+        aVal = String(aVal || '').toLowerCase();
+        bVal = String(bVal || '').toLowerCase();
+      }
+      if (aVal < bVal) return direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [data.scolarites, scolaSort]);
+
+  const sortedFilteredFinances = React.useMemo(() => {
+    return [...filteredFinances].sort((a, b) => {
+      const { key, direction } = financeSort;
+      let aVal = a[key];
+      let bVal = b[key];
+      if (key === 'date') {
+        aVal = new Date(aVal || 0).getTime();
+        bVal = new Date(bVal || 0).getTime();
+      } else if (key === 'amount') {
+        aVal = Number(aVal || 0);
+        bVal = Number(bVal || 0);
+      } else {
+        aVal = String(aVal || '').toLowerCase();
+        bVal = String(bVal || '').toLowerCase();
+      }
+      if (aVal < bVal) return direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredFinances, financeSort]);
 
   return (
     <div className="space-y-6">
@@ -411,7 +585,7 @@ export default function RealFinanceDashboard() {
           onChange={(e) => setSelectedYear(Number(e.target.value))}
           className="bg-neutral-100 dark:bg-neutral-800 px-4 py-2 rounded-xl text-sm font-bold outline-none"
         >
-          {[2023, 2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+          {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
         </select>
         <button onClick={fetchFinanceStats} className="ml-auto p-2 bg-dia-red/5 text-dia-red rounded-lg hover:bg-dia-red/10">
           <Activity size={18} />
@@ -431,8 +605,69 @@ export default function RealFinanceDashboard() {
         </button>
       </div>
 
-      {/* Main Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="card p-6 border-l-4 border-l-dia-red bg-dia-red/5">
+          <div className="flex justify-between items-center mb-2">
+            <div className="p-2 bg-dia-red text-white rounded-lg">
+              <Landmark size={24} />
+            </div>
+            <button 
+              onClick={() => setShowTransferModal(true)}
+              className="flex items-center gap-1 px-3 py-1 bg-white text-dia-red rounded-lg text-[10px] font-black uppercase shadow-sm border border-dia-red/20"
+            >
+              <ArrowRightLeft size={14} /> Vider la Caisse
+            </button>
+          </div>
+          <h4 className="text-3xl font-black">{formatCurrency(data.caisseBalance)}</h4>
+          <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mt-1">Solde Actuel - Caisse</p>
+        </div>
+
+        <div className="card p-6 border-l-4 border-l-blue-500 bg-blue-50/10">
+          <div className="flex justify-between items-center mb-2">
+            <div className="p-2 bg-blue-500 text-white rounded-lg">
+              <CreditCard size={24} />
+            </div>
+          </div>
+          <h4 className="text-3xl font-black text-blue-600">{formatCurrency(data.banqueBalance)}</h4>
+          <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mt-1">Solde Actuel - Banque</p>
+        </div>
+      </div>
+
+      {/* Account Tabs */}
+      <div className="flex p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl w-fit">
+        <button 
+          onClick={() => setActiveTab('all')}
+          className={cn(
+            "px-6 py-2 rounded-lg text-xs font-black uppercase transition-all",
+            activeTab === 'all' ? "bg-white dark:bg-neutral-900 text-dia-red shadow-sm" : "text-neutral-400"
+          )}
+        >
+          Vue d'ensemble
+        </button>
+        <button 
+          onClick={() => setActiveTab('caisse')}
+          className={cn(
+            "px-6 py-2 rounded-lg text-xs font-black uppercase transition-all",
+            activeTab === 'caisse' ? "bg-white dark:bg-neutral-900 text-dia-red shadow-sm" : "text-neutral-400"
+          )}
+        >
+          Comptabilité Caisse
+        </button>
+        <button 
+          onClick={() => setActiveTab('banque')}
+          className={cn(
+            "px-6 py-2 rounded-lg text-xs font-black uppercase transition-all",
+            activeTab === 'banque' ? "bg-white dark:bg-neutral-900 text-blue-600 shadow-sm" : "text-neutral-400"
+          )}
+        >
+          Comptabilité Banque
+        </button>
+      </div>
+
+      {activeTab === 'all' ? (
+        <>
+          {/* Main Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="card p-6 border-l-4 border-l-green-500">
           <div className="flex justify-between items-start mb-2">
             <div className="p-2 bg-green-50 rounded-lg text-green-600">
@@ -606,20 +841,24 @@ export default function RealFinanceDashboard() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="bg-neutral-50 dark:bg-neutral-800/50 border-b border-neutral-200 dark:border-neutral-800">
-                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500">Date / Enseignant</th>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 cursor-pointer hover:text-dia-red transition-all" onClick={() => setSessionSort(p => ({ key: 'date', direction: p.key === 'date' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
+                  <div className="flex items-center gap-1">Date / Enseignant <SortIcon currentSort={sessionSort} column="date" /></div>
+                </th>
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500">Séance / Présents</th>
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-center">Durée</th>
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-center">Taux / Min.</th>
-                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-right">Salaire</th>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-right cursor-pointer hover:text-dia-red transition-all" onClick={() => setSessionSort(p => ({ key: 'salaire', direction: p.key === 'salaire' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
+                   <div className="flex items-center justify-end gap-1">Salaire <SortIcon currentSort={sessionSort} column="salaire" /></div>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-              {data.sessionDetails?.length === 0 ? (
+              {sortedSessions.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-6 py-10 text-center text-neutral-500 italic">Aucune séance soumise ce mois.</td>
                 </tr>
               ) : (
-                data.sessionDetails?.map((s: any, idx: number) => (
+                sortedSessions.map((s: any, idx: number) => (
                   <tr key={idx} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition-colors">
                     <td className="px-6 py-4">
                       <p className="font-bold">{s.date ? new Date(s.date).toLocaleDateString() : 'N/A'}</p>
@@ -678,20 +917,30 @@ export default function RealFinanceDashboard() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="bg-neutral-50 dark:bg-neutral-800/50 border-b border-neutral-200 dark:border-neutral-800">
-                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500">Élève</th>
-                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500">Statut</th>
-                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-right">Total Dû</th>
-                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-right">Versé</th>
-                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-right text-dia-red">Reste</th>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 cursor-pointer hover:text-dia-red transition-all" onClick={() => setScolaSort(p => ({ key: 'nom_eleve', direction: p.key === 'nom_eleve' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
+                  <div className="flex items-center gap-1">Élève <SortIcon currentSort={scolaSort} column="nom_eleve" /></div>
+                </th>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 cursor-pointer hover:text-dia-red transition-all" onClick={() => setScolaSort(p => ({ key: 'statut_paiement', direction: p.key === 'statut_paiement' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
+                  <div className="flex items-center gap-1">Statut <SortIcon currentSort={scolaSort} column="statut_paiement" /></div>
+                </th>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-right cursor-pointer hover:text-dia-red transition-all" onClick={() => setScolaSort(p => ({ key: 'montant_total_du', direction: p.key === 'montant_total_du' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
+                  <div className="flex items-center justify-end gap-1">Total Dû <SortIcon currentSort={scolaSort} column="montant_total_du" /></div>
+                </th>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-right cursor-pointer hover:text-dia-red transition-all" onClick={() => setScolaSort(p => ({ key: 'total_verse', direction: p.key === 'total_verse' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
+                  <div className="flex items-center justify-end gap-1">Versé <SortIcon currentSort={scolaSort} column="total_verse" /></div>
+                </th>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-right text-dia-red cursor-pointer hover:text-dia-red transition-all" onClick={() => setScolaSort(p => ({ key: 'reste', direction: p.key === 'reste' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
+                  <div className="flex items-center justify-end gap-1">Reste <SortIcon currentSort={scolaSort} column="reste" /></div>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-              {(!data.scolarites || data.scolarites.length === 0) ? (
+              {sortedScolarites.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-6 py-10 text-center text-neutral-500 italic">Aucune donnée de scolarité trouvée.</td>
                 </tr>
               ) : (
-                [...data.scolarites].sort((a,b) => (b.reste || 0) - (a.reste || 0)).map((s: any, idx: number) => (
+                sortedScolarites.map((s: any, idx: number) => (
                   <tr key={idx} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition-colors">
                     <td className="px-6 py-4">
                       <p className="font-bold uppercase text-xs">{s.nom_eleve}</p>
@@ -717,6 +966,147 @@ export default function RealFinanceDashboard() {
           </table>
         </div>
       </div>
+        </>
+      ) : (
+        <div className="card overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-700">
+          <div className={cn(
+            "p-6 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between",
+            activeTab === 'caisse' ? "bg-dia-red/5" : "bg-blue-50/20"
+          )}>
+            <h5 className={cn("font-black uppercase text-sm flex items-center gap-2", activeTab === 'caisse' ? "text-dia-red" : "text-blue-600")}>
+              {activeTab === 'caisse' ? <Landmark size={18} /> : <CreditCard size={18} />}
+              Comptabilité : {activeTab === 'caisse' ? 'Caisse (Espèces)' : 'Banque (Virements)'}
+            </h5>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black p-2 bg-white dark:bg-neutral-900 rounded-lg shadow-sm border border-neutral-200 dark:border-neutral-700">
+                Solde : {formatCurrency(activeTab === 'caisse' ? data.caisseBalance : data.banqueBalance)}
+              </span>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="bg-neutral-50 dark:bg-neutral-800/50 border-b border-neutral-200 dark:border-neutral-800">
+                  <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 cursor-pointer hover:text-dia-red transition-all" onClick={() => setFinanceSort(p => ({ key: 'date', direction: p.key === 'date' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
+                    <div className="flex items-center gap-1">Date <SortIcon currentSort={financeSort} column="date" /></div>
+                  </th>
+                  <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 cursor-pointer hover:text-dia-red transition-all" onClick={() => setFinanceSort(p => ({ key: 'initiatedBy', direction: p.key === 'initiatedBy' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
+                    <div className="flex items-center gap-1">Initiateur <SortIcon currentSort={financeSort} column="initiatedBy" /></div>
+                  </th>
+                  <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 cursor-pointer hover:text-dia-red transition-all" onClick={() => setFinanceSort(p => ({ key: 'description', direction: p.key === 'description' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
+                    <div className="flex items-center gap-1">Description <SortIcon currentSort={financeSort} column="description" /></div>
+                  </th>
+                  <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-center cursor-pointer hover:text-dia-red transition-all" onClick={() => setFinanceSort(p => ({ key: 'category', direction: p.key === 'category' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
+                    <div className="flex items-center justify-center gap-1">Catégorie <SortIcon currentSort={financeSort} column="category" /></div>
+                  </th>
+                  <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-right cursor-pointer hover:text-dia-red transition-all" onClick={() => setFinanceSort(p => ({ key: 'amount', direction: p.key === 'amount' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
+                    <div className="flex items-center justify-end gap-1">Montant <SortIcon currentSort={financeSort} column="amount" /></div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                {sortedFilteredFinances.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-10 text-center text-neutral-500 italic">Aucune opération trouvée pour ce compte.</td>
+                  </tr>
+                ) : (
+                  sortedFilteredFinances.map((f: any) => (
+                    <tr key={f.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition-colors">
+                      <td className="px-6 py-4 font-mono text-xs">{new Date(f.date).toLocaleDateString()}</td>
+                      <td className="px-6 py-4">
+                        <span className={cn(
+                          "text-[9px] font-black uppercase px-2 py-0.5 rounded-full",
+                          f.initiatedBy === 'secretary' ? "bg-purple-100 text-purple-700" :
+                          f.initiatedBy === 'student' ? "bg-dia-red/10 text-dia-red" : "bg-neutral-100 text-neutral-500"
+                        )}>
+                          {f.initiatedBy === 'secretary' ? 'Secrétariat' : f.initiatedBy === 'student' ? 'Élève' : (f.initiatedBy || 'Système')}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="font-bold text-xs">{f.description}</p>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <span className="text-[10px] bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-md font-bold text-neutral-500 uppercase">{f.category}</span>
+                      </td>
+                      <td className={cn(
+                        "px-6 py-4 text-right font-black",
+                        f.type === 'income' ? "text-green-600" : "text-dia-red"
+                      )}>
+                        {f.type === 'income' ? '+' : '-'}{formatCurrency(f.amount)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Transfer Modal */}
+      {showTransferModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="bg-white dark:bg-neutral-900 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl"
+          >
+            <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 bg-dia-red text-white">
+              <h3 className="text-xl font-black uppercase flex items-center gap-2">
+                <ArrowRightLeft size={24} /> Vider la Caisse
+              </h3>
+              <p className="text-white/70 text-xs mt-1 font-bold">Transfert des espèces vers le compte bancaire</p>
+            </div>
+            
+            <div className="p-8 space-y-6">
+              <div className="bg-dia-red/5 p-4 rounded-2xl border border-dia-red/10">
+                <p className="text-[10px] font-black text-dia-red uppercase mb-1">Disponible en Caisse</p>
+                <p className="text-2xl font-black">{formatCurrency(data.caisseBalance)}</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-neutral-400 uppercase">Montant à transférer (Dépôt)</label>
+                <div className="relative">
+                   <input 
+                    type="number"
+                    value={transferAmount}
+                    onChange={(e) => setTransferAmount(Number(e.target.value))}
+                    placeholder="0"
+                    className="w-full p-4 bg-neutral-50 dark:bg-neutral-800 border-2 border-neutral-100 dark:border-neutral-800 rounded-2xl text-2xl font-black focus:border-dia-red outline-none transition-all"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 font-black text-neutral-400">FCFA</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-neutral-400 uppercase">Notes / Référence du dépôt</label>
+                <textarea 
+                  value={transferNotes}
+                  onChange={(e) => setTransferNotes(e.target.value)}
+                  placeholder="Ex: Versement hebdomadaire ECOBANK..."
+                  className="w-full p-4 bg-neutral-50 dark:bg-neutral-800 border-2 border-neutral-100 dark:border-neutral-800 rounded-2xl text-sm font-bold min-h-[100px] outline-none"
+                />
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button 
+                  onClick={() => setShowTransferModal(false)}
+                  className="flex-1 py-4 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 rounded-2xl text-xs font-black uppercase hover:bg-neutral-200 transition-colors"
+                >
+                  Annuler
+                </button>
+                <button 
+                  onClick={handleTransfer}
+                  disabled={loading || transferAmount <= 0}
+                  className="flex-1 py-4 bg-dia-red text-white rounded-2xl text-xs font-black uppercase shadow-lg shadow-dia-red/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
+                >
+                  Confirmé le Dépôt
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

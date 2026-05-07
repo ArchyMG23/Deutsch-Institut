@@ -68,7 +68,8 @@ export default function ClassManagement() {
       studentIds: [],
       currentSubLevel: 1,
       schedule: [],
-      exams: []
+      exams: [],
+      createdAt: new Date().toISOString()
     };
 
     try {
@@ -336,6 +337,9 @@ export default function ClassManagement() {
     } else if (key === 'students') {
       aValue = students.filter(s => s.classId === a.id && !s.isFormer).length;
       bValue = students.filter(s => s.classId === b.id && !s.isFormer).length;
+    } else if (key === 'createdAt') {
+      aValue = a.createdAt || '';
+      bValue = b.createdAt || '';
     } else {
       aValue = (a as any)[key];
       bValue = (b as any)[key];
@@ -388,6 +392,7 @@ export default function ClassManagement() {
             <option value="name">{t('common.name')}</option>
             <option value="level">{t('classes.level')}</option>
             <option value="students">{t('classes.students_count')}</option>
+            <option value="createdAt">{t('common.date') || 'Date'}</option>
           </select>
           <button 
             onClick={() => handleSort(sortConfig?.key || 'name')}

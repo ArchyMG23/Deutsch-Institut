@@ -96,6 +96,8 @@ export interface FinanceRecord {
   description: string;
   category: string;
   date: string;
+  accountType?: 'caisse' | 'banque';
+  initiatedBy?: 'student' | 'secretary' | 'system' | 'enseignant';
   deletedAt?: string;
   deletedBy?: string;
   deletionReason?: string;
@@ -184,7 +186,7 @@ export interface StudentScolarite {
   total_verse: number;
   reste: number;
   surplus: number;
-  statut_paiement: 'EN COURS' | 'SOLDÉ' | 'SURPLUS';
+  statut_paiement: 'NON PAYÉ' | 'IMPAYÉ' | 'EN COURS' | 'SOLDÉ' | 'SURPLUS';
 }
 
 export interface Versement {
@@ -192,6 +194,8 @@ export interface Versement {
   montant: number;
   date: string;
   mode_paiement: 'Espèces' | 'Mobile Money' | 'Virement' | 'Autre';
+  accountType?: 'caisse' | 'banque';
+  initiatedBy?: 'student' | 'secretary';
   recu_numero: string;
   caissier_id: string;
   categorie?: 'scolarite' | 'inscription' | 'autre';

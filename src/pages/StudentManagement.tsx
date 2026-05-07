@@ -153,9 +153,31 @@ export default function StudentManagement() {
   const handleAddStudent = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (submitting) return;
+
+    const formData = new FormData(e.currentTarget);
+    const firstName = (formData.get('firstName') as string).trim();
+    const lastName = (formData.get('lastName') as string).trim();
+
+    // STRICT DUPLICATE CHECK: Check if student already exists
+    const duplicate = students.find(s => 
+      s.firstName.toLowerCase() === firstName.toLowerCase() && 
+      s.lastName.toLowerCase() === lastName.toLowerCase() &&
+      !s.isFormer
+    );
+
+    if (duplicate) {
+      if (!window.confirm(`Un étudiant nommé "${firstName} ${lastName}" existe déjà dans le système.\n\nSouhaitez-vous plutôt mettre à jour ses informations et être redirigé vers sa gestion ?`)) {
+        return;
+      }
+      // If user confirms, we "merge" or rather treat this as an edit/view
+      setSelectedStudent(duplicate);
+      setIsAddModalOpen(false);
+      setIsDetailModalOpen(true);
+      return;
+    }
+
     setSubmitting(true);
     
-    const formData = new FormData(e.currentTarget);
     const matricule = generateMatricule('student');
     const password = formData.get('password') as string || 'DIA2026.';
     
@@ -618,6 +640,22 @@ export default function StudentManagement() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none z-10" size={18} />
           </div>
           <div className="flex gap-2">
+            <select 
+              className="px-4 py-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg text-sm font-bold outline-none border-none focus:ring-2 focus:ring-dia-red appearance-none cursor-pointer"
+              value={sortConfig?.key ? `${sortConfig.key}-${sortConfig.direction}` : ''}
+              onChange={(e) => {
+                const [key, direction] = e.target.value.split('-');
+                setSortConfig({ key, direction: direction as 'asc' | 'desc' });
+              }}
+            >
+              <option value="">{t('common.sort_by') || 'Trier par'}</option>
+              <option value="name-asc">A-Z</option>
+              <option value="name-desc">Z-A</option>
+              <option value="createdAt-desc">{t('common.newest') || 'Plus récent'}</option>
+              <option value="createdAt-asc">{t('common.oldest') || 'Plus ancien'}</option>
+              <option value="tuition-desc">{t('students.most_paid') || 'Plus payé'}</option>
+              <option value="tuition-asc">{t('students.least_paid') || 'Moins payé'}</option>
+            </select>
             <button 
               onClick={exportToCSV}
               className="flex items-center gap-2 px-4 py-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg text-sm font-medium hover:bg-neutral-200 transition-colors"
@@ -677,6 +715,14 @@ export default function StudentManagement() {
                       {t('sidebar.finances')} <SortIcon column="tuition" />
                     </div>
                   </th>
+                  <th 
+                    className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 cursor-pointer hover:text-dia-red transition-colors"
+                    onClick={() => handleSort('createdAt')}
+                  >
+                    <div className="flex items-center gap-1">
+                      {t('common.date') || 'Date'} <SortIcon column="createdAt" />
+                    </div>
+                  </th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-neutral-500 text-right">{t('common.actions')}</th>
                 </tr>
               </thead>
@@ -726,6 +772,9 @@ export default function StudentManagement() {
                             />
                           </div>
                         </div>
+                      </td>
+                      <td className="px-6 py-4 text-xs font-medium text-neutral-500">
+                        {student.createdAt ? new Date(student.createdAt).toLocaleDateString() : 'N/A'}
                       </td>
                       <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-2">

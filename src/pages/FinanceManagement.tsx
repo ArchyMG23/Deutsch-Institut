@@ -215,7 +215,17 @@ const TransactionTable = React.memo(({
 
 export default function FinanceManagement() {
   const { t, i18n } = useTranslation();
-  const { finances: allRecords, trashFinances, refreshFinances, refreshTrash, levels, classes, refreshAll } = useData();
+  const { 
+    students, 
+    finances: allRecords, 
+    trashFinances, 
+    refreshFinances, 
+    refreshStudents, 
+    refreshTrash, 
+    levels, 
+    classes, 
+    refreshAll 
+  } = useData();
   const { user, profile, fetchWithAuth } = useAuth();
   
   const isSuperAdmin = 
@@ -274,7 +284,7 @@ export default function FinanceManagement() {
   const [deletionReason, setDeletionReason] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
+  const [selectedYear, setSelectedYear] = useState("2026");
   const [selectedMonth, setSelectedMonth] = useState('all');
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>({ key: 'date', direction: 'desc' });
   const [submitting, setSubmitting] = useState(false);
@@ -325,22 +335,32 @@ export default function FinanceManagement() {
     const descAttr = formData.get('description') as string;
     const selectedDateStr = formData.get('date') as string;
     const selectedDate = selectedDateStr ? new Date(selectedDateStr) : new Date();
-    
+
     // Auto-archival logic: if year is less than current year
     const currentYear = new Date().getFullYear();
     const isArchived = selectedDate.getFullYear() < currentYear;
 
     const isStudentRelated = formType === 'income' && (formCategory === 'tuition' || formCategory === 'registration' || formCategory === 'other');
 
+    // Handle student identification if not already verified but related
+    let target = verifiedStudent;
+    if (!target && isStudentRelated && formMatricule) {
+       // Try to find student by matricule one last time
+       const s = students.find(s => s.matricule.toLowerCase() === formMatricule.trim().toLowerCase());
+       if (s) target = s;
+    }
+
     const newRecord = {
       type: formType,
       amount: amountAttr,
-      description: isStudentRelated && verifiedStudent 
-        ? `${formCategory.charAt(0).toUpperCase() + formCategory.slice(1)} - ${verifiedStudent.firstName} ${verifiedStudent.lastName} (${verifiedStudent.matricule})`
+      description: isStudentRelated && target 
+        ? `${formCategory.charAt(0).toUpperCase() + formCategory.slice(1)} - ${target.firstName} ${target.lastName} (${target.matricule})`
         : descAttr,
       category: formCategory,
       date: selectedDate.toISOString(),
-      status: isArchived ? 'archived' : 'active'
+      status: isArchived ? 'archived' : 'active',
+      studentId: target?.uid,
+      studentMatricule: target?.matricule
     };
 
     try {
@@ -353,22 +373,22 @@ export default function FinanceManagement() {
 
       if (res.ok) {
         // 2. If Student Related, also update Student Tuition record in Firestore
-        if (isStudentRelated && verifiedStudent) {
-          const scolariteRef = doc(db, 'scolarites', verifiedStudent.uid);
+        if (isStudentRelated && target) {
+          const scolariteRef = doc(db, 'scolarites', target.uid);
           const scolariteSnap = await getDoc(scolariteRef);
           
           let currentScola: StudentScolarite;
           if (scolariteSnap.exists()) {
             currentScola = scolariteSnap.data() as StudentScolarite;
           } else {
-            const studentLevel = levels.find(l => l.id === verifiedStudent.levelId);
+            const studentLevel = levels.find(l => l.id === target.levelId);
             const tuitionAmount = studentLevel?.tuition || 110000;
             currentScola = {
-              id: verifiedStudent.uid,
-              eleve_id: verifiedStudent.uid,
-              matricule: verifiedStudent.matricule,
-              nom_eleve: `${verifiedStudent.firstName} ${verifiedStudent.lastName}`,
-              classe_id: verifiedStudent.classId || 'N/A',
+              id: target.uid,
+              eleve_id: target.uid,
+              matricule: target.matricule,
+              nom_eleve: `${target.firstName} ${target.lastName}`,
+              classe_id: target.classId || 'N/A',
               filiere: studentLevel?.stream || 'N/A',
               niveau: studentLevel?.name || 'N/A',
               montant_total_du: tuitionAmount,
@@ -542,9 +562,33 @@ export default function FinanceManagement() {
   const handleQuickInscription = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (submitting) return;
-    setSubmitting(true);
     
     const formData = new FormData(e.currentTarget);
+    const firstName = (formData.get('firstName') as string).trim();
+    const lastName = (formData.get('lastName') as string).trim();
+
+    // STRICT DUPLICATE CHECK
+    const duplicate = students.find(s => 
+      s.firstName.toLowerCase() === firstName.toLowerCase() && 
+      s.lastName.toLowerCase() === lastName.toLowerCase() &&
+      !s.isFormer
+    );
+
+    if (duplicate) {
+      if (!window.confirm(`L'étudiant "${firstName} ${lastName}" existe déjà.\n\nSouhaitez-vous plutôt lui ajouter un versement ?`)) {
+         return;
+      }
+      // REDIRECT TO ADD PAYMENT FOR THIS STUDENT
+      setIsQuickAddModalOpen(false);
+      setFormType('income');
+      setFormCategory('tuition');
+      setFormMatricule(duplicate.matricule);
+      setVerifiedStudent(duplicate);
+      setIsAddModalOpen(true);
+      return;
+    }
+
+    setSubmitting(true);
     const matricule = generateMatricule('student');
     const role = 'student';
     let email = formData.get('email') as string;
@@ -672,10 +716,7 @@ export default function FinanceManagement() {
           <div className="flex items-center gap-2">
             <Calendar size={18} className="text-neutral-400" />
             <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="bg-transparent font-bold outline-none">
-              {Array.from({ length: 5 }).map((_, i) => {
-                const year = new Date().getFullYear() - 2 + i;
-                return <option key={year} value={year}>{year}</option>;
-              })}
+              {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y.toString()}>{y}</option>)}
             </select>
             <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="bg-transparent font-bold outline-none">
               <option value="all">Tous les mois</option>

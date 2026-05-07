@@ -8,7 +8,10 @@ import {
   Zap, 
   ShoppingBag,
   Search,
-  Calendar
+  Calendar,
+  ArrowUpDown,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import { 
   collection, 
@@ -31,8 +34,9 @@ export default function ChargeManagement() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
+  const [selectedYear, setSelectedYear] = useState("2026");
   const [selectedMonth, setSelectedMonth] = useState('all');
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
 
   const fetchCharges = async () => {
     setLoading(true);
@@ -84,7 +88,7 @@ export default function ChargeManagement() {
     }
   };
 
-  const filteredCharges = charges.filter(c => {
+  const filteredByDateAndSearch = charges.filter(c => {
     const d = new Date(c.date);
     const yearMatch = d.getFullYear().toString() === selectedYear;
     const monthMatch = selectedMonth === 'all' || d.getMonth().toString() === selectedMonth;
@@ -93,6 +97,32 @@ export default function ChargeManagement() {
     return yearMatch && monthMatch && searchMatch;
   });
 
+  const sortedCharges = React.useMemo(() => {
+    return [...filteredByDateAndSearch].sort((a, b) => {
+      const { key, direction } = sortConfig;
+      let aVal = a[key as keyof Charge];
+      let bVal = b[key as keyof Charge];
+
+      if (key === 'montant') {
+        return direction === 'asc' ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+      }
+
+      const aStr = String(aVal || '').toLowerCase();
+      const bStr = String(bVal || '').toLowerCase();
+
+      if (aStr < bStr) return direction === 'asc' ? -1 : 1;
+      if (aStr > bStr) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredByDateAndSearch, sortConfig]);
+
+  const handleSort = (key: string) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc'
+    }));
+  };
+
   const getCategoryIcon = (cat: string) => {
     switch (cat) {
       case 'loyer': return <Home size={18} />;
@@ -100,6 +130,11 @@ export default function ChargeManagement() {
       case 'electricite': return <Zap size={18} />;
       default: return <ShoppingBag size={18} />;
     }
+  };
+
+  const SortIcon = ({ column }: { column: string }) => {
+    if (sortConfig.key !== column) return <ArrowUpDown size={12} className="opacity-20" />;
+    return sortConfig.direction === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />;
   };
 
   return (
@@ -117,8 +152,8 @@ export default function ChargeManagement() {
         </div>
         <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800">
           <Calendar size={18} className="text-dia-red" />
-          <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="bg-transparent text-sm font-bold outline-none">
-            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+          <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="bg-transparent text-sm font-bold outline-none cursor-not-allowed" disabled>
+            <option value="2026">2026</option>
           </select>
           <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="bg-transparent text-sm font-bold outline-none">
             <option value="all">Tous les mois</option>
@@ -137,15 +172,23 @@ export default function ChargeManagement() {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-neutral-50 dark:bg-neutral-800/50 border-b border-neutral-100 dark:border-neutral-800">
-              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-neutral-500">Date</th>
-              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-neutral-500">Libellé</th>
-              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-neutral-500">Catégorie</th>
-              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-neutral-500 text-right">Montant</th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-neutral-500 cursor-pointer hover:text-dia-red transition-colors" onClick={() => handleSort('date')}>
+                <div className="flex items-center gap-1">Date <SortIcon column="date" /></div>
+              </th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-neutral-500 cursor-pointer hover:text-dia-red transition-colors" onClick={() => handleSort('libelle')}>
+                <div className="flex items-center gap-1">Libellé <SortIcon column="libelle" /></div>
+              </th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-neutral-500 cursor-pointer hover:text-dia-red transition-colors" onClick={() => handleSort('categorie')}>
+                <div className="flex items-center gap-1">Catégorie <SortIcon column="categorie" /></div>
+              </th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-neutral-500 text-right cursor-pointer hover:text-dia-red transition-colors" onClick={() => handleSort('montant')}>
+                <div className="flex items-center justify-end gap-1">Montant <SortIcon column="montant" /></div>
+              </th>
               <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-neutral-500 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
-            {filteredCharges.map((charge) => (
+            {sortedCharges.map((charge) => (
               <tr key={charge.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
                 <td className="px-6 py-4 text-sm font-medium">{new Date(charge.date).toLocaleDateString()}</td>
                 <td className="px-6 py-4">
@@ -170,7 +213,7 @@ export default function ChargeManagement() {
                 </td>
               </tr>
             ))}
-            {filteredCharges.length === 0 && !loading && (
+            {sortedCharges.length === 0 && !loading && (
               <tr>
                 <td colSpan={5} className="px-6 py-12 text-center text-neutral-400 font-medium italic">
                   Aucune charge enregistrée
