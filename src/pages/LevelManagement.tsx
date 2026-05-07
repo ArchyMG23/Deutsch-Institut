@@ -39,11 +39,15 @@ export default function LevelManagement() {
     
     const formData = new FormData(e.currentTarget);
     
+    const typeValue = formData.get('type') as string;
+    const streamValue = typeValue.charAt(0).toUpperCase() + typeValue.slice(1);
+    
     const newLevel = {
       name: formData.get('name'),
       tuition: Number(formData.get('tuition')),
       hours: Number(formData.get('hours')),
-      type: formData.get('type'),
+      type: typeValue,
+      stream: streamValue,
     };
 
     try {
@@ -73,11 +77,15 @@ export default function LevelManagement() {
     if (!editingLevel) return;
     const formData = new FormData(e.currentTarget);
     
+    const typeValue = formData.get('type') as string;
+    const streamValue = typeValue.charAt(0).toUpperCase() + typeValue.slice(1);
+    
     const updatedLevel = {
       name: formData.get('name'),
       tuition: Number(formData.get('tuition')),
       hours: Number(formData.get('hours')),
-      type: formData.get('type'),
+      type: typeValue,
+      stream: streamValue,
     };
 
     setSubmitting(true);

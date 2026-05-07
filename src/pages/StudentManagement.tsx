@@ -1012,7 +1012,11 @@ export default function StudentManagement() {
                     className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all"
                   >
                     <option value="">Sélectionner un niveau</option>
-                    {levels.filter(l => !selectedStream || l.stream === selectedStream).map(l => (
+                    {levels.filter(l => 
+                      !selectedStream || 
+                      l.stream === selectedStream || 
+                      l.type?.toLowerCase() === selectedStream.toLowerCase()
+                    ).map(l => (
                       <option key={l.id} value={l.id}>{l.name}</option>
                     ))}
                   </select>

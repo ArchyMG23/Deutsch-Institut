@@ -984,7 +984,9 @@ export default function FinanceManagement() {
                       type="button"
                       onClick={() => {
                         setQuickAddStream(stream);
-                        const filtered = levels.filter(l => l.stream === stream);
+                        const filtered = levels.filter(l => 
+                          l.stream === stream || l.type?.toLowerCase() === stream.toLowerCase()
+                        );
                         if (filtered.length > 0) setQuickAddTuition(filtered[0].tuition);
                       }}
                       className={cn(
@@ -1027,7 +1029,11 @@ export default function FinanceManagement() {
                     className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20"
                   >
                     <option value="">Sélectionner un niveau</option>
-                    {levels.filter(l => !quickAddStream || l.stream === quickAddStream).map(l => (
+                    {levels.filter(l => 
+                      !quickAddStream || 
+                      l.stream === quickAddStream || 
+                      l.type?.toLowerCase() === quickAddStream.toLowerCase()
+                    ).map(l => (
                       <option key={l.id} value={l.id}>{l.name}</option>
                     ))}
                   </select>
