@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -11,6 +11,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { profile } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { t, i18n } = useTranslation();
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   return (
     <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 transition-colors duration-200">
@@ -41,14 +47,19 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               {profile?.role}
             </div>
             
-            <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-neutral-500">
+            <div className="shrink-0 flex items-center gap-3 px-4 py-1.5 rounded-full bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-neutral-500">
               <div className={cn(
-                "w-2 h-2 rounded-full",
-                profile?.status === 'online' ? "bg-green-500 animate-pulse" : "bg-neutral-400"
+                "w-2.5 h-2.5 rounded-full transition-all duration-500",
+                profile?.status === 'online' ? "bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.5)]" : "bg-neutral-400"
               )} />
-              <span className="text-[10px] sm:text-xs font-bold uppercase">
-                {profile?.status}
-              </span>
+              <div className="flex flex-col">
+                <span className="text-[10px] sm:text-xs font-black uppercase leading-tight">
+                  {profile?.status === 'online' ? t('common.online') : profile?.status}
+                </span>
+                <span className="text-[9px] font-bold text-neutral-400 leading-tight">
+                  {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
+              </div>
             </div>
           </div>
         </header>

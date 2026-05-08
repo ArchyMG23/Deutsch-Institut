@@ -1024,15 +1024,23 @@ async function startServer() {
       // Record Inscription if any
         if (inscriptionAmount > 0) {
           const financeId = 'INS-' + Date.now().toString();
-          const txDate = studentData.paymentDate || new Date().toISOString();
+          const txDate = studentData.paymentDate ? (studentData.paymentDate.includes('T') ? studentData.paymentDate : studentData.paymentDate + 'T12:00:00Z') : new Date().toISOString();
+          
           await dbAdmin.collection('finances').doc(financeId).set({
             id: financeId,
             type: 'income',
             amount: inscriptionAmount,
-            description: `Inscription - ${newStudent.matricule} - ${newStudent.firstName}`,
+            description: `Inscription - ${newStudent.matricule} - ${newStudent.firstName} ${newStudent.lastName}`,
             category: 'registration',
-            date: txDate
+            date: txDate,
+            studentId: userRecord.uid,
+            studentMatricule: newStudent.matricule,
+            levelId: newStudent.levelId || '',
+            classId: newStudent.classId || '',
+            paymentMode: 'Espèces',
+            recordedBy: (req as any).user?.id || 'System'
           });
+
           await dbAdmin.collection('scolarites').doc(userRecord.uid).collection('versements').add({
             montant: inscriptionAmount,
             date: txDate,
@@ -1040,22 +1048,31 @@ async function startServer() {
             categorie: 'inscription',
             recu_numero: `INS-${Date.now().toString().slice(-6)}`,
             caissier_id: (req as any).user?.id || 'System',
-            notes: 'Frais d\'inscription initial'
+            notes: 'Frais d\'inscription initial',
+            financeId: financeId
           });
         }
 
         // Record Vorbereitung if any
         if (vorbereitungAmount > 0) {
           const financeId = 'VOR-' + Date.now().toString();
-          const txDate = studentData.paymentDate || new Date().toISOString();
+          const txDate = studentData.paymentDate ? (studentData.paymentDate.includes('T') ? studentData.paymentDate : studentData.paymentDate + 'T12:00:00Z') : new Date().toISOString();
+
           await dbAdmin.collection('finances').doc(financeId).set({
             id: financeId,
             type: 'income',
             amount: vorbereitungAmount,
-            description: `Vorbereitung - ${newStudent.matricule} - ${newStudent.firstName}`,
+            description: `Vorbereitung - ${newStudent.matricule} - ${newStudent.firstName} ${newStudent.lastName}`,
             category: 'tuition',
-            date: txDate
+            date: txDate,
+            studentId: userRecord.uid,
+            studentMatricule: newStudent.matricule,
+            levelId: newStudent.levelId || '',
+            classId: newStudent.classId || '',
+            paymentMode: 'Espèces',
+            recordedBy: (req as any).user?.id || 'System'
           });
+
           await dbAdmin.collection('scolarites').doc(userRecord.uid).collection('versements').add({
             montant: vorbereitungAmount,
             date: txDate,
@@ -1063,7 +1080,8 @@ async function startServer() {
             categorie: 'vorbereitung',
             recu_numero: `VOR-${Date.now().toString().slice(-6)}`,
             caissier_id: (req as any).user?.id || 'System',
-            notes: 'Frais Vorbereitung initial'
+            notes: 'Frais Vorbereitung initial',
+            financeId: financeId
           });
         }
 
@@ -1079,9 +1097,15 @@ async function startServer() {
                 id: financeId,
                 type: 'income',
                 amount: p.amount,
-                description: `Paiement Scolarité - ${newStudent.matricule} - ${newStudent.firstName} (Tranche ${p.tranche})`,
+                description: `Paiement Scolarité - ${newStudent.matricule} - ${newStudent.firstName} ${newStudent.lastName} (Tranche ${p.tranche})`,
                 category: 'tuition',
-                date: txDate
+                date: txDate,
+                studentId: userRecord.uid,
+                studentMatricule: newStudent.matricule,
+                levelId: newStudent.levelId || '',
+                classId: newStudent.classId || '',
+                paymentMode: 'Espèces',
+                recordedBy: (req as any).user?.id || 'System'
               };
               await dbAdmin.collection('finances').doc(financeId).set(financeRecord);
 
@@ -1093,7 +1117,8 @@ async function startServer() {
                 categorie: 'scolarite',
                 recu_numero: `SCO-${Date.now().toString().slice(-6)}`,
                 caissier_id: (req as any).user?.id || 'System',
-                notes: 'Enregistré via inscription rapide'
+                notes: 'Enregistré via inscription rapide',
+                financeId: financeId
               });
             }
           }
@@ -1580,6 +1605,30 @@ async function startServer() {
 
   app.post('/api/finances', authenticate, async (req, res) => {
     try {
+      const { studentId, amount, date, category, description } = req.body;
+      
+      // Idempotency check: check if a similar transaction exists (same student, amount, category and date within 2 minutes)
+      if (studentId && amount) {
+        const threshold = 2 * 60 * 1000; // 2 minutes
+        const reqDate = new Date(date || new Date().toISOString()).getTime();
+        
+        const existingQuery = await dbAdmin.collection('finances')
+          .where('studentId', '==', studentId)
+          .where('amount', '==', Number(amount))
+          .where('category', '==', category)
+          .get();
+        
+        const isDuplicate = existingQuery.docs.some(doc => {
+          const docDate = new Date(doc.data().date).getTime();
+          return Math.abs(docDate - reqDate) < threshold;
+        });
+
+        if (isDuplicate) {
+          console.log(`Duplicate transaction detected for student ${studentId}, amount ${amount}. Ignoring.`);
+          return res.status(409).json({ message: 'Transaction déjà enregistrée (doublon détecté)', isDuplicate: true });
+        }
+      }
+
       const id = Date.now().toString();
       const newRecord = { ...req.body, id, date: req.body.date || new Date().toISOString() };
       await dbAdmin.collection('finances').doc(id).set(newRecord);

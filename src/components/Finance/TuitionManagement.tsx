@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
 import { collection, query, where, getDocs, doc, setDoc, updateDoc, getDoc, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { Student, StudentScolarite, Versement, SchoolConfig, Level } from '../../types';
-import { Search, CreditCard, Printer, History, AlertCircle, CheckCircle2, User, Landmark, Share2, Send, MessageCircle, Edit2, X, Check, Trash2 } from 'lucide-react';
+import { Search, CreditCard, Printer, History, AlertCircle, CheckCircle2, User, Landmark, Share2, Send, MessageCircle, Edit2, X, Check, Trash2, RefreshCw } from 'lucide-react';
 import { formatCurrency, cn } from '../../utils';
 import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
@@ -215,7 +215,7 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
       const vList = versemntsSnap!.docs.map(d => ({ id: d.id, ...d.data() } as Versement));
       
       // --- CROSS-SYNC WITH GENERAL FINANCES ---
-      // Fetch any finance records linked to this student that might not be in the subcollection
+      // Fetch any finance records linked to this student for reconciliation checks
       let financeList: any[] = [];
       try {
         // 1. Precise match by studentId
@@ -223,7 +223,7 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
         const finSnap = await getDocs(qFin);
         financeList = finSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // 2. Fuzzy match by matricule in description (for records missing studentId)
+        // 2. Fuzzy match by matricule
         const allFinSnap = await getDocs(query(collection(db, 'finances'), where('type', '==', 'income')));
         allFinSnap.forEach(d => {
            const f = d.data();
@@ -234,69 +234,16 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
            }
         });
       } catch (finErr) {
-        console.error("Failed to fetch general finances for sync:", finErr);
+        console.error("Failed to fetch general finances:", finErr);
       }
 
-      // Identify finance records NOT yet in vList
-      const linkedFinanceIds = new Set(vList.filter(v => v.financeId).map(v => v.financeId));
-      const missingFromScolarite = financeList.filter(f => !linkedFinanceIds.has(f.id));
-
-      if (missingFromScolarite.length > 0) {
-        for (const f of missingFromScolarite) {
-          const healingVersement = {
-            montant: Number(f.amount),
-            date: f.date || new Date().toISOString(),
-            mode_paiement: (f.paymentMode || 'Autre') as any,
-            categorie: (f.category === 'registration' ? 'inscription' : 'scolarite') as any,
-            recu_numero: f.receiptNumber || `SYNC-FIN-${f.id.slice(-4)}`,
-            caissier_id: f.initiatedBy || 'System',
-            notes: f.description || 'Importé depuis Finances Générales',
-            financeId: f.id
-          };
-          try {
-            const vRef = await addDoc(collection(db, 'scolarites', student.uid, 'versements'), healingVersement);
-            vList.push({ id: vRef.id, ...healingVersement } as Versement);
-          } catch (healErr) {
-            console.error("Inner healing failed:", healErr);
-          }
-        }
-        if (missingFromScolarite.length > 0) {
-          toast.info(`${missingFromScolarite.length} paiement(s) "confirmés" en Finance ont été ajoutés ici.`);
-        }
-      }
-
+      // Reconciliation is now handled manually via the "Réconcilier" button to prevent duplication loops.
+      
       vList.sort((a,b) => {
         const dateA = a.date ? new Date(a.date).getTime() : 0;
         const dateB = b.date ? new Date(b.date).getTime() : 0;
         return dateB - dateA;
       });
-      
-      // --- ROBUST AUTO-HEALING: Sync payments from user profile if missing in finance module ---
-      const totalInFinance = vList.reduce((acc, v) => acc + (Number(v.montant) || 0), 0);
-      const studentPayments = student.payments || [];
-      const totalInProfile = studentPayments.reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
-
-      if (totalInProfile > totalInFinance) {
-        const diff = totalInProfile - totalInFinance;
-        // Create a record for the missing amount
-        const healingVersement = {
-          montant: diff,
-          date: new Date().toISOString(),
-          mode_paiement: 'Autre' as const,
-          categorie: 'scolarite' as const,
-          recu_numero: `SYNC-${student.matricule}-${Date.now().toString().slice(-4)}`,
-          caissier_id: 'System',
-          notes: 'Synchronisation automatique depuis le profil inscription'
-        };
-        try {
-          const vRef = await addDoc(collection(db, 'scolarites', student.uid, 'versements'), healingVersement);
-          vList.push({ id: vRef.id, ...healingVersement } as Versement);
-          toast.info("Paiements synchronisés avec le profil d'inscription (" + formatCurrency(diff) + ")");
-        } catch (healErr) {
-          console.error("Healing failed:", healErr);
-        }
-      }
-      // -----------------------------------------------------------------------------------------
 
       setVersements(vList);
 
@@ -368,10 +315,8 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
         ? new Date().toISOString() 
         : new Date(paymentDate + 'T12:00:00Z').toISOString();
 
-      // 1. Add Versement to subcollection placeholder (we update it after finance sync)
+      // Sync with global finances
       let financeId: string | undefined;
-
-      // 3. Sync with global finances
       try {
         const finRes = await fetchWithAuth('/api/finances', {
           method: 'POST',
@@ -393,6 +338,13 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
             classId: targetStudent.classId
           })
         });
+        
+        if (finRes.status === 409) {
+          toast.error("Cette transaction semble déjà avoir été enregistrée (doublon détecté).");
+          setLoading(false);
+          return;
+        }
+
         if (finRes.ok) {
           const finData = await finRes.json();
           financeId = finData.id;
@@ -418,13 +370,16 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
 
       const vRef = await addDoc(collection(db, 'scolarites', targetStudent.uid, 'versements'), versementData);
 
-      // 2. Update Master Scolarite
-      const newTotalVerse = (scolarite.total_verse || 0) + amount;
+      // Logic improved: Recalculate total from actual list to avoid drift
+      const recalculatedTotal = [...versements, { id: vRef.id, ...versementData }].reduce((sum, v) => sum + (v.montant || 0), 0);
+      
+      const newTotalVerse = recalculatedTotal;
       const newReste = Math.max(0, scolarite.montant_total_du - newTotalVerse);
       const newSurplus = Math.max(0, newTotalVerse - scolarite.montant_total_du);
       
       let newStatut: StudentScolarite['statut_paiement'] = 'EN COURS';
-      if (newSurplus > 0) newStatut = 'SURPLUS';
+      if (newTotalVerse === 0) newStatut = 'NON PAYÉ';
+      else if (newSurplus > 0) newStatut = 'SURPLUS';
       else if (newReste === 0) newStatut = 'SOLDÉ';
 
       const updatedScolarite = {
@@ -1203,6 +1158,80 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
               <div className="space-y-4 border-t pt-6 border-neutral-100 dark:border-neutral-800">
                 <div className="flex justify-between items-center text-[10px] font-black text-neutral-400 uppercase tracking-tighter mb-[-8px]">
                    <span>Bilan de Scolarité</span>
+                   <button 
+                    onClick={async () => {
+                      try {
+                        setLoading(true);
+                        const versementsSnap = await getDocs(collection(db, 'scolarites', targetStudent.uid, 'versements'));
+                        const allVersements = versementsSnap.docs.map(d => ({ id: d.id, ...d.data() as Versement }));
+                        
+                        // --- DEDUPLICATION LOGIC ---
+                        const keptVersements: Versement[] = [];
+                        const duplicatesToDelete: string[] = [];
+                        
+                        allVersements.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                        
+                        allVersements.forEach(current => {
+                          const isDup = keptVersements.some(kept => {
+                            const timeDiff = Math.abs(new Date(kept.date).getTime() - new Date(current.date).getTime());
+                            const sameAmount = kept.montant === current.montant;
+                            const sameCat = kept.categorie === current.categorie;
+                            return sameAmount && sameCat && timeDiff < (3 * 60 * 1000); // 3 minutes threshold
+                          });
+                          
+                          if (isDup) {
+                            duplicatesToDelete.push(current.id);
+                          } else {
+                            keptVersements.push(current);
+                          }
+                        });
+
+                        if (duplicatesToDelete.length > 0) {
+                          for (const id of duplicatesToDelete) {
+                            await deleteDoc(doc(db, 'scolarites', targetStudent.uid, 'versements', id));
+                            // Also try to find and delete in finances
+                            const v = allVersements.find(v => v.id === id);
+                            if (v?.financeId) {
+                               await fetchWithAuth(`/api/finances/${v.financeId}`, { method: 'DELETE' });
+                            }
+                          }
+                          toast.warning(`${duplicatesToDelete.length} versement(s) doublon(s) supprimé(s) automatiquement.`);
+                        }
+
+                        // Use results of deduplication for final totals
+                        const realTotal = keptVersements.reduce((acc, v) => acc + (v.montant || 0), 0);
+                        // ---------------------------
+
+                        const newReste = Math.max(0, scolarite.montant_total_du - realTotal);
+                        const newSurplus = Math.max(0, realTotal - scolarite.montant_total_du);
+                        let newStatut: StudentScolarite['statut_paiement'] = 'EN COURS';
+                        if (realTotal === 0) newStatut = 'NON PAYÉ';
+                        else if (newSurplus > 0) newStatut = 'SURPLUS';
+                        else if (newReste === 0) newStatut = 'SOLDÉ';
+
+                        const updatedObj = {
+                          ...scolarite,
+                          total_verse: realTotal,
+                          reste: newReste,
+                          surplus: newSurplus,
+                          statut_paiement: newStatut
+                        };
+
+                        await setDoc(doc(db, 'scolarites', targetStudent.uid), updatedObj, { merge: true });
+                        setScolarite(updatedObj);
+                        setVersements(keptVersements.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+                        toast.success("Situation financière recalculée et synchronisée !");
+                      } catch (e) {
+                        toast.error("Échec de la réconciliation");
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    className="flex items-center gap-1 text-dia-red hover:underline"
+                   >
+                     <RefreshCw size={10} />
+                     Réconcilier
+                   </button>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-neutral-500">Exigible total</span>

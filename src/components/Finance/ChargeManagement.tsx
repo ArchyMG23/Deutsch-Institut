@@ -74,7 +74,11 @@ export default function ChargeManagement() {
     const amount = Number(formData.get('amount'));
     const category = formData.get('category') as string;
     const description = formData.get('libelle') as string;
-    const date = (formData.get('date') as string) || new Date().toISOString().split('T')[0];
+    const date = formData.get('date') as string;
+    if (!date) {
+      toast.error("La date de la dépense est obligatoire.");
+      return;
+    }
     const notes = formData.get('notes') as string;
 
     const newFinanceRecord = {
@@ -296,8 +300,8 @@ export default function ChargeManagement() {
                     <input name="amount" type="number" required placeholder="0" className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-dia-red/20 font-black" />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 px-1">Date</label>
-                    <input name="date" type="date" className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-dia-red/20" />
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 px-1">Date *</label>
+                    <input name="date" type="date" required className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-dia-red/20 font-bold" />
                   </div>
                 </div>
                 <div className="space-y-1.5">

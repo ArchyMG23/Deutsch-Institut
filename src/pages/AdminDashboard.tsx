@@ -232,7 +232,16 @@ export default function AdminDashboard() {
                     {member.lastActiveDevice?.toLowerCase().includes('android') || member.lastActiveDevice?.toLowerCase().includes('ios') ? <Smartphone size={12} /> : <Laptop size={12} />}
                     <span className="text-[10px] font-bold truncate max-w-[60px]">{member.lastActiveDevice || t('common.unknown')}</span>
                   </div>
-                  <p className="text-[9px] text-neutral-400">{member.lastLoginAt ? new Date(member.lastLoginAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : t('common.recently')}</p>
+                  <p className="text-[9px] text-neutral-400 font-bold">
+                    {member.lastActiveAt || member.lastLoginAt ? (
+                      (() => {
+                        const date = member.lastActiveAt?.toDate ? member.lastActiveAt.toDate() : 
+                                     member.lastLoginAt?.toDate ? member.lastLoginAt.toDate() : 
+                                     new Date(member.lastActiveAt || member.lastLoginAt);
+                        return `Dernier signe: ${date.toLocaleDateString([], {day: '2-digit', month: '2-digit'})} à ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+                      })()
+                    ) : t('common.recently')}
+                  </p>
                 </div>
               </div>
             ))

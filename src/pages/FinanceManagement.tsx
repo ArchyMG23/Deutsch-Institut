@@ -129,7 +129,14 @@ const TransactionTable = React.memo(({
                           className="px-2 py-1 bg-white border-2 border-blue-400 rounded-md text-sm outline-none w-full"
                         />
                       ) : (
-                        <p className="text-sm font-bold text-neutral-700 dark:text-neutral-300 group-hover:text-dia-red transition-colors">{record.description || t('common.no_description')}</p>
+                        <div>
+                          <p className="text-sm font-bold text-neutral-700 dark:text-neutral-300 group-hover:text-dia-red transition-colors">{record.description || t('common.no_description')}</p>
+                          {record.studentMatricule && (
+                            <span className="text-[10px] font-black text-dia-red uppercase bg-dia-red/10 px-1.5 py-0.5 rounded-md mt-1 inline-block">
+                              Élève: {record.studentMatricule}
+                            </span>
+                          )}
+                        </div>
                       )}
                       {record.status === 'archived' && (
                         <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-neutral-200 dark:bg-neutral-800 text-neutral-500 rounded-md">Archive</span>
@@ -355,7 +362,12 @@ export default function FinanceManagement() {
     const amountAttr = parseInt(formData.get('amount') as string);
     const descAttr = formData.get('description') as string;
     const selectedDateStr = formData.get('date') as string;
-    const selectedDate = selectedDateStr ? new Date(selectedDateStr) : new Date();
+    if (!selectedDateStr) {
+      toast.error("Veuillez sélectionner une date");
+      setSubmitting(false);
+      return;
+    }
+    const selectedDate = new Date(selectedDateStr);
 
     // Auto-archival logic: if year is less than current year
     const currentYear = new Date().getFullYear();
@@ -596,6 +608,15 @@ export default function FinanceManagement() {
 
   const [includeInscription, setIncludeInscription] = useState(false);
 
+  const streams = React.useMemo(() => {
+    const s = new Set<string>();
+    levels.forEach(l => {
+      const val = (l.stream || l.type || '').trim().toUpperCase();
+      if (val) s.add(val);
+    });
+    return Array.from(s).sort();
+  }, [levels]);
+
   const handleQuickInscription = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (submitting) return;
@@ -629,7 +650,13 @@ export default function FinanceManagement() {
     const matricule = generateMatricule('student');
     const role = 'student';
     let email = formData.get('email') as string;
-    const paymentDateStr = formData.get('paymentDate') as string || new Date().toISOString().split('T')[0];
+    const dateStr = formData.get('date') as string;
+    if (!dateStr) {
+      toast.error("La date de l'opération est obligatoire");
+      setSubmitting(false);
+      return;
+    }
+    const paymentDateStr = dateStr;
     
     // Fallback if email is not provided
     if (!email || !email.trim()) {
@@ -669,7 +696,7 @@ export default function FinanceManagement() {
           inscriptionAmount: includeInscription ? 10000 : 0,
           vorbereitungAmount: formData.get('payVorbereitung') === 'on' ? (Number(formData.get('vorbereitungAmount')) || 0) : 0,
           paymentDate: paymentDateStr,
-          totalTuition: formData.get('totalTuition') ? Number(formData.get('totalTuition')) : ''
+          totalTuition: quickAddTuition || ''
         })
       });
       
@@ -911,8 +938,8 @@ export default function FinanceManagement() {
               )}
 
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase text-neutral-400">Date de la transaction</label>
-                <input name="date" type="date" defaultValue={new Date().toISOString().split('T')[0]} className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl" />
+                <label className="text-xs font-bold uppercase text-neutral-400 font-black">Date de la transaction *</label>
+                <input name="date" type="date" required className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 border-2 border-dia-red/20 rounded-xl font-bold" />
               </div>
 
               <div className="space-y-2">
@@ -999,104 +1026,154 @@ export default function FinanceManagement() {
                   <input name="phone" placeholder="6..." className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20" />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Date de versement *</label>
-                  <input name="paymentDate" type="date" required defaultValue={new Date().toISOString().split('T')[0]} className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border-2 border-orange-200 dark:border-orange-900 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20" />
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1 font-black">Date de Versement *</label>
+                  <input name="date" type="date" required className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border-2 border-orange-200 dark:border-orange-900 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20 font-bold" />
                 </div>
               </div>
               <div className="space-y-1.5 px-1">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Filière</label>
-                <div className="flex gap-2">
-                  {['Allemand', 'Anglais'].map(stream => (
+                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Filière / Type d'Opération</label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuickAddStream('INSCRIPTION');
+                      setIncludeInscription(true);
+                      setQuickAddLevelId('');
+                      setQuickAddTuition(0);
+                    }}
+                    className={cn(
+                      "py-2.5 px-5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border-2 flex items-center gap-2",
+                      includeInscription && quickAddStream === 'INSCRIPTION'
+                        ? "bg-orange-600 border-orange-600 text-white shadow-lg shadow-orange-500/30 scale-105" 
+                        : "bg-orange-50 border-orange-100 text-orange-600 hover:bg-orange-100"
+                    )}
+                  >
+                    <CheckCircle2 size={14} className={cn(includeInscription && quickAddStream === 'INSCRIPTION' ? "opacity-100" : "opacity-30")} />
+                    🚀 Frais d'Inscription
+                  </button>
+                  {streams.map(stream => (
                     <button
                       key={stream}
                       type="button"
                       onClick={() => {
                         setQuickAddStream(stream);
+                        setIncludeInscription(false);
                         const filtered = levels.filter(l => 
-                          l.stream === stream || l.type?.toLowerCase() === stream.toLowerCase()
+                          (l.stream || l.type || '').trim().toUpperCase() === stream.toUpperCase()
                         );
-                        if (filtered.length > 0) setQuickAddTuition(filtered[0].tuition);
+                        if (filtered.length > 0) {
+                          setQuickAddTuition(filtered[0].tuition);
+                        } else {
+                          setQuickAddTuition('');
+                        }
                       }}
                       className={cn(
-                        "flex-1 py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-                        quickAddStream === stream 
-                          ? "bg-orange-600 text-white shadow-lg shadow-orange-500/30" 
-                          : "bg-neutral-100 text-neutral-400 hover:bg-neutral-200"
+                        "py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
+                        quickAddStream === stream && !includeInscription
+                          ? "bg-orange-600 border-orange-600 text-white shadow-lg shadow-orange-500/30" 
+                          : "bg-neutral-100 border-transparent text-neutral-400 hover:bg-neutral-200"
                       )}
                     >
                       {stream}
                     </button>
                   ))}
-                  <button
-                    type="button"
-                    onClick={() => setQuickAddStream('')}
-                    className={cn(
-                      "flex-1 py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-                      quickAddStream === '' 
-                        ? "bg-neutral-600 text-white shadow-lg" 
-                        : "bg-neutral-100 text-neutral-400 hover:bg-neutral-200"
-                    )}
-                  >
-                    Tout
-                  </button>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Niveau & Inscription *</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Niveau d'Étude *</label>
                   <select 
-                    name="levelId" 
-                    required 
-                    value={quickAddLevelId + (includeInscription ? ':true' : ':false')}
-                    onChange={(e) => {
-                      const [lId, withIns] = e.target.value.split(':');
-                      setQuickAddLevelId(lId);
-                      setIncludeInscription(withIns === 'true');
-                      const level = levels.find(l => l.id === lId);
-                      if (level) {
-                        setQuickAddTuition(level.tuition);
-                      }
-                    }}
-                    className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20"
-                  >
-                    <option value="">Sélectionner un niveau</option>
-                    {levels.filter(l => 
-                      !quickAddStream || 
-                      l.stream === quickAddStream || 
-                      l.type?.toLowerCase() === quickAddStream.toLowerCase()
-                    ).map(l => (
-                      <React.Fragment key={l.id}>
-                        <option value={`${l.id}:false`}>{l.name}</option>
-                        <option value={`${l.id}:true`}>{l.name} + Inscription (10k)</option>
-                      </React.Fragment>
-                    ))}
-                  </select>
+                     name="levelId" 
+                     required={!includeInscription}
+                     disabled={includeInscription}
+                     value={quickAddLevelId}
+                     onChange={(e) => {
+                       setQuickAddLevelId(e.target.value);
+                       const level = levels.find(l => l.id === e.target.value);
+                       if (level) {
+                         setQuickAddTuition(level.tuition);
+                       }
+                     }}
+                     className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20 disabled:opacity-50"
+                   >
+                     <option value="">{includeInscription ? 'N/A' : 'Sélectionner un niveau'}</option>
+                    {(() => {
+                      const seen = new Set();
+                      const currentStream = quickAddStream?.trim().toUpperCase();
+                      
+                      return levels
+                        .filter(l => {
+                          const lStream = (l.stream || l.type || '').trim().toUpperCase();
+                          const isMatch = !currentStream || 
+                            includeInscription ||
+                            lStream === currentStream;
+                          
+                          if (!isMatch) return false;
+                          
+                          // Normalize key for deduplication
+                          const normalizedName = l.name.trim().toUpperCase();
+                          const key = `${normalizedName}-${lStream}`;
+                          if (seen.has(key)) return false;
+                          seen.add(key);
+                          return true;
+                        })
+                        .sort((a, b) => a.name.localeCompare(b.name))
+                        .map(l => {
+                          const lStream = (l.stream || l.type || '').trim();
+                          const displayName = l.name.toUpperCase().includes(lStream.toUpperCase())
+                            ? l.name
+                            : `${l.name} (${lStream})`;
+                          
+                          return (
+                            <option key={l.id} value={l.id}>
+                              {displayName}
+                            </option>
+                          );
+                        });
+                    })()}
+                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Total Scolarité</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Payement de Scolarité (Avance)</label>
                   <input 
-                    name="totalTuition" 
+                    name="amount" 
                     type="number" 
-                    value={quickAddTuition}
-                    onChange={(e) => setQuickAddTuition(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="Facultatif"
                     className="w-full px-4 py-2.5 bg-white dark:bg-neutral-800 border-2 border-orange-200 dark:border-orange-900 rounded-xl font-bold text-orange-600 outline-none focus:ring-2 focus:ring-orange-500/20" 
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-4">
+                <div 
+                  onClick={() => setIncludeInscription(!includeInscription)}
+                  className={cn(
+                    "space-y-1.5 p-4 border-2 rounded-2xl flex flex-col justify-center cursor-pointer transition-all",
+                    includeInscription 
+                      ? "bg-orange-50 dark:bg-orange-900/20 border-orange-400 dark:border-orange-700 shadow-sm" 
+                      : "bg-neutral-50 dark:bg-neutral-800 border-transparent opacity-60"
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all", 
+                      includeInscription ? "bg-orange-600 border-orange-600" : "border-neutral-300"
+                    )}>
+                      {includeInscription && <CheckCircle2 size={16} className="text-white" />}
+                    </div>
+                    <div>
+                      <p className={cn("text-[11px] font-black uppercase tracking-wider", includeInscription ? "text-orange-600" : "text-neutral-400")}>Frais d'Inscription</p>
+                      <p className={cn("text-[10px] font-bold", includeInscription ? "text-orange-500" : "text-neutral-500")}>10 000 FCFA {includeInscription ? '(Inclus)' : '(Exclu)'}</p>
+                    </div>
+                  </div>
+                </div>
+                <input type="hidden" name="payInscription" value={includeInscription ? 'on' : 'off'} />
                 <div className="space-y-1.5 p-4 bg-blue-50 dark:bg-blue-900/10 border-2 border-blue-100 dark:border-blue-900/30 rounded-2xl flex flex-col justify-center">
                   <div className="flex items-center gap-3 mb-1">
                     <input name="payVorbereitung" type="checkbox" className="w-5 h-5 accent-blue-600 rounded cursor-pointer" />
-                    <p className="text-[11px] font-black uppercase text-blue-600 tracking-wider">Vorbereitung</p>
+                    <p className="text-[11px] font-black uppercase text-blue-600 tracking-wider">Vorbereitung (Optionnel)</p>
                   </div>
-                  <input name="vorbereitungAmount" type="number" className="w-full text-xs bg-transparent border-b border-blue-200 outline-none font-bold text-blue-700" placeholder="Montant variable (ex: 50000)" />
+                  <input name="vorbereitungAmount" type="number" className="w-full text-xs bg-transparent border-b border-blue-200 outline-none font-bold text-blue-700" placeholder="Montant variable" />
                 </div>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1 font-black">Versement Scolarité (Avance) (Optionnel)</label>
-                <input name="amount" type="number" placeholder="Ex: 50000" className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl font-bold text-neutral-900 outline-none focus:ring-2 focus:ring-orange-500/20" />
-              </div>
               <div className="pt-4 flex gap-4">
                 <button type="button" onClick={() => setIsQuickAddModalOpen(false)} className="flex-1 py-3 text-sm font-bold text-neutral-500">Annuler</button>
                 <button type="submit" disabled={submitting} className="flex-1 py-3 bg-orange-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-orange-600/30 hover:scale-105 transition-all disabled:opacity-50">

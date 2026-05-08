@@ -219,6 +219,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Heartbeat effect to keep status 'online' and update lastActiveAt
+  useEffect(() => {
+    if (!auth.currentUser || !profile) return;
+
+    const interval = setInterval(async () => {
+      try {
+        await setDoc(doc(db, 'users', auth.currentUser!.uid), {
+          status: 'online',
+          lastActiveAt: serverTimestamp()
+        }, { merge: true });
+      } catch (err) {
+        console.warn("Heartbeat failed:", err);
+      }
+    }, 120000); // Every 2 minutes
+
+    return () => clearInterval(interval);
+  }, [profile]);
+
   const login = async (identifier: string, password: string) => {
     const { t } = i18n;
     let email = identifier.trim();

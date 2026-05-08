@@ -153,6 +153,14 @@ export default function StudentManagement() {
   const [includeInscription, setIncludeInscription] = useState(false);
   const [addPaymentDate, setAddPaymentDate] = useState<string>('');
 
+  const streams = React.useMemo(() => {
+    const s = new Set<string>();
+    levels.forEach(l => {
+      if (l.stream) s.add(l.stream.trim());
+    });
+    return Array.from(s).sort();
+  }, [levels]);
+
   const handleAddStudent = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (submitting) return;
@@ -195,7 +203,12 @@ export default function StudentManagement() {
     const payVorbereitung = formData.get('payVorbereitung') === 'on';
     const vorbereitungAmount = payVorbereitung ? (Number(formData.get('vorbereitungAmount')) || 0) : 0;
 
-    const paymentDateStr = addPaymentDate || new Date().toISOString().split('T')[0];
+    if (!addPaymentDate) {
+      toast.error("La date de versement est obligatoire pour valider l'enregistrement.");
+      setSubmitting(false);
+      return;
+    }
+    const paymentDateStr = addPaymentDate;
 
     const newStudent = {
       matricule,
@@ -991,7 +1004,7 @@ export default function StudentManagement() {
                   <input name="phone" required type="tel" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Filière (Allemand/Anglais/Autre)</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Filière</label>
                   <select 
                     value={selectedStream}
                     onChange={(e) => {
@@ -1002,33 +1015,29 @@ export default function StudentManagement() {
                     className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 outline-none"
                   >
                     <option value="">Toutes les filières</option>
-                    <option value="Allemand">Allemand</option>
-                    <option value="Anglais">Anglais</option>
+                    {streams.map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Niveau & Inscription *</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Niveau d'Étude *</label>
                   <select 
                     name="levelId" 
                     required 
                     onChange={(e) => {
-                      const [lId, withIns] = e.target.value.split(':');
-                      setIncludeInscription(withIns === 'true');
-                      const level = levels.find(l => l.id === lId);
+                      const level = levels.find(l => l.id === e.target.value);
                       if (level) setSelectedTuition(level.tuition);
                     }}
                     className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all"
                   >
-                    <option value="">Sélectionner une option</option>
+                    <option value="">Sélectionner un niveau</option>
                     {levels.filter(l => 
                       !selectedStream || 
                       l.stream === selectedStream || 
                       l.type?.toLowerCase() === selectedStream.toLowerCase()
                     ).map(l => (
-                      <React.Fragment key={l.id}>
-                        <option value={`${l.id}:false`}>{l.name} (Scolarité: {formatCurrency(l.tuition)})</option>
-                        <option value={`${l.id}:true`}>{l.name} + Inscription (Total: {formatCurrency(l.tuition + 10000)})</option>
-                      </React.Fragment>
+                      <option key={l.id} value={l.id}>{l.name} ({l.stream || l.type})</option>
                     ))}
                   </select>
                 </div>
@@ -1061,7 +1070,20 @@ export default function StudentManagement() {
                     {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
-                <div className="space-y-4 md:col-span-2 grid grid-cols-1 gap-4">
+                <div className="space-y-4 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 bg-orange-50 dark:bg-orange-900/10 border-2 border-orange-100 dark:border-orange-900/30 rounded-2xl flex items-center gap-3">
+                    <input 
+                      name="payInscription" 
+                      type="checkbox" 
+                      checked={includeInscription}
+                      onChange={(e) => setIncludeInscription(e.target.checked)}
+                      className="w-6 h-6 accent-orange-600 rounded cursor-pointer" 
+                    />
+                    <div>
+                      <p className="text-xs font-black uppercase text-orange-600 tracking-wider">Frais d'Inscription</p>
+                      <p className="text-[10px] font-bold text-orange-500">10 000 FCFA (Unique)</p>
+                    </div>
+                  </div>
                   <div className="p-4 bg-blue-50 dark:bg-blue-900/10 border-2 border-blue-100 dark:border-blue-900/30 rounded-2xl flex flex-col justify-center">
                     <div className="flex items-center gap-3 mb-1">
                       <input name="payVorbereitung" type="checkbox" className="w-6 h-6 accent-blue-600 rounded cursor-pointer" />

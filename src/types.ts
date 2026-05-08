@@ -98,6 +98,8 @@ export interface FinanceRecord {
   date: string;
   accountType?: 'caisse' | 'banque';
   initiatedBy?: 'student' | 'secretary' | 'system' | 'enseignant';
+  studentId?: string;
+  studentMatricule?: string;
   deletedAt?: string;
   deletedBy?: string;
   deletionReason?: string;
