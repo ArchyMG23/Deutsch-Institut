@@ -575,11 +575,17 @@ export default function RealFinanceDashboard() {
         console.error("Error fetching scolarites for summary:", e);
       }
       
-      const allVersementsSnap = await getDocs(collectionGroup(db, 'versements'));
+      let allVersementsSnap: any = { forEach: () => {} };
+      try {
+        allVersementsSnap = await getDocs(collectionGroup(db, 'versements'));
+      } catch (e) {
+        console.warn("CollectionGroup query for 'versements' failed. Fallback to individual scolarite records.", e);
+      }
+      
       const versementsByStudent: Record<string, number> = {};
       
       // 5a. Aggregate from scolarites subcollections (CUMULATIVE for status)
-      allVersementsSnap.forEach(vDoc => {
+      allVersementsSnap.forEach((vDoc: any) => {
         const v = vDoc.data();
         const studentId = vDoc.ref.parent.parent?.id;
         if (studentId) {

@@ -911,8 +911,29 @@ async function startServer() {
   // Students API
   app.get('/api/students', authenticate, async (req, res) => {
     try {
+      // 1. Fetch from students collection
       const snapshot = await dbAdmin.collection('students').get();
-      const students = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      // 2. Fetch corresponding base user profiles to get status/lastActive
+      const usersSnap = await dbAdmin.collection('users').where('role', '==', 'student').get();
+      const usersMap: Record<string, any> = {};
+      usersSnap.forEach(doc => {
+        usersMap[doc.id] = doc.data();
+      });
+
+      const students = snapshot.docs.map(doc => {
+        const studentData = doc.data();
+        const userData = usersMap[doc.id] || {};
+        return { 
+          id: doc.id, 
+          ...studentData,
+          // Merge critical profile fields
+          status: userData.status || 'offline',
+          lastActiveDevice: userData.lastActiveDevice || '',
+          lastLoginAt: userData.lastLoginAt || '',
+          fcmToken: userData.fcmToken || ''
+        };
+      });
       res.json(students);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1249,8 +1270,29 @@ async function startServer() {
   // Teachers API
   app.get('/api/teachers', authenticate, async (req, res) => {
     try {
+      // 1. Fetch from teachers collection
       const snapshot = await dbAdmin.collection('teachers').get();
-      const teachers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      // 2. Fetch corresponding base user profiles to get status/lastActive
+      const usersSnap = await dbAdmin.collection('users').where('role', '==', 'teacher').get();
+      const usersMap: Record<string, any> = {};
+      usersSnap.forEach(doc => {
+        usersMap[doc.id] = doc.data();
+      });
+
+      const teachers = snapshot.docs.map(doc => {
+        const teacherData = doc.data();
+        const userData = usersMap[doc.id] || {};
+        return { 
+          id: doc.id, 
+          ...teacherData,
+          // Merge critical profile fields
+          status: userData.status || 'offline',
+          lastActiveDevice: userData.lastActiveDevice || '',
+          lastLoginAt: userData.lastLoginAt || '',
+          fcmToken: userData.fcmToken || ''
+        };
+      });
       res.json(teachers);
     } catch (err: any) {
       res.status(500).json({ message: err.message });

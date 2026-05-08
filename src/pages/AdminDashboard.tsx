@@ -34,7 +34,7 @@ import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 
 export default function AdminDashboard() {
-  const { students, teachers, finances, charges, evaluations, loading, refreshAll } = useData();
+  const { students, teachers, finances, charges, evaluations, loading, refreshAll, onlineUsers } = useData();
   const { user, profile, fetchWithAuth } = useAuth();
   const { t } = useTranslation();
   const [configStatus, setConfigStatus] = useState<any>(null);
@@ -157,11 +157,6 @@ export default function AdminDashboard() {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 5), [finances]);
 
-  const onlineMembers = React.useMemo(() => [
-    ...students.filter(s => s.status === 'online'),
-    ...teachers.filter(t => t.status === 'online')
-  ], [students, teachers]);
-
   if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-dia-red"></div></div>;
 
   return (
@@ -211,17 +206,17 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-2">
             <h3 className="font-bold text-lg">{t('dashboard.online_members')}</h3>
             <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
-            <span className="text-xs font-bold text-green-600">{onlineMembers.length} {t('common.online')}</span>
+            <span className="text-xs font-bold text-green-600">{onlineUsers.length} {t('common.online')}</span>
           </div>
         </div>
         
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 overflow-y-auto">
-          {onlineMembers.length === 0 ? (
+          {onlineUsers.length === 0 ? (
             <div className="col-span-full py-10 text-center bg-neutral-50 dark:bg-neutral-800/20 rounded-3xl border border-dashed border-neutral-200 dark:border-neutral-700">
               <p className="text-neutral-500 text-sm font-medium">{t('dashboard.no_members_online')}</p>
             </div>
           ) : (
-            onlineMembers.map((member) => (
+            onlineUsers.map((member) => (
               <div key={member.uid} className="p-4 rounded-2xl bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 flex items-center justify-between group">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-dia-red/10 text-dia-red flex items-center justify-center font-bold text-xs">

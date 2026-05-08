@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase';
 import { Student, Teacher, ClassRoom, Level, FinanceRecord, LibraryItem, Evaluation } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -23,6 +25,7 @@ interface DataContextType {
   refreshTrash: () => Promise<void>;
   refreshLibrary: () => Promise<void>;
   refreshEvaluations: () => Promise<void>;
+  onlineUsers: any[];
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -38,9 +41,27 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [trashFinances, setTrashFinances] = useState<FinanceRecord[]>([]);
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const lastFetchRef = useRef<number>(0);
   const lastFetchTimesRef = useRef<Record<string, number>>({});
+
+  // Presence listener
+  useEffect(() => {
+    if (!user) {
+      setOnlineUsers([]);
+      return;
+    }
+    
+    // Presence listener handled by top-level imports
+    const q = query(collection(db, 'users'), where('status', '==', 'online'));
+    const unsubscribe = onSnapshot(q, (snapshot: any) => {
+      const list = snapshot.docs.map((doc: any) => ({ uid: doc.id, ...doc.data() }));
+      setOnlineUsers(list);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   const shouldFetch = useCallback((key: string) => {
     const now = Date.now();
@@ -204,6 +225,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, refreshStudents, refreshTeachers, refreshClasses, refreshLevels, refreshFinances, refreshCharges, refreshLibrary, refreshEvaluations]);
 
+  useEffect(() => {
+    if (user) {
+      refreshAll();
+    }
+  }, [user, refreshAll]);
+
   return (
     <DataContext.Provider value={{
       students,
@@ -225,7 +252,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       refreshCharges,
       refreshTrash,
       refreshLibrary,
-      refreshEvaluations
+      refreshEvaluations,
+      onlineUsers
     }}>
       {children}
     </DataContext.Provider>

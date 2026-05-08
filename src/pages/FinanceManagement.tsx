@@ -242,6 +242,8 @@ export default function FinanceManagement() {
     refreshTrash, 
     levels, 
     classes, 
+    charges,
+    refreshLevels,
     refreshAll 
   } = useData();
   const { user, profile, fetchWithAuth } = useAuth();
@@ -308,6 +310,7 @@ export default function FinanceManagement() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    refreshLevels();
     refreshFinances();
     refreshTrash();
   }, []);
@@ -478,14 +481,26 @@ export default function FinanceManagement() {
   }, [allRecords, selectedYear, selectedMonth, searchQuery]);
 
   const { totalIncome, totalExpense, balance } = React.useMemo(() => {
+    const filteredCharges = (charges || []).filter(c => {
+      const d = new Date(c.date);
+      const y = d.getFullYear().toString() === selectedYear;
+      const m = selectedMonth === 'all' || d.getMonth().toString() === selectedMonth;
+      return y && m;
+    });
+
     const inc = filteredByDate.filter(r => r.type === 'income').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
-    const exp = filteredByDate.filter(r => r.type === 'expense').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
+    const expFromLedger = filteredByDate.filter(r => r.type === 'expense').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
+    const expFromCharges = filteredCharges.reduce((acc, c) => acc + (Number(c.montant) || 0), 0);
+    
+    // Total expenses is sum of ledger expenses and specialized charges
+    const totalExp = expFromLedger + expFromCharges;
+    
     return {
       totalIncome: inc,
-      totalExpense: exp,
-      balance: inc - exp
+      totalExpense: totalExp,
+      balance: inc - totalExp
     };
-  }, [filteredByDate]);
+  }, [filteredByDate, charges, selectedYear, selectedMonth]);
 
   const handleSort = (key: string) => {
     setSortConfig(current => {
@@ -761,7 +776,14 @@ export default function FinanceManagement() {
           </motion.div>
         ) : viewMode === 'tuition' ? (
           <motion.div key="tuition" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-            <TuitionManagement />
+          <TuitionManagement 
+            students={students} 
+            levels={levels}
+            onUpdate={() => {
+              refreshFinances();
+              refreshStudents();
+            }} 
+          />
           </motion.div>
         ) : viewMode === 'charges' ? (
           <motion.div key="charges" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>

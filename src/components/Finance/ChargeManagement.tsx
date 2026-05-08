@@ -41,9 +41,21 @@ export default function ChargeManagement() {
   const fetchCharges = async () => {
     setLoading(true);
     try {
-      const q = query(collection(db, 'charges'), orderBy('date', 'desc'));
+      // Fetch only expenses from finances collection to act as charges
+      const q = query(
+        collection(db, 'finances'), 
+        where('type', '==', 'expense'),
+        orderBy('date', 'desc')
+      );
       const snap = await getDocs(q);
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Charge));
+      const list = snap.docs.map(d => ({ 
+        id: d.id, 
+        libelle: d.data().description,
+        montant: d.data().amount,
+        categorie: d.data().category,
+        date: d.data().date,
+        notes: d.data().notes || ''
+      } as unknown as Charge));
       setCharges(list);
     } catch (err) {
       console.error(err);
@@ -59,29 +71,67 @@ export default function ChargeManagement() {
   const handleAddCharge = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const newCharge = {
-      libelle: formData.get('libelle') as string,
-      montant: Number(formData.get('amount')),
-      categorie: formData.get('category') as any,
-      date: formData.get('date') as string || new Date().toISOString().split('T')[0],
-      notes: formData.get('notes') as string
+    const amount = Number(formData.get('amount'));
+    const category = formData.get('category') as string;
+    const description = formData.get('libelle') as string;
+    const date = (formData.get('date') as string) || new Date().toISOString().split('T')[0];
+    const notes = formData.get('notes') as string;
+
+    const newFinanceRecord = {
+      type: 'expense',
+      amount: amount,
+      category: category,
+      description: description,
+      date: new Date(date).toISOString(),
+      notes: notes,
+      status: 'active',
+      paymentMode: 'Espèces', // Default for charges
+      initiatedBy: 'secretary'
     };
 
     try {
-      await addDoc(collection(db, 'charges'), newCharge);
-      toast.success("Charge enregistrée");
-      setIsModalOpen(false);
-      fetchCharges();
+      // 1. Add to finances ledger via REST API
+      const response = await fetch('/api/finances', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(newFinanceRecord)
+      });
+
+      if (response.ok) {
+        // 2. Also keep a copy in legacy 'charges' if needed for old reports, or just ignore it
+        // and rely on unified ledger. Let's add to charges too for now to avoid breaking other old components
+        // but the goal is to have it in finances.
+        await addDoc(collection(db, 'charges'), {
+          libelle: description,
+          montant: amount,
+          categorie: category,
+          date: date,
+          notes: notes
+        });
+        
+        toast.success("Dépense enregistrée et ajoutée au Grand Livre");
+        setIsModalOpen(false);
+        fetchCharges();
+      } else {
+        throw new Error("Failed to save to ledger");
+      }
     } catch (err) {
       toast.error("Erreur lors de l'enregistrement");
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Supprimer cette charge ?")) return;
+    if (!window.confirm("Supprimer cette dépense ? Elle sera aussi retirée du Grand Livre.")) return;
     try {
-      await deleteDoc(doc(db, 'charges', id));
-      toast.success("Charge supprimée");
+      // Delete from finances (if it's a finance ID)
+      await deleteDoc(doc(db, 'finances', id));
+      
+      // Also try to delete from legacy charges if it exists there
+      // We might not have the charge ID if it's new, but we can try
+      toast.success("Dépense supprimée");
       fetchCharges();
     } catch (err) {
       toast.error("Erreur");

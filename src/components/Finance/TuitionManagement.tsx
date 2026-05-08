@@ -11,7 +11,13 @@ import { useAuth, OperationType, FirestoreErrorInfo } from '../../context/AuthCo
 import { auth } from '../../firebase';
 import { generateWhatsAppLink, APP_NAME_FOR_LINKS } from '../../utils/contactLinks';
 
-const TuitionManagement: React.FC = () => {
+interface TuitionManagementProps {
+  students: Student[];
+  levels: Level[];
+  onUpdate?: () => void;
+}
+
+const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStudents, levels: propLevels, onUpdate }) => {
   const { user, profile, fetchWithAuth } = useAuth();
   const isSuperAdmin = 
     profile?.role === 'admin' || 
@@ -39,8 +45,8 @@ const TuitionManagement: React.FC = () => {
   const [scolarite, setScolarite] = useState<StudentScolarite | null>(null);
   const [versements, setVersements] = useState<Versement[]>([]);
   const [loading, setLoading] = useState(false);
-  const [studentsList, setStudentsList] = useState<Student[]>([]);
-  const [levels, setLevels] = useState<Level[]>([]);
+  const [studentsList, setStudentsList] = useState<Student[]>(propStudents || []);
+  const [levels, setLevels] = useState<Level[]>(propLevels || []);
   const [schoolConfig, setSchoolConfig] = useState<SchoolConfig>({
     id: 'current',
     nom: 'DIA DEUTSCH INSTITUT',
@@ -49,11 +55,20 @@ const TuitionManagement: React.FC = () => {
     format_recu: 'A5'
   });
 
+  // Sync with props
+  useEffect(() => {
+    if (propStudents) setStudentsList(propStudents);
+  }, [propStudents]);
+
+  useEffect(() => {
+    if (propLevels) setLevels(propLevels);
+  }, [propLevels]);
+
   // Form state
   const [amount, setAmount] = useState<number>(0);
   const [paymentMode, setPaymentMode] = useState<Versement['mode_paiement']>('Espèces');
   const [paymentCategory, setPaymentCategory] = useState<Versement['categorie']>('scolarite');
-  const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [paymentDate, setPaymentDate] = useState<string>('');
   const [notes, setNotes] = useState('');
   const [accountType, setAccountType] = useState<'caisse' | 'banque'>('caisse');
   const [initiatedBy, setInitiatedBy] = useState<'student' | 'secretary'>('student');
@@ -79,22 +94,26 @@ const TuitionManagement: React.FC = () => {
         handleFirestoreError(e, OperationType.GET, 'ecole/current');
       }
 
-      try {
-        const levelsSnap = await getDocs(collection(db, 'levels'));
-        setLevels(levelsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Level)));
-      } catch (e) {
-        handleFirestoreError(e, OperationType.LIST, 'levels');
+      if (!propLevels || propLevels.length === 0) {
+        try {
+          const levelsSnap = await getDocs(collection(db, 'levels'));
+          setLevels(levelsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Level)));
+        } catch (e) {
+          handleFirestoreError(e, OperationType.LIST, 'levels');
+        }
       }
 
-      try {
-        const studentsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student')));
-        setStudentsList(studentsSnap.docs.map(d => ({ uid: d.id, ...d.data() } as Student)));
-      } catch (e) {
-        handleFirestoreError(e, OperationType.LIST, 'users (students query)');
+      if (!propStudents || propStudents.length === 0) {
+        try {
+          const studentsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student')));
+          setStudentsList(studentsSnap.docs.map(d => ({ uid: d.id, ...d.data() } as Student)));
+        } catch (e) {
+          handleFirestoreError(e, OperationType.LIST, 'users (students query)');
+        }
       }
     };
     fetchData();
-  }, []);
+  }, [propLevels, propStudents]);
 
   const cumulativeTotals = React.useMemo(() => {
     if (!scolarite) return null;
@@ -334,12 +353,18 @@ const TuitionManagement: React.FC = () => {
 
   const handleAddPayment = async () => {
     if (!targetStudent || !scolarite || amount <= 0) return;
+    
+    if (!paymentDate) {
+      toast.error("Veuillez sélectionner une date de versement obligatoirement.");
+      return;
+    }
 
     setLoading(true);
     try {
       const recNumber = generateReceiptNumber();
-      // Ensure the time is also included to avoid sorting issues, default to noon for manual dates
-      const finalDate = paymentDate === new Date().toISOString().split('T')[0] 
+      // Use selected date. If it's today, we can use precisely currently time to avoid sort overlap
+      const today = new Date().toISOString().split('T')[0];
+      const finalDate = paymentDate === today 
         ? new Date().toISOString() 
         : new Date(paymentDate + 'T12:00:00Z').toISOString();
 
@@ -428,6 +453,8 @@ const TuitionManagement: React.FC = () => {
       toast.success("Versement enregistré !");
       handleGeneratePDF({ id: vRef.id, ...versementData });
       
+      if (onUpdate) onUpdate();
+
       // Reset form
       setAmount(0);
       setNotes('');
