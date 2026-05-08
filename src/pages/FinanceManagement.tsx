@@ -594,6 +594,8 @@ export default function FinanceManagement() {
     }
   };
 
+  const [includeInscription, setIncludeInscription] = useState(false);
+
   const handleQuickInscription = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (submitting) return;
@@ -636,6 +638,9 @@ export default function FinanceManagement() {
 
     const password = 'DIA2026.'; // Default password
     
+    const levelIdValue = formData.get('levelId') as string;
+    const levelId = levelIdValue ? levelIdValue.split(':')[0] : '';
+    
     const newStudent = {
       matricule,
       email,
@@ -643,7 +648,7 @@ export default function FinanceManagement() {
       firstName: formData.get('firstName'),
       lastName: formData.get('lastName'),
       phone: formData.get('phone') || '',
-      levelId: formData.get('levelId'),
+      levelId,
       classId: '', // Unassigned by default in quick add
       role,
       status: 'offline',
@@ -661,8 +666,9 @@ export default function FinanceManagement() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...newStudent,
-          inscriptionAmount: formData.get('payInscription') === 'on' ? 10000 : 0,
+          inscriptionAmount: includeInscription ? 10000 : 0,
           vorbereitungAmount: formData.get('payVorbereitung') === 'on' ? (Number(formData.get('vorbereitungAmount')) || 0) : 0,
+          paymentDate: paymentDateStr,
           totalTuition: formData.get('totalTuition') ? Number(formData.get('totalTuition')) : ''
         })
       });
@@ -1038,15 +1044,19 @@ export default function FinanceManagement() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Niveau d'Étude *</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Niveau & Inscription *</label>
                   <select 
                     name="levelId" 
                     required 
-                    value={quickAddLevelId}
+                    value={quickAddLevelId + (includeInscription ? ':true' : ':false')}
                     onChange={(e) => {
-                      setQuickAddLevelId(e.target.value);
-                      const level = levels.find(l => l.id === e.target.value);
-                      if (level) setQuickAddTuition(level.tuition);
+                      const [lId, withIns] = e.target.value.split(':');
+                      setQuickAddLevelId(lId);
+                      setIncludeInscription(withIns === 'true');
+                      const level = levels.find(l => l.id === lId);
+                      if (level) {
+                        setQuickAddTuition(level.tuition);
+                      }
                     }}
                     className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20"
                   >
@@ -1056,7 +1066,10 @@ export default function FinanceManagement() {
                       l.stream === quickAddStream || 
                       l.type?.toLowerCase() === quickAddStream.toLowerCase()
                     ).map(l => (
-                      <option key={l.id} value={l.id}>{l.name}</option>
+                      <React.Fragment key={l.id}>
+                        <option value={`${l.id}:false`}>{l.name}</option>
+                        <option value={`${l.id}:true`}>{l.name} + Inscription (10k)</option>
+                      </React.Fragment>
                     ))}
                   </select>
                 </div>
@@ -1071,14 +1084,7 @@ export default function FinanceManagement() {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5 p-4 bg-orange-50 dark:bg-orange-900/10 border-2 border-orange-100 dark:border-orange-900/30 rounded-2xl flex items-center gap-3">
-                  <input name="payInscription" type="checkbox" className="w-5 h-5 accent-orange-600 rounded cursor-pointer" />
-                  <div>
-                    <p className="text-[11px] font-black uppercase text-orange-600 tracking-wider">Inscription</p>
-                    <p className="text-[10px] font-bold text-orange-500">10 000 FCFA (Optionnel)</p>
-                  </div>
-                </div>
+              <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-1.5 p-4 bg-blue-50 dark:bg-blue-900/10 border-2 border-blue-100 dark:border-blue-900/30 rounded-2xl flex flex-col justify-center">
                   <div className="flex items-center gap-3 mb-1">
                     <input name="payVorbereitung" type="checkbox" className="w-5 h-5 accent-blue-600 rounded cursor-pointer" />

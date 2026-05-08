@@ -1021,20 +1021,21 @@ async function startServer() {
           statut_paiement: totalInitial >= tuitionTotal ? 'SOLDÉ' : (totalInitial > 0 ? 'EN COURS' : 'NON PAYÉ')
         });
 
-        // Record Inscription if any
+      // Record Inscription if any
         if (inscriptionAmount > 0) {
           const financeId = 'INS-' + Date.now().toString();
+          const txDate = studentData.paymentDate || new Date().toISOString();
           await dbAdmin.collection('finances').doc(financeId).set({
             id: financeId,
             type: 'income',
             amount: inscriptionAmount,
             description: `Inscription - ${newStudent.matricule} - ${newStudent.firstName}`,
             category: 'registration',
-            date: new Date().toISOString()
+            date: txDate
           });
           await dbAdmin.collection('scolarites').doc(userRecord.uid).collection('versements').add({
             montant: inscriptionAmount,
-            date: new Date().toISOString(),
+            date: txDate,
             mode_paiement: 'Espèces',
             categorie: 'inscription',
             recu_numero: `INS-${Date.now().toString().slice(-6)}`,
@@ -1046,17 +1047,18 @@ async function startServer() {
         // Record Vorbereitung if any
         if (vorbereitungAmount > 0) {
           const financeId = 'VOR-' + Date.now().toString();
+          const txDate = studentData.paymentDate || new Date().toISOString();
           await dbAdmin.collection('finances').doc(financeId).set({
             id: financeId,
             type: 'income',
             amount: vorbereitungAmount,
             description: `Vorbereitung - ${newStudent.matricule} - ${newStudent.firstName}`,
             category: 'tuition',
-            date: new Date().toISOString()
+            date: txDate
           });
           await dbAdmin.collection('scolarites').doc(userRecord.uid).collection('versements').add({
             montant: vorbereitungAmount,
-            date: new Date().toISOString(),
+            date: txDate,
             mode_paiement: 'Espèces',
             categorie: 'vorbereitung',
             recu_numero: `VOR-${Date.now().toString().slice(-6)}`,
@@ -1114,6 +1116,29 @@ async function startServer() {
         return res.status(400).json({ message: "Cette adresse email est déjà utilisée par un autre compte." });
       }
       res.status(500).json({ message: err.message || "Erreur lors de la création de l'étudiant." });
+    }
+  });
+
+  app.get('/api/students/:id', authenticate, async (req, res) => {
+    try {
+      const doc = await dbAdmin.collection('students').doc(req.params.id).get();
+      if (!doc.exists) return res.status(404).json({ message: 'Student not found' });
+      
+      const studentData = doc.data() || {};
+      const userDoc = await dbAdmin.collection('users').doc(req.params.id).get();
+      const userData = userDoc.exists ? userDoc.data() : {};
+      
+      res.json({
+        id: doc.id,
+        uid: doc.id,
+        ...studentData,
+        status: (userData as any)?.status || 'offline',
+        lastActiveDevice: (userData as any)?.lastActiveDevice || '',
+        lastLoginAt: (userData as any)?.lastLoginAt || '',
+        fcmToken: (userData as any)?.fcmToken || ''
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 

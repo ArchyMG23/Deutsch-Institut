@@ -150,6 +150,9 @@ export default function StudentManagement() {
     refreshLevels();
   }, [refreshStudents, refreshClasses, refreshLevels]);
 
+  const [includeInscription, setIncludeInscription] = useState(false);
+  const [addPaymentDate, setAddPaymentDate] = useState<string>('');
+
   const handleAddStudent = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (submitting) return;
@@ -186,11 +189,13 @@ export default function StudentManagement() {
     const classId = formData.get('classId') as string;
     const cls = classes.find(c => c.id === classId);
 
-    const payInscription = formData.get('payInscription') === 'on';
+    const payInscription = includeInscription;
     const inscriptionAmount = payInscription ? 10000 : 0;
     
     const payVorbereitung = formData.get('payVorbereitung') === 'on';
     const vorbereitungAmount = payVorbereitung ? (Number(formData.get('vorbereitungAmount')) || 0) : 0;
+
+    const paymentDateStr = addPaymentDate || new Date().toISOString().split('T')[0];
 
     const newStudent = {
       matricule,
@@ -205,15 +210,15 @@ export default function StudentManagement() {
       cni: formData.get('cni'),
       parentName: formData.get('parentName'),
       parentPhone: formData.get('parentPhone'),
-      levelId,
+      levelId: levelId.split(':')[0],
       classId,
       role: 'student',
       status: 'offline',
       createdAt: new Date().toISOString(),
       payments: [
-        { tranche: 1, amount: Number(formData.get('tranche1')) || 0, date: formData.get('tranche1') ? new Date().toISOString() : null },
-        { tranche: 2, amount: Number(formData.get('tranche2')) || 0, date: formData.get('tranche2') ? new Date().toISOString() : null },
-        { tranche: 3, amount: Number(formData.get('tranche3')) || 0, date: formData.get('tranche3') ? new Date().toISOString() : null }
+        { tranche: 1, amount: Number(formData.get('tranche1')) || 0, date: formData.get('tranche1') ? paymentDateStr : null },
+        { tranche: 2, amount: Number(formData.get('tranche2')) || 0, date: formData.get('tranche2') ? paymentDateStr : null },
+        { tranche: 3, amount: Number(formData.get('tranche3')) || 0, date: formData.get('tranche3') ? paymentDateStr : null }
       ]
     };
 
@@ -225,6 +230,7 @@ export default function StudentManagement() {
           ...newStudent,
           inscriptionAmount,
           vorbereitungAmount,
+          paymentDate: paymentDateStr,
           totalTuition: formData.get('totalTuition') ? Number(formData.get('totalTuition')) : ''
         })
       });
@@ -1001,23 +1007,28 @@ export default function StudentManagement() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.level')}</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Niveau & Inscription *</label>
                   <select 
                     name="levelId" 
                     required 
                     onChange={(e) => {
-                      const level = levels.find(l => l.id === e.target.value);
+                      const [lId, withIns] = e.target.value.split(':');
+                      setIncludeInscription(withIns === 'true');
+                      const level = levels.find(l => l.id === lId);
                       if (level) setSelectedTuition(level.tuition);
                     }}
                     className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all"
                   >
-                    <option value="">Sélectionner un niveau</option>
+                    <option value="">Sélectionner une option</option>
                     {levels.filter(l => 
                       !selectedStream || 
                       l.stream === selectedStream || 
                       l.type?.toLowerCase() === selectedStream.toLowerCase()
                     ).map(l => (
-                      <option key={l.id} value={l.id}>{l.name}</option>
+                      <React.Fragment key={l.id}>
+                        <option value={`${l.id}:false`}>{l.name} (Scolarité: {formatCurrency(l.tuition)})</option>
+                        <option value={`${l.id}:true`}>{l.name} + Inscription (Total: {formatCurrency(l.tuition + 10000)})</option>
+                      </React.Fragment>
                     ))}
                   </select>
                 </div>
@@ -1032,20 +1043,25 @@ export default function StudentManagement() {
                   />
                 </div>
                 <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Date de versement *</label>
+                  <input 
+                    name="paymentDate" 
+                    required 
+                    type="date"
+                    value={addPaymentDate}
+                    onChange={(e) => setAddPaymentDate(e.target.value)}
+                    className="w-full px-5 py-3 bg-white dark:bg-neutral-800 border-2 border-dia-red/40 rounded-2xl focus:ring-2 focus:ring-dia-red/20 outline-none transition-all font-bold text-dia-red" 
+                  />
+                  <p className="text-[10px] text-dia-red font-bold mt-1">Obligatoire pour valider l'enregistrement</p>
+                </div>
+                <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.class')}</label>
                   <select name="classId" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
                     <option value="">{t('students.not_assigned')}</option>
                     {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
-                <div className="space-y-4 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 bg-orange-50 dark:bg-orange-900/10 border-2 border-orange-100 dark:border-orange-900/30 rounded-2xl flex items-center gap-3">
-                    <input name="payInscription" type="checkbox" className="w-6 h-6 accent-orange-600 rounded cursor-pointer" />
-                    <div>
-                      <p className="text-xs font-black uppercase text-orange-600 tracking-wider">Frais d'Inscription</p>
-                      <p className="text-[10px] font-bold text-orange-500">10 000 FCFA (Optionnel)</p>
-                    </div>
-                  </div>
+                <div className="space-y-4 md:col-span-2 grid grid-cols-1 gap-4">
                   <div className="p-4 bg-blue-50 dark:bg-blue-900/10 border-2 border-blue-100 dark:border-blue-900/30 rounded-2xl flex flex-col justify-center">
                     <div className="flex items-center gap-3 mb-1">
                       <input name="payVorbereitung" type="checkbox" className="w-6 h-6 accent-blue-600 rounded cursor-pointer" />
@@ -1229,10 +1245,10 @@ export default function StudentManagement() {
               <div className="flex items-center gap-6">
                 <div className="relative group">
                   <div className="w-24 h-24 rounded-3xl bg-dia-red/10 text-dia-red flex items-center justify-center text-3xl font-bold overflow-hidden">
-                    {selectedStudent.photoURL ? (
+                    {selectedStudent?.photoURL ? (
                       <img src={selectedStudent.photoURL} alt="Student" className="w-full h-full object-cover" />
                     ) : (
-                      <>{selectedStudent.lastName[0]}{selectedStudent.firstName[0]}</>
+                      <>{(selectedStudent?.lastName?.[0] || '')}{(selectedStudent?.firstName?.[0] || '')}</>
                     )}
                   </div>
                   <button 
