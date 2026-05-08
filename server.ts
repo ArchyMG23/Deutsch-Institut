@@ -925,7 +925,8 @@ async function startServer() {
         const studentData = doc.data();
         const userData = usersMap[doc.id] || {};
         return { 
-          id: doc.id, 
+          id: doc.id,
+          uid: doc.id, 
           ...studentData,
           // Merge critical profile fields
           status: userData.status || 'offline',
@@ -1284,7 +1285,8 @@ async function startServer() {
         const teacherData = doc.data();
         const userData = usersMap[doc.id] || {};
         return { 
-          id: doc.id, 
+          id: doc.id,
+          uid: doc.id, 
           ...teacherData,
           // Merge critical profile fields
           status: userData.status || 'offline',
