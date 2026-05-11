@@ -28,10 +28,12 @@ export default function LevelManagement() {
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>({ key: 'name', direction: 'asc' });
   const [submitting, setSubmitting] = useState(false);
 
-  const isSuperAdmin = (profile as any)?.isSuperAdmin || 
-                       (user as any)?.isSuperAdmin || 
-                       user?.email === 'yombivictor@gmail.com' || 
-                       user?.email === 'gabrielyombi311@gmail.com';
+  const isSuperAdmin = 
+    profile?.role === 'admin' || 
+    (profile as any)?.isSuperAdmin || 
+    (user as any)?.isSuperAdmin || 
+    user?.email?.toLowerCase() === 'yombivictor@gmail.com' || 
+    user?.email?.toLowerCase() === 'gabrielyombi311@gmail.com';
 
   useEffect(() => {
     refreshLevels();

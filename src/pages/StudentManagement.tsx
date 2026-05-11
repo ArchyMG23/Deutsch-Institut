@@ -152,6 +152,18 @@ export default function StudentManagement() {
   }, [refreshStudents, refreshClasses, refreshLevels]);
 
   const [includeInscription, setIncludeInscription] = useState(false);
+  const [selectedLevelId, setSelectedLevelId] = useState<string>('');
+  
+  useEffect(() => {
+    const level = levels.find(l => l.id === selectedLevelId);
+    if (level) {
+      const isA1 = level.name.toLowerCase().includes('a1');
+      setIncludeInscription(isA1);
+    } else {
+      setIncludeInscription(false);
+    }
+  }, [selectedLevelId, levels]);
+
   const [addPaymentDate, setAddPaymentDate] = useState<string>('');
 
   const streams = React.useMemo(() => {
@@ -1026,8 +1038,11 @@ export default function StudentManagement() {
                   <select 
                     name="levelId" 
                     required 
+                    value={selectedLevelId}
                     onChange={(e) => {
-                      const level = levels.find(l => l.id === e.target.value);
+                      const id = e.target.value;
+                      setSelectedLevelId(id);
+                      const level = levels.find(l => l.id === id);
                       if (level) setSelectedTuition(level.tuition);
                     }}
                     className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all"

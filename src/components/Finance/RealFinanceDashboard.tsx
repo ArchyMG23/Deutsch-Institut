@@ -26,6 +26,8 @@ import { Charge, Session, Versement, DailyReport } from '../../types';
 import { motion } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import { generateWhatsAppLink, APP_NAME_FOR_LINKS } from '../../utils/contactLinks';
+import { useAuth } from '../../context/AuthContext';
+import { Trash2 } from 'lucide-react';
 import { 
   BarChart, 
   Bar, 
@@ -63,6 +65,16 @@ const cn = (...classes: any[]) => classes.filter(Boolean).join(' ');
 
 export default function RealFinanceDashboard() {
   const { t } = useTranslation();
+  const { user, profile } = useAuth();
+  
+  const isSuperAdmin = 
+    profile?.role === 'admin' || 
+    profile?.isSuperAdmin || 
+    user?.role === 'admin' || 
+    user?.isSuperAdmin || 
+    user?.email?.toLowerCase() === 'gabrielyombi311@gmail.com' ||
+    user?.email?.toLowerCase() === 'yombivictor@gmail.com';
+
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState({
     revenus: 0,
@@ -220,6 +232,10 @@ export default function RealFinanceDashboard() {
   };
 
   const handleMerge = async (survivor: any, victim: any) => {
+    if (!isSuperAdmin) {
+      toast.error("Permissions insuffisantes");
+      return;
+    }
     if (!window.confirm(`Êtes-vous sûr ? Tous les paiements de ${victim.nom_eleve} seront transférés vers ${survivor.nom_eleve}, et le compte doublon sera supprimé.`)) {
       return;
     }
@@ -270,6 +286,38 @@ export default function RealFinanceDashboard() {
     } catch (err) {
       console.error(err);
       toast.error("Erreur lors de la fusion: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setMaintenanceLoading(false);
+    }
+  };
+
+  const handleDeleteFinance = async (id: string, description: string) => {
+    if (!isSuperAdmin) {
+      toast.error("Désolé, seul un administrateur peut supprimer une transaction.");
+      return;
+    }
+
+    if (!window.confirm(`Voulez-vous supprimer cette transaction : "${description}" ?\n\nNote: Cela annulera l'entrée dans le grand livre.`)) {
+      return;
+    }
+
+    setMaintenanceLoading(true);
+    try {
+      const response = await fetch(`/api/finances/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${await auth.currentUser?.getIdToken()}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error("Erreur serveur lors de la suppression");
+      }
+
+      toast.success("Transaction supprimée !");
+      fetchFinanceStats();
+    } catch (err: any) {
+      toast.error(err.message || "Erreur lors de la suppression");
     } finally {
       setMaintenanceLoading(false);
     }
@@ -519,6 +567,9 @@ export default function RealFinanceDashboard() {
       let banqueBalance = 0;
       const allFinances: any[] = [];
 
+      // Create a set of IDs for orphan detection later
+      const linkedFinanceIds = new Set();
+
       if (financesSnap) {
         financesSnap.forEach(doc => {
           const f = { id: doc.id, ...doc.data() } as any;
@@ -548,6 +599,43 @@ export default function RealFinanceDashboard() {
         });
       }
 
+      // --- ORPHAN VERSEMENTS RECONCILIATION ---
+      // We look for versements that are not linked to a financeId and add them to the global balance
+      // so the dashboard matches the students' individual records accurately.
+      if (allVersementsSnap) {
+        allVersementsSnap.forEach((vDoc: any) => {
+          const v = vDoc.data();
+          // If it has a financeId, it's already counted in the financesSnap loop above
+          if (v.financeId) {
+            linkedFinanceIds.add(v.financeId);
+            return;
+          }
+
+          // It's an orphan! (Legacy or failed sync)
+          const amount = Number(v.montant) || 0;
+          const date = new Date(v.date);
+          const accType = String(v.accountType || 'caisse').toLowerCase();
+
+          if (accType === 'banque') {
+            banqueBalance += amount;
+          } else {
+            caisseBalance += amount;
+          }
+
+          if (!isNaN(date.getTime()) && date.getFullYear() === selectedYear) {
+            totalRevenu += amount;
+            const mKey = date.getMonth();
+            monthlyRevenu[mKey] = (monthlyRevenu[mKey] || 0) + amount;
+            
+            const cat = String(v.categorie || 'other').toLowerCase();
+            if (cat.includes('inscrip')) revenusDetails.inscription += amount;
+            else if (cat.includes('scolarit')) revenusDetails.scolarite += amount;
+            else revenusDetails.autre += amount;
+          }
+        });
+      }
+      // ----------------------------------------
+
       let scolariteFinalSnap;
       try {
         scolariteFinalSnap = await getDocs(collection(db, 'scolarites'));
@@ -572,21 +660,29 @@ export default function RealFinanceDashboard() {
         }
       });
  
-      const financesByStudent: Record<string, number> = {};
+      const financesByDossier: Record<string, number> = {};
       if (financesSnap) {
         financesSnap.forEach(doc => {
           const f = doc.data();
-          if (f.type !== 'income' || !f.studentId || f.deletedAt) return;
-          financesByStudent[f.studentId] = (financesByStudent[f.studentId] || 0) + (Number(f.amount) || 0);
+          if (f.type !== 'income' || (!f.studentId && !f.studentMatricule) || f.deletedAt) return;
+          
+          const studentId = f.studentId || f.studentMatricule;
+          const amount = Number(f.amount) || 0;
+          
+          // Use levelId for precise mapping to dossier, fallback to studentId for default dossier
+          const scolaKey = f.levelId ? `${studentId}_${f.levelId}` : studentId;
+          financesByDossier[scolaKey] = (financesByDossier[scolaKey] || 0) + amount;
         });
       }
  
       const scolarites = scolariteFinalSnap?.docs.map(d => {
         const s = d.data();
         const scolaId = d.id;
-        const studentId = s.eleve_id || d.id.split('_')[0];
         const subCollectionPaid = versementsByStudent[scolaId] || 0;
-        const financeReportedPaid = financesByStudent[studentId] || 0;
+        const financeReportedPaid = financesByDossier[scolaId] || 0;
+        
+        // We take the max of the two sources to ensure we don't miss anything that was only in one place,
+        // but now that we use the specific scolaId key for finances, they won't mix between dossiers.
         const totalPaid = Math.max(subCollectionPaid, financeReportedPaid);
         const totalDue = Number(s.montant_total_du) || 0;
         const reste = Math.max(0, totalDue - totalPaid);
@@ -1178,12 +1274,13 @@ export default function RealFinanceDashboard() {
                   <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-right cursor-pointer hover:text-dia-red transition-all" onClick={() => setFinanceSort(p => ({ key: 'amount', direction: p.key === 'amount' && p.direction === 'desc' ? 'asc' : 'desc' }))}>
                     <div className="flex items-center justify-end gap-1">Montant <SortIcon currentSort={financeSort} column="amount" /></div>
                   </th>
+                  {isSuperAdmin && <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-neutral-500 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
                 {sortedFilteredFinances.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-10 text-center text-neutral-500 italic">Aucune opération trouvée pour ce compte.</td>
+                    <td colSpan={isSuperAdmin ? 7 : 6} className="px-6 py-10 text-center text-neutral-500 italic">Aucune opération trouvée pour ce compte.</td>
                   </tr>
                 ) : (
                   sortedFilteredFinances.map((f: any) => (
@@ -1215,6 +1312,16 @@ export default function RealFinanceDashboard() {
                       )}>
                         {f.type === 'income' ? '+' : '-'}{formatCurrency(f.amount)}
                       </td>
+                      {isSuperAdmin && (
+                        <td className="px-6 py-4 text-right">
+                          <button 
+                            onClick={() => handleDeleteFinance(f.id, f.description)}
+                            className="p-2 text-neutral-300 hover:text-dia-red hover:bg-dia-red/10 rounded-lg transition-all"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))
                 )}

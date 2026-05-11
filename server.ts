@@ -1738,19 +1738,96 @@ async function startServer() {
 
   app.delete('/api/finances/:id', authenticate, async (req: any, res) => {
     try {
-      // Permanent delete only if explicitly requested or just keep it archived
-      // For now, let's just make the standard delete also move to trash if no reason provided
+      if (req.user.role !== 'admin') {
+        return res.status(403).json({ message: "Seul un administrateur peut supprimer une transaction." });
+      }
+
+      const financeRef = dbAdmin.collection('finances').doc(req.params.id);
+      const financeDoc = await financeRef.get();
+      
+      if (!financeDoc.exists) {
+        return res.status(404).json({ message: "Transaction introuvable" });
+      }
+
+      const financeData = financeDoc.data();
       const userDoc = await dbAdmin.collection('users').doc(req.user.id).get();
       const userData = userDoc.data();
-      const deletedBy = `${userData?.firstName} ${userData?.lastName}`;
+      const deletedBy = `${userData?.firstName} ${userData?.lastName} (${req.user.email})`;
 
-      await dbAdmin.collection('finances').doc(req.params.id).update({
+      // 1. Mark as deleted in global ledger
+      await financeRef.update({
         deletedAt: new Date().toISOString(),
         deletedBy: deletedBy,
-        deletionReason: 'Suppression standard (sans raison précisée)'
+        deletionReason: 'Suppression via Tableau de Bord'
       });
-      res.json({ message: 'Finance record moved to trash' });
+
+      // 2. COMPREHENSIVE CLEANUP: If it's a student payment, cleanup the subcollections
+      if (financeData?.studentId && (financeData?.category === 'tuition' || financeData?.category === 'registration' || financeData?.category === 'scolarite' || financeData?.category === 'inscription')) {
+        const studentId = financeData.studentId;
+        const levelId = financeData.levelId;
+        
+        // Strategy: First try specific paths to avoid collectionGroup index requirement if possible
+        const possibleScolaIds = [studentId];
+        if (levelId) possibleScolaIds.push(`${studentId}_${levelId}`);
+        
+        const versementsToDelete: any[] = [];
+        
+        for (const sId of possibleScolaIds) {
+          const vSnap = await dbAdmin.collection('scolarites').doc(sId).collection('versements')
+            .where('financeId', '==', req.params.id)
+            .get();
+          vSnap.forEach(d => versementsToDelete.push(d.ref));
+        }
+
+        // Fallback to collectionGroup if nothing found in specific paths (might have custom ID)
+        if (versementsToDelete.length === 0) {
+          try {
+            const groupSnap = await dbAdmin.collectionGroup('versements')
+              .where('financeId', '==', req.params.id)
+              .get();
+            groupSnap.forEach(d => versementsToDelete.push(d.ref));
+          } catch (indexErr) {
+            console.warn("CollectionGroup 'versements' index might be missing, skipping fallback.");
+          }
+        }
+        
+        for (const vRef of versementsToDelete) {
+          const scolariteRef = vRef.parent.parent;
+          if (scolariteRef) {
+             // Delete the versement
+             await vRef.delete();
+             
+             // Recalculate scolarite totals
+             const scolaDoc = await scolariteRef.get();
+             if (scolaDoc.exists) {
+               const s = scolaDoc.data();
+               const subV = await scolariteRef.collection('versements').get();
+               let totalPaid = 0;
+               subV.forEach(d => { totalPaid += (Number(d.data().montant) || 0); });
+               
+               const totalDue = Number(s?.montant_total_du) || 0;
+               const reste = Math.max(0, totalDue - totalPaid);
+               const surplus = Math.max(0, totalPaid - totalDue);
+               
+               let statut = 'EN COURS';
+               if (totalPaid === 0) statut = 'NON PAYÉ';
+               else if (totalPaid >= totalDue) statut = 'SOLDÉ';
+               
+               await scolariteRef.update({
+                 total_verse: totalPaid,
+                 reste: reste,
+                 surplus: surplus,
+                 statut_paiement: statut,
+                 lastCalculated: new Date().toISOString()
+               });
+             }
+          }
+        }
+      }
+
+      res.json({ message: 'Transaction supprimée et dossiers synchronisés' });
     } catch (err: any) {
+      console.error("Finance DELETE error:", err);
       res.status(500).json({ message: err.message });
     }
   });

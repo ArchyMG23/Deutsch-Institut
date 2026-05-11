@@ -87,9 +87,15 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
 
   useEffect(() => {
     if (paymentCategory === 'inscription') {
-      setAmount(10000);
+      const isA1 = (scolarite?.niveau || '').toLowerCase().includes('a1');
+      if (isA1) {
+        setAmount(10000);
+      } else {
+        setAmount(0);
+        toast.info("Le système suggère 0 frais d'inscription pour ce niveau (Non-A1).");
+      }
     }
-  }, [paymentCategory]);
+  }, [paymentCategory, scolarite?.niveau]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -215,7 +221,12 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
 
       const studentLevel = levels.find(l => l.id === student.levelId);
       const levelTuition = studentLevel?.tuition || 110000;
-      const defaultTuition = levelTuition + 10000;
+      
+      const recordLevelName = activeScola?.niveau || studentLevel?.name || 'N/A';
+      const isA1 = (recordLevelName || '').toLowerCase().includes('a1');
+      const registrationFee = isA1 ? 10000 : 0;
+      const defaultTuition = levelTuition + registrationFee;
+      
       const stream = studentLevel?.stream || 'N/A';
       const levelName = studentLevel?.name || 'N/A';
 
@@ -397,12 +408,22 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
 
     setLoading(true);
     try {
+      if (paymentCategory === 'inscription' && !scolarite.niveau?.includes('A1')) {
+        const confirm = window.confirm("⚠️ ATTENTION : Les frais d'inscription ne sont normalement dus que pour le niveau A1. Ce dossier est pour un niveau supérieur. Voulez-vous quand même enregistrer ces frais d'inscription ?");
+        if (!confirm) {
+          setLoading(false);
+          return;
+        }
+      }
+
       const recNumber = generateReceiptNumber();
       // Use selected date. If it's today, we can use precisely currently time to avoid sort overlap
       const today = new Date().toISOString().split('T')[0];
       const finalDate = paymentDate === today 
         ? new Date().toISOString() 
         : new Date(paymentDate + 'T12:00:00Z').toISOString();
+
+      const scolaDossierLevelId = scolarite.id.includes('_') ? scolarite.id.split('_')[1] : (targetStudent.levelId || '');
 
       // Sync with global finances
       let financeId: string | undefined;
@@ -415,7 +436,7 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
           body: JSON.stringify({
             type: 'income',
             amount: amount,
-            description: `${paymentCategory.charAt(0).toUpperCase() + paymentCategory.slice(1)} - ${targetStudent.lastName} ${targetStudent.firstName} (${targetStudent.matricule})`,
+            description: `${paymentCategory.charAt(0).toUpperCase() + paymentCategory.slice(1)} [${scolarite.niveau}] - ${targetStudent.lastName} ${targetStudent.firstName} (${targetStudent.matricule})`,
             category: paymentCategory === 'scolarite' ? 'tuition' : (paymentCategory === 'inscription' ? 'registration' : 'tuition'),
             date: finalDate,
             accountType: accountType,
@@ -423,7 +444,7 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
             status: 'active',
             studentId: targetStudent.uid,
             studentMatricule: targetStudent.matricule,
-            levelId: targetStudent.levelId,
+            levelId: scolaDossierLevelId,
             classId: targetStudent.classId
           })
         });
@@ -588,39 +609,57 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
   };
 
   const handleDeletePayment = async (versementId: string) => {
-    if (!targetStudent || !scolarite || !isSuperAdmin) return;
+    if (!targetStudent || !scolarite || !isSuperAdmin) {
+      if (!isSuperAdmin) toast.error("Désolé, vous n'avez pas les droits de super-administrateur pour supprimer un versement.");
+      return;
+    }
     
-    if (!window.confirm("Êtes-vous sûr de vouloir supprimer définitivement ce versement ?")) return;
+    if (!window.confirm("Êtes-vous sûr de vouloir supprimer définitivement ce versement ?\n\nCette action annulera l'entrée dans le grand livre et corrigera le solde de l'élève.")) return;
 
     setLoading(true);
     try {
       const versementToDelete = versements.find(v => v.id === versementId);
-      if (!versementToDelete) return;
+      if (!versementToDelete) {
+        toast.error("Données du versement introuvables localement.");
+        setLoading(false);
+        return;
+      }
 
       // 1. Delete from subcollection
+      let subColDeleted = false;
       try {
         await deleteDoc(doc(db, 'scolarites', scolarite.id, 'versements', versementId));
-      } catch (e) {}
+        subColDeleted = true;
+      } catch (e: any) {
+        console.warn("Could not delete from subcollection (might be a finance-only record):", e.message);
+      }
 
       // 2. Sync with global finances
       const idToDelete = versementToDelete.financeId || versementId;
+      let financeDeleted = false;
       try {
-        await fetchWithAuth(`/api/finances/${idToDelete}`, {
+        const finRes = await fetchWithAuth(`/api/finances/${idToDelete}`, {
           method: 'DELETE'
         });
+        if (finRes.ok) financeDeleted = true;
       } catch (finErr) {
         console.error("Finance deletion failed:", finErr);
       }
 
-      // 3. Recalculate totals
-      const newTotalVerse = (scolarite.total_verse || 0) - versementToDelete.montant;
+      if (!subColDeleted && !financeDeleted) {
+        throw new Error("Impossible de supprimer le versement (Erreur permissions ou réseau).");
+      }
+
+      // 3. Recalculate totals - IMPORTANT: recalculate from CURRENT list excluding the deleted one
+      const remainingVersements = versements.filter(v => v.id !== versementId);
+      const newTotalVerse = remainingVersements.reduce((acc, v) => acc + (Number(v.montant) || 0), 0);
       const newReste = Math.max(0, scolarite.montant_total_du - newTotalVerse);
       const newSurplus = Math.max(0, newTotalVerse - scolarite.montant_total_du);
       
       let newStatut: StudentScolarite['statut_paiement'] = 'EN COURS';
-      if (newSurplus > 0) newStatut = 'SURPLUS';
+      if (newTotalVerse === 0) newStatut = 'NON PAYÉ';
+      else if (newSurplus > 0) newStatut = 'SURPLUS';
       else if (newReste === 0) newStatut = 'SOLDÉ';
-      else if (newTotalVerse === 0) newStatut = 'IMPAYÉ';
 
       const updatedScolarite = {
         ...scolarite,
@@ -633,18 +672,19 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
       await updateDoc(doc(db, 'scolarites', scolarite.id), updatedScolarite);
       
       setScolarite(updatedScolarite);
-      setVersements(versements.filter(v => v.id !== versementId));
+      setVersements(remainingVersements);
       
       addAuditLog("VERSEMENT_SUPPRIMÉ", targetStudent.uid, { 
         versementId, 
         montant: versementToDelete.montant,
-        recu_numero: versementToDelete.recu_numero 
+        recu_numero: versementToDelete.recu_numero,
+        deletedBy: user?.email 
       });
 
-      toast.success("Versement supprimé avec succès !");
-    } catch (err) {
+      toast.success("Versement supprimé et situation mise à jour !");
+    } catch (err: any) {
       console.error(err);
-      toast.error("Erreur lors de la suppression du versement");
+      toast.error(err.message || "Erreur lors de la suppression du versement");
     } finally {
       setLoading(false);
     }
@@ -1114,9 +1154,14 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
 
             {/* Payment Form */}
             <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 shadow-sm">
-              <h3 className="text-lg font-black uppercase mb-6 flex items-center gap-2">
-                <CreditCard size={20} className="text-dia-red" /> Nouveau Versement
-              </h3>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+                <h3 className="text-lg font-black uppercase flex items-center gap-2">
+                  <CreditCard size={20} className="text-dia-red" /> Nouveau Versement
+                </h3>
+                <div className="px-4 py-2 bg-dia-red text-white rounded-xl text-[10px] font-black uppercase flex items-center gap-2 animate-pulse">
+                  <Landmark size={14} /> Destination: {scolarite.niveau} ({scolarite.filiere})
+                </div>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-neutral-400 uppercase">Montant (FCFA) *</label>
@@ -1138,7 +1183,7 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
                     )}
                   >
                     <option value="scolarite">Scolarité</option>
-                    <option value="inscription" className="font-bold text-orange-600">Inscription (10 000 FCFA)</option>
+                    <option value="inscription" className="font-bold text-orange-600">Inscription (Dû seulement en A1)</option>
                     <option value="vorbereitung">Vorbereitung</option>
                     <option value="examen">Examen</option>
                     <option value="autre">Autre</option>
@@ -1373,7 +1418,71 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
               </div>
               </div>
 
-              <div className="space-y-4 border-t pt-6 border-neutral-100 dark:border-neutral-800">
+                <div className="space-y-4 border-t pt-6 border-neutral-100 dark:border-neutral-800">
+                  <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl p-4 border border-neutral-200 dark:border-neutral-700">
+                    <p className="text-[10px] font-black uppercase text-dia-red mb-2">Ajouter un Cursus (Dossier) à l'historique</p>
+                    <div className="flex gap-2">
+                       <select 
+                         id="add-new-dossier-select"
+                         className="flex-1 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-xs font-bold"
+                       >
+                         <option value="">Choisir un niveau...</option>
+                         {levels.map(l => (
+                           <option key={l.id} value={l.id}>{l.name} - {l.stream}</option>
+                         ))}
+                       </select>
+                       <button 
+                         onClick={async () => {
+                           const select = document.getElementById('add-new-dossier-select') as HTMLSelectElement;
+                           const levelId = select.value;
+                           if (!levelId) return;
+                           
+                           const level = levels.find(l => l.id === levelId);
+                           if (!level) return;
+
+                           if (scolariteHistory.some(h => h.id === `${targetStudent.uid}_${levelId}`)) {
+                             toast.error("Un dossier pour ce niveau existe déjà.");
+                             return;
+                           }
+
+                           if (!window.confirm(`Voulez-vous créer un nouveau dossier de scolarité pour le niveau ${level.name} ?`)) return;
+
+                           setLoading(true);
+                           try {
+                             const newId = `${targetStudent.uid}_${levelId}`;
+                             const isA1 = level.name.toLowerCase().includes('a1');
+                             const tuition = level.tuition + (isA1 ? 10000 : 0);
+                             
+                             const newDossier: StudentScolarite = {
+                               id: newId,
+                               eleve_id: targetStudent.uid,
+                               matricule: targetStudent.matricule,
+                               nom_eleve: `${targetStudent.lastName} ${targetStudent.firstName}`,
+                               classe_id: 'N/A',
+                               filiere: level.stream || 'Général',
+                               niveau: level.name,
+                               montant_total_du: tuition,
+                               total_verse: 0,
+                               reste: tuition,
+                               surplus: 0,
+                               statut_paiement: 'NON PAYÉ',
+                               createdAt: new Date().toISOString()
+                             };
+                             
+                             await setDoc(doc(db, 'scolarites', newId), newDossier);
+                             toast.success("Nouveau dossier créé !");
+                             await selectStudent(targetStudent, newId);
+                           } catch (err) {
+                             toast.error("Erreur creation dossier");
+                           } finally { setLoading(false); }
+                         }}
+                         className="bg-dia-red text-white px-4 py-2 rounded-lg text-xs font-black uppercase"
+                       >
+                         Ajouter
+                       </button>
+                    </div>
+                  </div>
+
                 <div className="flex justify-between items-center text-[10px] font-black text-neutral-400 uppercase tracking-tighter mb-[-8px]">
                    <span>Bilan de Scolarité</span>
                    <button 
