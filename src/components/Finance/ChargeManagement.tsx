@@ -105,17 +105,8 @@ export default function ChargeManagement() {
       });
 
       if (response.ok) {
-        // 2. Also keep a copy in legacy 'charges' if needed for old reports, or just ignore it
-        // and rely on unified ledger. Let's add to charges too for now to avoid breaking other old components
-        // but the goal is to have it in finances.
-        await addDoc(collection(db, 'charges'), {
-          libelle: description,
-          montant: amount,
-          categorie: category,
-          date: date,
-          notes: notes
-        });
-        
+        // Also keep a copy in legacy 'charges' ONLY if it didn't exist before
+        // but the app now primarily uses the finances table.
         toast.success("Dépense enregistrée et ajoutée au Grand Livre");
         setIsModalOpen(false);
         fetchCharges();

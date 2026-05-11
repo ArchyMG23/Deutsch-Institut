@@ -93,7 +93,7 @@ export default function RealFinanceDashboard() {
   const [activeTab, setActiveTab] = useState<'all' | 'caisse' | 'banque'>('all');
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-  const [selectedYear, setSelectedYear] = useState(2026);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferAmount, setTransferAmount] = useState(0);
   const [transferNotes, setTransferNotes] = useState('');
@@ -105,6 +105,11 @@ export default function RealFinanceDashboard() {
   const [maintenanceStatus, setMaintenanceStatus] = useState<'idle' | 'scanning' | 'ready'>('idle');
   const [maintenanceLoading, setMaintenanceLoading] = useState(false);
   const [duplicates, setDuplicates] = useState<any[]>([]);
+  const [auditLog, setAuditLog] = useState<{msg: string, type: 'info'|'err'}[]>([]);
+
+  const addAuditMsg = (msg: string, type: 'info'|'err' = 'info') => {
+    setAuditLog(prev => [{ msg, type }, ...prev].slice(0, 50));
+  };
 
   const scanForDuplicates = () => {
     setMaintenanceStatus('scanning');
@@ -170,11 +175,12 @@ export default function RealFinanceDashboard() {
   };
 
   const handleAuditRepair = async () => {
-    if (!window.confirm("L'audit global va recalculer tous les soldes basés sur les transactions confirmées. Cette opération peut être longue. Continuer ?")) return;
+    if (!window.confirm("L'audit global va recalculer tous les soldes basés sur les transactions confirmées dans le Grand Livre. Continuer ?")) return;
     
     setMaintenanceLoading(true);
+    addAuditMsg("Démarrage de l'audit global...");
     try {
-      // 1. Fetch all confirmed income transactions related to tuition
+      // 1. Fetch all confirmed income transactions related to tuition/registration
       const fSnap = await getDocs(query(
         collection(db, 'finances'), 
         where('type', '==', 'income'),
@@ -184,29 +190,44 @@ export default function RealFinanceDashboard() {
       const paymentsByStudent: Record<string, any[]> = {};
       fSnap.forEach(doc => {
         const f = doc.data();
-        if (!f.studentId) return;
-        if (!paymentsByStudent[f.studentId]) paymentsByStudent[f.studentId] = [];
-        paymentsByStudent[f.studentId].push({ id: doc.id, ...f });
+        if (!f.studentId && !f.studentMatricule) return;
+        const sId = f.studentId || f.studentMatricule;
+        if (!paymentsByStudent[sId]) paymentsByStudent[sId] = [];
+        paymentsByStudent[sId].push({ id: doc.id, ...f });
       });
 
-      // 2. For each student, check their scolarites
+      // 2. Fetch all scolarites
       const scolaSnap = await getDocs(collection(db, 'scolarites'));
       let fixedCount = 0;
+      let docCount = 0;
 
       for (const sDoc of scolaSnap.docs) {
         const s = sDoc.data();
-        const studentId = s.eleve_id || sDoc.id.split('_')[0];
-        const studentPayments = paymentsByStudent[studentId] || [];
+        const scolaId = sDoc.id;
+        const studentId = s.eleve_id || scolaId.split('_')[0];
         
         // Audit subcollection versements vs grand livre
-        const vSnap = await getDocs(collection(db, 'scolarites', sDoc.id, 'versements'));
+        const vSnap = await getDocs(collection(db, 'scolarites', scolaId, 'versements'));
         const vFinanceIds = new Set();
-        vSnap.forEach(vd => { if (vd.data().financeId) vFinanceIds.add(vd.data().financeId); });
+        let subtotalPaid = 0;
+        vSnap.forEach(vd => { 
+          const vData = vd.data();
+          subtotalPaid += Number(vData.montant) || 0;
+          if (vData.financeId) vFinanceIds.add(vData.financeId); 
+        });
 
-        // If a finance payment is not in versements subcollection, add it
+        // 3. Check for orphans in ledger for THIS student
+        const studentPayments = paymentsByStudent[studentId] || [];
+        let newlyAdded = 0;
         for (const p of studentPayments) {
-           if (!vFinanceIds.has(p.id)) {
-             await addDoc(collection(db, 'scolarites', sDoc.id, 'versements'), {
+           const pLevelId = p.levelId || '';
+           const currentLevelId = scolaId.includes('_') ? scolaId.split('_')[1] : '';
+           
+           // If we have level info, only add if it matches OR if it's the only dossier
+           const matchesLevel = !pLevelId || !currentLevelId || pLevelId === currentLevelId;
+
+           if (!vFinanceIds.has(p.id) && matchesLevel) {
+             const vData = {
                montant: p.amount,
                date: p.date,
                financeId: p.id,
@@ -214,18 +235,41 @@ export default function RealFinanceDashboard() {
                categorie: (p.category === 'registration' || p.category === 'inscription') ? 'inscription' : 'scolarite',
                recu_numero: p.receiptNumber || `AUDIT-${p.id.slice(-6)}`,
                caissier_id: 'System-Audit',
-               notes: "Recouvert par audit global"
-             });
+               notes: "Recouvert par audit global",
+               auditDate: new Date().toISOString()
+             };
+             await addDoc(collection(db, 'scolarites', scolaId, 'versements'), vData);
+             subtotalPaid += p.amount;
+             newlyAdded++;
              fixedCount++;
            }
         }
+
+        // 4. Update the student scolarite document totals
+        if (newlyAdded > 0 || subtotalPaid !== (Number(s.total_verse) || 0)) {
+           const totalDue = Number(s.montant_total_du) || 0;
+           const newReste = Math.max(0, totalDue - subtotalPaid);
+           let status = 'EN COURS';
+           if (subtotalPaid === 0) status = 'NON PAYÉ';
+           else if (subtotalPaid >= totalDue && totalDue > 0) status = 'SOLDÉ';
+           
+           await updateDoc(sDoc.ref, {
+             total_verse: subtotalPaid,
+             reste: newReste,
+             statut_paiement: status,
+             lastAudit: new Date().toISOString()
+           });
+           docCount++;
+        }
       }
 
-      toast.success(`Audit terminé. ${fixedCount} versements orphelins ont été ré-ancrés.`);
+      addAuditMsg(`Audit terminé. ${fixedCount} transactions ré-ancrées. ${docCount} dossiers mis à jour.`);
+      toast.success("Audit terminé avec succès.");
       fetchFinanceStats();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Audit error:", error);
-      toast.error("Erreur lors de l'audit et réparation");
+      addAuditMsg("Erreur pendant l'audit: " + error.message, 'err');
+      toast.error("Erreur lors de l'audit");
     } finally {
       setMaintenanceLoading(false);
     }
@@ -236,51 +280,74 @@ export default function RealFinanceDashboard() {
       toast.error("Permissions insuffisantes");
       return;
     }
-    if (!window.confirm(`Êtes-vous sûr ? Tous les paiements de ${victim.nom_eleve} seront transférés vers ${survivor.nom_eleve}, et le compte doublon sera supprimé.`)) {
+    if (!window.confirm(`Êtes-vous sûr ? Tous les paiements de ${victim.nom_eleve} seront transférés vers ${survivor.nom_eleve}, et le compte doublon ${victim.eleve_id} sera supprimé.`)) {
       return;
     }
 
     try {
       setMaintenanceLoading(true);
-      // 1. Move versements from ALL scolarite records of the victim
-      const qScolaVictim = query(collection(db, 'scolarites'), where('eleve_id', '==', victim.eleve_id));
-      const victimScolas = await getDocs(qScolaVictim);
       
-      for (const scolaDoc of victimScolas.docs) {
+      // 1. Get ALL scolarite records for the victim
+      let victimScolas: any[] = [];
+      const qScolaVictim = query(collection(db, 'scolarites'), where('eleve_id', '==', victim.eleve_id));
+      try {
+        const snap = await getDocs(qScolaVictim);
+        victimScolas = snap.docs;
+      } catch (e) {
+        console.warn("Index query failed, falling back to ID-only victim fetch");
+        // Fallback: at least try the victim record we already have
+        const directDoc = await getDocs(query(collection(db, 'scolarites'), where('__name__', '==', victim.id)));
+        victimScolas = directDoc.docs;
+      }
+      
+      for (const scolaDoc of victimScolas) {
+        // Move versements to the matching survivor scolarite record
+        // We look for a survivor scola record for the same level if possible
+        const levelId = scolaDoc.id.includes('_') ? scolaDoc.id.split('_')[1] : '';
+        const survivorScolaId = levelId ? `${survivor.eleve_id}_${levelId}` : survivor.id;
+        
         const versementsSnap = await getDocs(collection(db, 'scolarites', scolaDoc.id, 'versements'));
         for (const vDoc of versementsSnap.docs) {
           const vData = vDoc.data();
-          // We move them to the survivor's primary scolarite record (or matching level)
-          // For simplicity during merge, we move to survivor's main ID
-          await addDoc(collection(db, 'scolarites', survivor.id, 'versements'), {
+          await addDoc(collection(db, 'scolarites', survivorScolaId, 'versements'), {
             ...vData,
-            mergeNote: `Fusionné depuis ${victim.matricule}`
+            mergeNote: `Fusionné depuis ${victim.matricule || victim.eleve_id}`
           });
           await deleteDoc(vDoc.ref);
         }
         await deleteDoc(scolaDoc.ref);
       }
 
-      // 2. Update Finance records
+      // 2. Update Finance records in global ledger
       const qFin = query(collection(db, 'finances'), where('studentId', '==', victim.eleve_id));
-      const finSnap = await getDocs(qFin);
-      for (const fDoc of finSnap.docs) {
-        const fData = fDoc.data();
-        let newDesc = fData.description || '';
-        if (victim.matricule && survivor.matricule) {
-          newDesc = newDesc.replace(new RegExp(victim.matricule, 'g'), survivor.matricule);
+      try {
+        const finSnap = await getDocs(qFin);
+        for (const fDoc of finSnap.docs) {
+          const fData = fDoc.data();
+          let newDesc = fData.description || '';
+          if (victim.matricule && survivor.matricule) {
+            newDesc = newDesc.replace(new RegExp(victim.matricule, 'g'), survivor.matricule);
+          }
+          await updateDoc(fDoc.ref, { 
+            studentId: survivor.eleve_id,
+            studentMatricule: survivor.matricule,
+            description: newDesc + " (Fusion de compte)"
+          });
         }
-        await updateDoc(fDoc.ref, { 
-          studentId: survivor.eleve_id,
-          studentMatricule: survivor.matricule,
-          description: newDesc + " (Fusion de compte)"
-        });
+      } catch (e) {
+        console.warn("Finances merge failed, might need indexing.");
       }
 
-      // 3. Delete victim user document
-      await deleteDoc(doc(db, 'users', victim.eleve_id));
+      // 3. Delete victim user document if it exists and is different from survivor
+      if (victim.eleve_id !== survivor.eleve_id) {
+        try {
+          await deleteDoc(doc(db, 'users', victim.eleve_id));
+        } catch (e) {
+          console.warn("Could not delete victim user doc (might not exist)");
+        }
+      }
 
-      toast.success("Fusion réussie !");
+      toast.success("Fusion réussie ! Les données ont été transférées vers " + survivor.nom_eleve);
       await fetchFinanceStats();
       scanForDuplicates();
     } catch (err) {
@@ -395,12 +462,14 @@ export default function RealFinanceDashboard() {
     setLoading(true);
     try {
       // Parallel fetch with catch for robustness
-      const [financesSnap, teachersSnap, reportsSnap, levelsSnap, classesSnap] = await Promise.all([
+      const [financesSnap, teachersSnap, reportsSnap, levelsSnap, classesSnap, scolariteFinalSnap, allVersementsSnap] = await Promise.all([
         getDocs(collection(db, 'finances')),
         getDocs(query(collection(db, 'users'), where('role', '==', 'teacher'))),
         getDocs(collection(db, 'rapports_journaliers')),
         getDocs(collection(db, 'levels')),
-        getDocs(collection(db, 'classes'))
+        getDocs(collection(db, 'classes')),
+        getDocs(collection(db, 'scolarites')),
+        getDocs(collectionGroup(db, 'versements'))
       ].map(p => p.catch(e => { console.warn("Partial fetch failed:", e); return null; })));
 
       const levelsMap: Record<string, any> = {};
@@ -563,12 +632,13 @@ export default function RealFinanceDashboard() {
         });
       }
 
-      let caisseBalance = -totalAllTimeCharges;
+      let caisseBalance = 0;
       let banqueBalance = 0;
       const allFinances: any[] = [];
 
-      // Create a set of IDs for orphan detection later
+      // Set for orphan detection
       const linkedFinanceIds = new Set();
+      const financesByDossier: Record<string, number> = {};
 
       if (financesSnap) {
         financesSnap.forEach(doc => {
@@ -589,9 +659,29 @@ export default function RealFinanceDashboard() {
             caisseBalance += isIncome ? amount : -amount;
           }
 
+          if (isIncome && (f.studentId || f.studentMatricule)) {
+            const studentId = f.studentId || f.studentMatricule;
+            // Map payment to potential dossiers
+            const scolaKey = f.levelId ? `${studentId}_${f.levelId}` : studentId;
+            financesByDossier[scolaKey] = (financesByDossier[scolaKey] || 0) + amount;
+          }
+
           if (!isNaN(date.getTime()) && date.getFullYear() === selectedYear) {
             const mKey = date.getMonth();
-            if (type === 'expense') {
+            if (isIncome) {
+              totalRevenu += amount;
+              monthlyRevenu[mKey] = (monthlyRevenu[mKey] || 0) + amount;
+              
+              const cat = String(f.category || 'other').toLowerCase();
+              const desc = String(f.description || '').toLowerCase();
+              if (cat.includes('inscrip') || cat === 'registration' || desc.includes('inscription')) {
+                revenusDetails.inscription += amount;
+              } else if (cat.includes('scolarit') || cat === 'tuition' || desc.includes('scolarit')) {
+                revenusDetails.scolarite += amount;
+              } else {
+                revenusDetails.autre += amount;
+              }
+            } else {
               totalChargesFixes += amount;
               monthlyCharges[mKey] = (monthlyCharges[mKey] || 0) + amount;
             }
@@ -600,90 +690,52 @@ export default function RealFinanceDashboard() {
       }
 
       // --- ORPHAN VERSEMENTS RECONCILIATION ---
-      // We look for versements that are not linked to a financeId and add them to the global balance
-      // so the dashboard matches the students' individual records accurately.
+      const versementsByStudent: Record<string, number> = {};
       if (allVersementsSnap) {
-        allVersementsSnap.forEach((vDoc: any) => {
+        const vDocs = (allVersementsSnap as any).docs || allVersementsSnap;
+        vDocs.forEach((vDoc: any) => {
           const v = vDoc.data();
-          // If it has a financeId, it's already counted in the financesSnap loop above
-          if (v.financeId) {
-            linkedFinanceIds.add(v.financeId);
-            return;
+          const scolaId = vDoc.ref.parent.parent?.id;
+          if (scolaId) {
+            versementsByStudent[scolaId] = (versementsByStudent[scolaId] || 0) + (Number(v.montant) || 0);
           }
+          
+          if (!v.financeId) {
+            // Orphan versement: add to balance if not in ledger
+            const amount = Number(v.montant) || 0;
+            const date = new Date(v.date);
+            const accType = String(v.accountType || 'caisse').toLowerCase();
 
-          // It's an orphan! (Legacy or failed sync)
-          const amount = Number(v.montant) || 0;
-          const date = new Date(v.date);
-          const accType = String(v.accountType || 'caisse').toLowerCase();
+            if (accType === 'banque') {
+              banqueBalance += amount;
+            } else {
+              caisseBalance += amount;
+            }
 
-          if (accType === 'banque') {
-            banqueBalance += amount;
-          } else {
-            caisseBalance += amount;
-          }
-
-          if (!isNaN(date.getTime()) && date.getFullYear() === selectedYear) {
-            totalRevenu += amount;
-            const mKey = date.getMonth();
-            monthlyRevenu[mKey] = (monthlyRevenu[mKey] || 0) + amount;
-            
-            const cat = String(v.categorie || 'other').toLowerCase();
-            if (cat.includes('inscrip')) revenusDetails.inscription += amount;
-            else if (cat.includes('scolarit')) revenusDetails.scolarite += amount;
-            else revenusDetails.autre += amount;
+            if (!isNaN(date.getTime()) && date.getFullYear() === selectedYear) {
+              totalRevenu += amount;
+              const mKey = date.getMonth();
+              monthlyRevenu[mKey] = (monthlyRevenu[mKey] || 0) + amount;
+              
+              const cat = String(v.categorie || 'other').toLowerCase();
+              if (cat.includes('inscrip')) revenusDetails.inscription += amount;
+              else if (cat.includes('scolarit')) revenusDetails.scolarite += amount;
+              else revenusDetails.autre += amount;
+            }
           }
         });
       }
       // ----------------------------------------
 
-      let scolariteFinalSnap;
-      try {
-        scolariteFinalSnap = await getDocs(collection(db, 'scolarites'));
-      } catch (e) {
-        console.error("Error fetching scolarites for summary:", e);
-      }
-      
-      let allVersementsSnap: any = [];
-      try {
-        const vSnap = await getDocs(collectionGroup(db, 'versements'));
-        allVersementsSnap = vSnap.docs;
-      } catch (e) {
-        console.warn("CollectionGroup query for 'versements' failed.", e);
-      }
-      
-      const versementsByStudent: Record<string, number> = {};
-      allVersementsSnap.forEach((vDoc: any) => {
-        const v = vDoc.data();
-        const scolaId = vDoc.ref.parent.parent?.id;
-        if (scolaId) {
-          versementsByStudent[scolaId] = (versementsByStudent[scolaId] || 0) + (Number(v.montant) || 0);
-        }
-      });
- 
-      const financesByDossier: Record<string, number> = {};
-      if (financesSnap) {
-        financesSnap.forEach(doc => {
-          const f = doc.data();
-          if (f.type !== 'income' || (!f.studentId && !f.studentMatricule) || f.deletedAt) return;
-          
-          const studentId = f.studentId || f.studentMatricule;
-          const amount = Number(f.amount) || 0;
-          
-          // Use levelId for precise mapping to dossier, fallback to studentId for default dossier
-          const scolaKey = f.levelId ? `${studentId}_${f.levelId}` : studentId;
-          financesByDossier[scolaKey] = (financesByDossier[scolaKey] || 0) + amount;
-        });
-      }
- 
-      const scolarites = scolariteFinalSnap?.docs.map(d => {
+      const scolarites = scolariteFinalSnap?.docs.map((d: any) => {
         const s = d.data();
         const scolaId = d.id;
+        const studentId = s.eleve_id || d.id.split('_')[0];
         const subCollectionPaid = versementsByStudent[scolaId] || 0;
-        const financeReportedPaid = financesByDossier[scolaId] || 0;
+        const financeReportedPaid = financesByDossier[scolaId] || financesByDossier[studentId] || 0;
         
-        // We take the max of the two sources to ensure we don't miss anything that was only in one place,
-        // but now that we use the specific scolaId key for finances, they won't mix between dossiers.
-        const totalPaid = Math.max(subCollectionPaid, financeReportedPaid);
+        // Use subcollection as source of truth for student balance if available
+        const totalPaid = subCollectionPaid > 0 ? subCollectionPaid : financeReportedPaid;
         const totalDue = Number(s.montant_total_du) || 0;
         const reste = Math.max(0, totalDue - totalPaid);
         
@@ -1397,150 +1449,145 @@ export default function RealFinanceDashboard() {
       )}
 
       {/* Maintenance Modal */}
-      {showMaintenanceModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]"
-          >
-            <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 bg-neutral-900 text-white flex justify-between items-center">
-              <div>
-                <h3 className="text-xl font-black uppercase flex items-center gap-2">
-                  <ShieldCheck size={24} className="text-dia-red" /> Outil de Maintenance
-                </h3>
-                <p className="text-neutral-400 text-xs mt-1 font-bold">Correction des doublons et intégrité financière</p>
+      <AnimatePresence>
+        {showMaintenanceModal && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setShowMaintenanceModal(false)} />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative bg-white dark:bg-neutral-900 rounded-[2rem] w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
+              <div className="flex items-center justify-between p-8 border-b border-neutral-100 dark:border-neutral-800 bg-neutral-900">
+                <div>
+                  <h3 className="text-2xl font-black uppercase tracking-tighter text-white flex items-center gap-3">
+                    <ShieldCheck size={28} className="text-dia-red" /> Maintenance & Réconciliation
+                  </h3>
+                  <p className="text-xs font-bold text-neutral-400">Outils de diagnostic et d'intégrité de la base de données</p>
+                </div>
+                <button onClick={() => setShowMaintenanceModal(false)} className="p-3 bg-white/10 rounded-2xl hover:bg-white/20 transition-all text-white">
+                  <X />
+                </button>
               </div>
-              <button onClick={() => setShowMaintenanceModal(false)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
-                 <X size={20} />
-              </button>
-            </div>
 
-            <div className="p-8 overflow-y-auto space-y-8">
-              {/* Duplicates Section */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                   <h4 className="text-sm font-black uppercase tracking-widest text-dia-red flex items-center gap-2">
-                     <Users size={18} /> Doublons Détectés ({duplicates.length})
-                   </h4>
-                   <button 
-                    onClick={scanForDuplicates}
-                    className="p-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg group"
-                   >
-                     <Activity size={16} className={cn("transition-all", maintenanceStatus === 'scanning' && "animate-spin")} />
-                   </button>
+              <div className="p-8 overflow-y-auto space-y-8 flex-1">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <button onClick={handleRepairLevels} disabled={maintenanceLoading} className="p-6 text-left border border-neutral-200 dark:border-neutral-800 rounded-3xl hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-all group disabled:opacity-50">
+                    <UserCheck className="mb-4 text-dia-red group-hover:scale-110 transition-transform" />
+                    <h4 className="font-bold mb-1">Dossiers Élèves</h4>
+                    <p className="text-[10px] text-neutral-500">Synchronise les profils (identités, matricules) avec les dossiers scolarité.</p>
+                  </button>
+
+                  <button onClick={handleAuditRepair} disabled={maintenanceLoading} className="p-6 text-left border border-neutral-200 dark:border-neutral-800 rounded-3xl hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-all group disabled:opacity-50">
+                    <ShieldCheck className="mb-4 text-emerald-500 group-hover:scale-110 transition-transform" />
+                    <h4 className="font-bold mb-1">Audit Global</h4>
+                    <p className="text-[10px] text-neutral-500">Recalcule tous les soldes élèves. Récancrage des transactions orphelines.</p>
+                  </button>
+
+                  <button 
+                    onClick={scanForDuplicates} 
+                    disabled={maintenanceLoading}
+                    className={cn(
+                      "p-6 text-left border rounded-3xl transition-all group disabled:opacity-50",
+                      maintenanceStatus === 'scanning' ? "bg-amber-50 border-amber-200 dark:bg-amber-900/10 border-amber-800" : "border-neutral-200 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800/40"
+                    )}
+                  >
+                    <Users className="mb-4 text-amber-500 group-hover:scale-110 transition-transform" />
+                    <h4 className="font-bold mb-1">Scanner Doublons</h4>
+                    <p className="text-[10px] text-neutral-500">Identifie les comptes multiples pour un même élève pour fusion.</p>
+                  </button>
                 </div>
 
-                {maintenanceStatus === 'scanning' ? (
-                  <div className="p-10 text-center border-2 border-dashed border-neutral-100 dark:border-neutral-800 rounded-3xl">
-                     <p className="text-neutral-400 font-bold italic">Analyse de la base de données en cours...</p>
-                  </div>
-                ) : duplicates.length === 0 ? (
-                  <div className="p-10 text-center bg-green-50/50 border-2 border-dashed border-green-100 rounded-3xl">
-                     <p className="text-green-600 font-bold">Aucun doublon de nom détecté. Votre base est propre.</p>
-                  </div>
-                ) : (
+                {maintenanceStatus === 'ready' && (
                   <div className="space-y-4">
-                      {duplicates.map((group, idx) => (
-                      <div key={idx} className="bg-neutral-50 dark:bg-neutral-800/50 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-700">
-                        <p className="font-black text-sm uppercase mb-3 text-neutral-600">{group[0].nom_eleve}</p>
-                        <div className="grid grid-cols-2 gap-4">
-                          {group.map((student: any) => (
-                            <div key={student.eleve_id} className="bg-white dark:bg-neutral-900 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800 shadow-sm relative group/item">
-                              <p className="text-xs font-black">{student.matricule}</p>
-                              <p className="text-[10px] text-neutral-400">{student.niveau} - {student.filiere}</p>
-                              <p className="text-[10px] font-bold mt-1 text-dia-red">Reste: {formatCurrency(student.reste)}</p>
-                              
-                              {/* Merge Action: Survivor is the first one by default, victim is current if not first */}
-                              {student.eleve_id !== group[0].eleve_id && (
-                                <button 
-                                  onClick={() => handleMerge(group[0], student)}
-                                  disabled={maintenanceLoading}
-                                  className={cn(
-                                    "absolute top-2 right-2 p-2 bg-dia-red/10 text-dia-red rounded-lg transition-all",
-                                    maintenanceLoading ? "opacity-50 cursor-not-allowed" : "opacity-0 group-hover/item:opacity-100 hover:bg-dia-red hover:text-white"
-                                  )}
-                                  title="Fusionner vers le compte principal"
-                                >
-                                  {maintenanceLoading ? <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <ArrowRightLeft size={12} />}
-                                </button>
-                              )}
-                              {student.eleve_id === group[0].eleve_id && (
-                                <span className="absolute top-2 right-2 px-2 py-0.5 bg-neutral-900 text-white text-[8px] font-black uppercase rounded">Principal</span>
-                              )}
+                    <div className="flex items-center justify-between">
+                      <h5 className="text-xs font-black uppercase text-neutral-400 tracking-widest">Doublons Identifiés ({duplicates.length})</h5>
+                      {duplicates.length === 0 && <span className="text-xs text-emerald-500 font-bold">Base de données propre !</span>}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {duplicates.map((group, idx) => {
+                        const sortedGroup = [...group].sort((a,b) => (b.total_verse || 0) - (a.total_verse || 0));
+                        const survivor = sortedGroup[0];
+                        const victims = sortedGroup.slice(1);
+
+                        return (
+                          <div key={idx} className="p-5 bg-neutral-50 dark:bg-neutral-800/30 rounded-2xl border border-neutral-100 dark:border-neutral-800">
+                            <div className="flex items-center justify-between mb-4">
+                              <span className="text-sm font-black uppercase">{survivor.nom_eleve}</span>
+                              <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 text-[8px] font-black rounded uppercase">Doublon</span>
                             </div>
-                          ))}
-                        </div>
+                            <div className="space-y-2">
+                              {victims.map((v: any) => (
+                                <div key={v.id} className="flex items-center justify-between p-3 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-700">
+                                  <div className="text-[9px] space-y-0.5">
+                                    <p className="font-bold">Victime: <span className="text-dia-red">{v.matricule || v.id.slice(0,8)}</span></p>
+                                    <p>Payé: {formatCurrency(v.total_verse)}</p>
+                                  </div>
+                                  <button 
+                                    onClick={() => handleMerge(survivor, v)}
+                                    disabled={maintenanceLoading}
+                                    className="px-3 py-1.5 bg-dia-red text-white text-[9px] font-black uppercase rounded-lg hover:bg-neutral-900 disabled:opacity-50 transition-all"
+                                  >
+                                    Fusionner
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="mt-3 p-2 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-800 rounded-lg text-[9px] text-emerald-600 font-bold">
+                              Compte cible: {survivor.matricule || survivor.id.slice(0,8)} ({formatCurrency(survivor.total_verse)})
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                
+                {auditLog.length > 0 && (
+                  <div className="p-6 bg-neutral-900 rounded-3xl space-y-2 max-h-48 overflow-y-auto border border-white/5">
+                    <p className="text-[10px] font-black text-dia-red uppercase mb-2">Logs d'opération</p>
+                    {auditLog.map((log, i) => (
+                      <div key={i} className={cn("text-[9px] font-mono leading-relaxed", log.type === 'err' ? 'text-red-400' : 'text-neutral-400')}>
+                        <span className="text-white/20">[{new Date().toLocaleTimeString()}]</span> {log.msg}
                       </div>
                     ))}
                   </div>
                 )}
               </div>
-
-              {/* Data Integrity Section */}
-              <div className="pt-6 border-t border-neutral-100 dark:border-neutral-800 space-y-6">
-                 <h4 className="text-sm font-black uppercase tracking-widest text-neutral-400 mb-4 flex items-center gap-2">
-                   <ShieldAlert size={18} /> Intégrité Financière
-                 </h4>
-                 
-                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="bg-neutral-50 dark:bg-neutral-800/50 p-6 rounded-3xl border border-neutral-200 dark:border-neutral-700 flex flex-col justify-between">
-                       <p className="text-[10px] font-medium text-neutral-500 mb-4 uppercase text-center">
-                         Synchronisation Scolarité/Grand Livre
-                       </p>
-                       <button 
-                        onClick={handleAuditRepair}
-                        disabled={maintenanceLoading}
-                        className={cn(
-                          "w-full py-3 bg-neutral-900 text-white rounded-2xl text-[9px] font-black uppercase transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50",
-                          !maintenanceLoading && "hover:bg-dia-red"
-                        )}
-                      >
-                        {maintenanceLoading ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <ShieldCheck size={14} />}
-                        Audit Global
-                      </button>
-                    </div>
-
-                    <div className="bg-neutral-50 dark:bg-neutral-800/50 p-6 rounded-3xl border border-neutral-200 dark:border-neutral-700 flex flex-col justify-between">
-                       <p className="text-[10px] font-medium text-neutral-500 mb-4 uppercase text-center">
-                         Assigner Niveaux Historiques
-                       </p>
-                       <button 
-                        onClick={handleRepairLevels}
-                        disabled={maintenanceLoading}
-                        className={cn(
-                          "w-full py-3 bg-blue-600 text-white rounded-2xl text-[9px] font-black uppercase transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50",
-                          !maintenanceLoading && "hover:bg-blue-700"
-                        )}
-                      >
-                        {maintenanceLoading ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <GraduationCap size={14} />}
-                        Réparer Niveaux
-                      </button>
-                    </div>
-                 <div className="pt-6 border-t border-neutral-100 dark:border-neutral-800">
-                 <div className="bg-neutral-900 text-white p-6 rounded-3xl space-y-4">
-                    <h5 className="text-[10px] font-black uppercase text-dia-red">Statut du Système & Cache</h5>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="bg-white/5 p-3 rounded-2xl border border-white/10">
-                        <p className="text-[8px] text-white/40 uppercase mb-1">Dossiers</p>
-                        <p className="text-sm font-black">{data.scolarites.length}</p>
-                      </div>
-                      <button 
-                        onClick={() => window.location.reload()}
-                        className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl text-[9px] font-black uppercase transition-all flex items-center justify-center gap-2"
-                      >
-                        <RefreshCw size={14} /> Reset Cache
-                      </button>
-                    </div>
-                    <p className="text-[9px] text-white/30 italic text-center">Rechargez si les changements ne sont pas visibles immédiatement.</p>
-                 </div>
-               </div>
-              </div>
-            </div>
+            </motion.div>
           </div>
-          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="pt-6 mt-8 border-t border-neutral-100 dark:border-neutral-800">
+        <div className="bg-neutral-900 text-white p-8 rounded-[2rem] space-y-6">
+           <div className="flex items-center justify-between">
+             <h5 className="text-xs font-black uppercase tracking-widest text-dia-red">Statut du Système & Cache</h5>
+             <button 
+                onClick={() => window.location.reload()}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2"
+              >
+                <RefreshCw size={14} /> Rafraîchir
+              </button>
+           </div>
+           
+           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
+                <p className="text-[10px] text-white/40 uppercase font-bold mb-1">Dossiers</p>
+                <p className="text-lg font-black">{data.scolarites.length}</p>
+              </div>
+              <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
+                <p className="text-[10px] text-white/40 uppercase font-bold mb-1">Dépenses</p>
+                <p className="text-lg font-black">{data.allFinances.filter(f => f.type === 'expense').length}</p>
+              </div>
+              <div className="bg-white/5 p-4 rounded-2xl border border-white/10 opacity-50">
+                <p className="text-[10px] text-white/40 uppercase font-bold mb-1">Année</p>
+                <p className="text-lg font-black">{selectedYear}</p>
+              </div>
+              <div className="bg-white/5 p-4 rounded-2xl border border-white/10 opacity-50">
+                <p className="text-[10px] text-white/40 uppercase font-bold mb-1">Réseau</p>
+                <p className="text-lg font-black text-emerald-500">OK</p>
+              </div>
+           </div>
+           <p className="text-[10px] text-white/30 italic text-center">Les soldes sont synchronisés en temps réel avec le Grand Livre de l'institut.</p>
         </div>
-      )}
+      </div>
     </div>
   );
 }
