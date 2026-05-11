@@ -23,7 +23,7 @@ import {
 import { db, auth } from '../../firebase';
 import { formatCurrency } from '../../utils';
 import { Charge, Session, Versement, DailyReport } from '../../types';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import { generateWhatsAppLink, APP_NAME_FOR_LINKS } from '../../utils/contactLinks';
 import { useAuth } from '../../context/AuthContext';
@@ -196,34 +196,79 @@ export default function RealFinanceDashboard() {
         paymentsByStudent[sId].push({ id: doc.id, ...f });
       });
 
-      // 2. Fetch all scolarites
+      // 2. Fetch all scolarites and their versements
       const scolaSnap = await getDocs(collection(db, 'scolarites'));
-      let fixedCount = 0;
+      let fixedToScola = 0;
       let docCount = 0;
+      let pushedToLedger = 0;
 
       for (const sDoc of scolaSnap.docs) {
         const s = sDoc.data();
         const scolaId = sDoc.id;
         const studentId = s.eleve_id || scolaId.split('_')[0];
         
-        // Audit subcollection versements vs grand livre
+        // Audit subcollection versements
         const vSnap = await getDocs(collection(db, 'scolarites', scolaId, 'versements'));
         const vFinanceIds = new Set();
         let subtotalPaid = 0;
+        
+        const orphans: any[] = [];
+
         vSnap.forEach(vd => { 
           const vData = vd.data();
+          const vId = vd.id;
           subtotalPaid += Number(vData.montant) || 0;
-          if (vData.financeId) vFinanceIds.add(vData.financeId); 
+          if (vData.financeId) {
+            vFinanceIds.add(vData.financeId); 
+          } else {
+            orphans.push({ id: vId, ref: vd.ref, ...vData });
+          }
         });
 
-        // 3. Check for orphans in ledger for THIS student
-        const studentPayments = paymentsByStudent[studentId] || [];
+        // 3. PUSH ORPHANS TO LEDGER (Reverse Sync)
+        // If a student versement exists but isn't in Grand Livre, create it there
+        for (const orphan of orphans) {
+           // Double check if similar entry exists in finances to avoid duplicate (same day, same amount, same student)
+           const studentPayments = paymentsByStudent[studentId] || [];
+           const alreadyExists = studentPayments.find(p => 
+             Math.abs(p.amount - orphan.montant) < 1 && 
+             new Date(p.date).toISOString().split('T')[0] === new Date(orphan.date).toISOString().split('T')[0]
+           );
+
+           if (!alreadyExists) {
+             const newFinance = {
+               amount: Number(orphan.montant),
+               type: 'income',
+               category: orphan.categorie === 'inscription' ? 'registration' : 'tuition',
+               description: `Réconciliation Audit: ${orphan.categorie} - ${s.nom_eleve}`,
+               date: orphan.date,
+               studentId: studentId,
+               studentName: s.nom_eleve,
+               studentMatricule: s.matricule,
+               levelId: scolaId.includes('_') ? scolaId.split('_')[1] : '',
+               paymentMethod: orphan.mode_paiement || 'Espèces',
+               receiptNumber: orphan.recu_numero,
+               createdAt: new Date().toISOString(),
+               reconciledFromVId: orphan.id
+             };
+             const fRef = await addDoc(collection(db, 'finances'), newFinance);
+             // Link the versement record to this new finance entry
+             await updateDoc(orphan.ref, { financeId: fRef.id });
+             vFinanceIds.add(fRef.id);
+             pushedToLedger++;
+           } else if (!orphan.financeId) {
+             // If it exists in ledger but wasn't linked, link it now
+             await updateDoc(orphan.ref, { financeId: alreadyExists.id });
+             vFinanceIds.add(alreadyExists.id);
+           }
+        }
+
+        // 4. PULL FROM LEDGER TO SCOLA (Forward Sync)
+        const currentStudentPayments = paymentsByStudent[studentId] || [];
         let newlyAdded = 0;
-        for (const p of studentPayments) {
+        for (const p of currentStudentPayments) {
            const pLevelId = p.levelId || '';
            const currentLevelId = scolaId.includes('_') ? scolaId.split('_')[1] : '';
-           
-           // If we have level info, only add if it matches OR if it's the only dossier
            const matchesLevel = !pLevelId || !currentLevelId || pLevelId === currentLevelId;
 
            if (!vFinanceIds.has(p.id) && matchesLevel) {
@@ -241,11 +286,11 @@ export default function RealFinanceDashboard() {
              await addDoc(collection(db, 'scolarites', scolaId, 'versements'), vData);
              subtotalPaid += p.amount;
              newlyAdded++;
-             fixedCount++;
+             fixedToScola++;
            }
         }
 
-        // 4. Update the student scolarite document totals
+        // 5. Update the student scolarite document totals
         if (newlyAdded > 0 || subtotalPaid !== (Number(s.total_verse) || 0)) {
            const totalDue = Number(s.montant_total_du) || 0;
            const newReste = Math.max(0, totalDue - subtotalPaid);
@@ -263,7 +308,7 @@ export default function RealFinanceDashboard() {
         }
       }
 
-      addAuditMsg(`Audit terminé. ${fixedCount} transactions ré-ancrées. ${docCount} dossiers mis à jour.`);
+      addAuditMsg(`Audit terminé. ${pushedToLedger} entrées poussées au Grand Livre. ${fixedToScola} dossiers synchronisés.`);
       toast.success("Audit terminé avec succès.");
       fetchFinanceStats();
     } catch (error: any) {
@@ -348,8 +393,19 @@ export default function RealFinanceDashboard() {
       }
 
       toast.success("Fusion réussie ! Les données ont été transférées vers " + survivor.nom_eleve);
-      await fetchFinanceStats();
-      scanForDuplicates();
+      const updatedScolas = await fetchFinanceStats();
+      if (updatedScolas) {
+        // Automatically re-scan to clear the fixed duplicate from the list without reloading the whole page
+        const nameMap: Record<string, any[]> = {};
+        updatedScolas.forEach((s: any) => {
+          const name = (s.nom_eleve || '').trim().toLowerCase();
+          if (!name) return;
+          if (!nameMap[name]) nameMap[name] = [];
+          nameMap[name].push(s);
+        });
+        const dups = Object.values(nameMap).filter(group => group.length > 1);
+        setDuplicates(dups);
+      }
     } catch (err) {
       console.error(err);
       toast.error("Erreur lors de la fusion: " + (err instanceof Error ? err.message : String(err)));
@@ -689,7 +745,7 @@ export default function RealFinanceDashboard() {
         });
       }
 
-      // --- ORPHAN VERSEMENTS RECONCILIATION ---
+      // --- VERSEMENTS ANALYSIS (FOR STUDENT BALANCES ONLY) ---
       const versementsByStudent: Record<string, number> = {};
       if (allVersementsSnap) {
         const vDocs = (allVersementsSnap as any).docs || allVersementsSnap;
@@ -700,42 +756,24 @@ export default function RealFinanceDashboard() {
             versementsByStudent[scolaId] = (versementsByStudent[scolaId] || 0) + (Number(v.montant) || 0);
           }
           
-          if (!v.financeId) {
-            // Orphan versement: add to balance if not in ledger
-            const amount = Number(v.montant) || 0;
-            const date = new Date(v.date);
-            const accType = String(v.accountType || 'caisse').toLowerCase();
-
-            if (accType === 'banque') {
-              banqueBalance += amount;
-            } else {
-              caisseBalance += amount;
-            }
-
-            if (!isNaN(date.getTime()) && date.getFullYear() === selectedYear) {
-              totalRevenu += amount;
-              const mKey = date.getMonth();
-              monthlyRevenu[mKey] = (monthlyRevenu[mKey] || 0) + amount;
-              
-              const cat = String(v.categorie || 'other').toLowerCase();
-              if (cat.includes('inscrip')) revenusDetails.inscription += amount;
-              else if (cat.includes('scolarit')) revenusDetails.scolarite += amount;
-              else revenusDetails.autre += amount;
-            }
+          if (v.financeId) {
+            linkedFinanceIds.add(v.financeId);
           }
         });
       }
-      // ----------------------------------------
+      // Note: We no longer add "orphan" versements to the GLOBAL balance automatically.
+      // They must be explicitly fixed via the Audit tool to appear in the Grand Livre.
+      // -------------------------------------------------------
 
       const scolarites = scolariteFinalSnap?.docs.map((d: any) => {
         const s = d.data();
         const scolaId = d.id;
-        const studentId = s.eleve_id || d.id.split('_')[0];
+        const studentId = s.eleve_id || (scolaId.includes('_') ? scolaId.split('_')[0] : scolaId);
         const subCollectionPaid = versementsByStudent[scolaId] || 0;
         const financeReportedPaid = financesByDossier[scolaId] || financesByDossier[studentId] || 0;
         
-        // Use subcollection as source of truth for student balance if available
-        const totalPaid = subCollectionPaid > 0 ? subCollectionPaid : financeReportedPaid;
+        // We take the max to be safe if sync was partial, as the user complained about mismatched balances
+        const totalPaid = Math.max(subCollectionPaid, financeReportedPaid);
         const totalDue = Number(s.montant_total_du) || 0;
         const reste = Math.max(0, totalDue - totalPaid);
         
@@ -776,8 +814,10 @@ export default function RealFinanceDashboard() {
         allFinances: allFinances.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
         levelsMap
       });
+      return scolarites || [];
     } catch (err) {
       console.error("Erreur Dashboard Financier (Détails):", err);
+      return [];
     } finally {
       setLoading(false);
     }
