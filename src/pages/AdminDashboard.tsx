@@ -16,7 +16,8 @@ import {
   Smartphone,
   Globe,
   FileText,
-  Trash2
+  Trash2,
+  Landmark
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { 
@@ -34,7 +35,7 @@ import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 
 export default function AdminDashboard() {
-  const { students, teachers, finances, charges, evaluations, loading, refreshAll, onlineUsers } = useData();
+  const { students, teachers, finances, evaluations, loading, refreshAll, onlineUsers, financeStats } = useData();
   const { user, profile, fetchWithAuth } = useAuth();
   const { t } = useTranslation();
   const [configStatus, setConfigStatus] = useState<any>(null);
@@ -135,27 +136,16 @@ export default function AdminDashboard() {
     }
   };
 
-  const { totalIncome, totalExpense, balance } = React.useMemo(() => {
-    const inc = (finances || []).filter(f => f.type === 'income').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
-    const ledgerExp = (finances || []).filter(f => f.type === 'expense').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
-    const fixedExp = (charges || []).reduce((acc, curr) => acc + (Number(curr.montant) || 0), 0);
-    const totalExp = ledgerExp + fixedExp;
-    return {
-      totalIncome: inc,
-      totalExpense: totalExp,
-      balance: inc - totalExp
-    };
-  }, [finances, charges]);
+  const { totalIncome, totalExpense, balance, chartData } = React.useMemo(() => ({
+    totalIncome: financeStats.yearIncome,
+    totalExpense: financeStats.yearExpense,
+    balance: financeStats.caisseBalance + financeStats.banqueBalance,
+    chartData: financeStats.monthlyHistory
+  }), [financeStats]);
   
-  const chartData = React.useMemo(() => [
-    { name: 'Jan', income: 0, expense: 0 },
-    { name: 'Fév', income: 0, expense: 0 },
-    { name: 'Mar', income: totalIncome, expense: totalExpense },
-  ], [totalIncome, totalExpense]);
-
   const recentTransactions = React.useMemo(() => [...finances]
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 5), [finances]);
+    .slice(0, 8), [finances]);
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-dia-red"></div></div>;
 
@@ -171,24 +161,24 @@ export default function AdminDashboard() {
           trendType="up"
         />
         <StatCard 
-          title={t('dashboard.revenue')} 
+          title={`${t('dashboard.revenue')} (${new Date().getFullYear()})`} 
           value={formatCurrency(totalIncome)} 
           icon={TrendingUp} 
-          trend="+100%" 
+          trend="Annuel" 
           trendType="up"
         />
         <StatCard 
-          title={t('dashboard.expenses')} 
+          title={`${t('dashboard.expenses')} (${new Date().getFullYear()})`} 
           value={formatCurrency(totalExpense)} 
           icon={TrendingDown} 
-          trend="+100%" 
+          trend="Annuel" 
           trendType="down"
         />
         <StatCard 
-          title="Solde Global"
+          title="Solde Global (Caisse+Banque)"
           value={formatCurrency(balance)} 
-          icon={TrendingUp} 
-          trend="Total" 
+          icon={Landmark} 
+          trend="Bilan Total" 
           trendType={balance >= 0 ? 'up' : 'down'}
         />
         <StatCard 
@@ -467,7 +457,7 @@ export default function AdminDashboard() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} />
+                <XAxis dataKey="month" axisLine={false} tickLine={false} />
                 <YAxis axisLine={false} tickLine={false} tickFormatter={(value) => `${value/1000}k`} />
                 <Tooltip 
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}

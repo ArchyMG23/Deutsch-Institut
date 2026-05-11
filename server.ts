@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
+import { z } from 'zod';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1571,45 +1572,298 @@ async function startServer() {
     }
   });
 
-  // Finances API
+  // 11. SÉCURITÉ & VALIDATION (SaaS Level)
+  const FinancialEventSchema = z.object({
+    type: z.enum(['payment', 'expense', 'reversal']),
+    payload: z.object({
+      amount: z.number().positive(),
+      category: z.string(),
+      description: z.string(),
+      date: z.string(),
+      studentId: z.string().optional(),
+      idempotencyKey: z.string(),
+      accountType: z.enum(['caisse', 'banque']).default('caisse'),
+      paymentMethod: z.string().optional(),
+      levelId: z.string().optional(),
+      receiptNumber: z.string().optional(),
+      studentName: z.string().optional(),
+      studentMatricule: z.string().optional(),
+      originalFinanceId: z.string().optional(), // For reversals
+    })
+  });
+
+  app.post('/api/financial-event', authenticate, async (req: any, res) => {
+    try {
+      const validated = FinancialEventSchema.parse(req.body);
+      const { type, payload } = validated;
+      const { 
+        amount, studentId, idempotencyKey, category, description, 
+        date, accountType, paymentMethod, levelId, receiptNumber,
+        originalFinanceId
+      } = payload;
+
+      const userId = req.user.id;
+      const userRef = dbAdmin.collection('users').doc(userId);
+      const userDoc = await userRef.get();
+      const userData = userDoc.data();
+      const userName = `${userData?.firstName} ${userData?.lastName}`;
+
+      // Check idempotency first
+      const existingTx = await dbAdmin.collection('finances')
+        .where('idempotencyKey', '==', idempotencyKey)
+        .limit(1)
+        .get();
+
+      if (!existingTx.empty) {
+        return res.status(409).json({ message: 'Transaction déjà traitée (Idempotency duplicate)', tx: existingTx.docs[0].data() });
+      }
+
+      // Execute Atomic Transaction
+      const result = await dbAdmin.runTransaction(async (transaction: any) => {
+        const financeId = dbAdmin.collection('finances').doc().id;
+        const auditId = dbAdmin.collection('audit_logs').doc().id;
+        
+        // Handle Reversal logic
+        if (type === 'reversal' && originalFinanceId) {
+          const originalRef = dbAdmin.collection('finances').doc(originalFinanceId);
+          const originalDoc = await transaction.get(originalRef);
+          if (!originalDoc.exists) throw new Error("Transaction originale introuvable");
+          
+          const oData = originalDoc.data();
+          if (oData?.status === 'reversed') throw new Error("Transaction déjà annulée");
+
+          transaction.update(originalRef, { 
+            status: 'reversed', 
+            reversedAt: new Date().toISOString(),
+            reversedBy: userId,
+            reversalReferenceId: financeId
+          });
+
+          // If it was a student payment, we must subtract from scolarite dossier
+          if (oData?.studentId && oData?.levelId) {
+            const scId = `${oData.studentId}_${oData.levelId}`;
+            const sRef = dbAdmin.collection('scolarites').doc(scId);
+            const sDoc = await transaction.get(sRef);
+            
+            if (sDoc.exists) {
+              const sData = sDoc.data();
+              const revAmount = oData.amount;
+              const newTotal = (Number(sData?.total_verse) || 0) - revAmount;
+              const due = Number(sData?.montant_total_du) || 0;
+              const newRes = Math.max(0, due - newTotal);
+              const newSur = Math.max(0, newTotal - due);
+              
+              let newStat: any = 'EN COURS';
+              if (newTotal <= 0) newStat = 'NON PAYÉ';
+              else if (newTotal >= due) newStat = 'SOLDÉ';
+              if (newSur > 0) newStat = 'SURPLUS';
+
+              transaction.update(sRef, {
+                total_verse: newTotal,
+                reste: newRes,
+                surplus: newSur,
+                statut_paiement: newStat,
+                updatedAt: new Date().toISOString()
+              });
+
+              // Mark the versement entry as reversed too
+              transaction.update(sRef.collection('versements').doc(originalFinanceId), {
+                status: 'reversed',
+                reversedAt: new Date().toISOString()
+              });
+            }
+          }
+        }
+
+        let scolaRef = null;
+        let scolaData: any = null;
+
+        if (studentId && (category === 'tuition' || category === 'registration' || category === 'scolarite' || category === 'inscription')) {
+          const scolaId = levelId ? `${studentId}_${levelId}` : null;
+          
+          if (scolaId) {
+            scolaRef = dbAdmin.collection('scolarites').doc(scolaId);
+            const scolaDoc = await transaction.get(scolaRef);
+            scolaData = scolaDoc.data();
+          } else {
+            const scolaQuery = await dbAdmin.collection('scolarites').where('eleve_id', '==', studentId).get();
+            if (scolaQuery.size === 1) {
+              scolaRef = scolaQuery.docs[0].ref;
+              scolaData = scolaQuery.docs[0].data();
+            }
+          }
+        }
+
+        const financeRecord = {
+          id: financeId,
+          type: type === 'payment' ? 'income' : (type === 'reversal' ? 'reversal' : 'expense'),
+          amount,
+          category,
+          description,
+          date,
+          accountType,
+          paymentMethod,
+          receiptNumber,
+          studentId,
+          levelId,
+          idempotencyKey,
+          status: 'active',
+          createdBy: userId,
+          createdByName: userName,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          studentName: scolaData?.nom_eleve || payload.studentName,
+          studentMatricule: scolaData?.matricule || payload.studentMatricule
+        };
+
+        const auditLog = {
+          id: auditId,
+          userId,
+          userName,
+          action: `CREATE_${type.toUpperCase()}`,
+          resourceType: 'FINANCE',
+          resourceId: financeId,
+          newValue: financeRecord,
+          timestamp: new Date().toISOString(),
+          ip: req.ip,
+          userAgent: req.headers['user-agent']
+        };
+
+        transaction.set(dbAdmin.collection('finances').doc(financeId), financeRecord);
+        transaction.set(dbAdmin.collection('audit_logs').doc(auditId), auditLog);
+
+        if (scolaRef && scolaData) {
+          const versementData = {
+            id: financeId,
+            montant: amount,
+            date,
+            mode_paiement: paymentMethod || 'Espèces',
+            accountType,
+            categorie: (category === 'registration' || category === 'inscription') ? 'inscription' : 'scolarite',
+            recu_numero: receiptNumber || 'GENERATED',
+            caissier_id: userId,
+            financeId: financeId,
+            createdAt: new Date().toISOString()
+          };
+          
+          const newTotalPaid = (Number(scolaData.total_verse) || 0) + amount;
+          const totalDue = Number(scolaData.montant_total_du) || 0;
+          const newReste = Math.max(0, totalDue - newTotalPaid);
+          const newSurplus = Math.max(0, newTotalPaid - totalDue);
+          
+          let statut: any = 'EN COURS';
+          if (newTotalPaid >= totalDue) statut = 'SOLDÉ';
+          if (newTotalPaid === 0) statut = 'NON PAYÉ';
+          if (newSurplus > 0) statut = 'SURPLUS';
+
+          transaction.set(dbAdmin.collection('scolarites').doc(scolaRef.id).collection('versements').doc(financeId), versementData);
+          transaction.update(scolaRef, {
+            total_verse: newTotalPaid,
+            reste: newReste,
+            surplus: newSurplus,
+            statut_paiement: statut,
+            updatedAt: new Date().toISOString()
+          });
+        }
+
+        return { financeId, auditId };
+      });
+
+      res.json({ message: 'Success', ...result });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: 'Validation failed', errors: err.issues });
+      }
+      console.error("Financial Transaction Error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Nuclear Option: Format application
+  app.post('/api/admin/format', authenticate, async (req: any, res: any) => {
+    try {
+      const userDoc = await dbAdmin.collection('users').doc(req.user.id).get();
+      const userData = userDoc.data();
+      if (!userData?.isSuperAdmin) {
+        return res.status(403).json({ message: "Seul un Super Administrateur peut formater l'application." });
+      }
+
+      const { confirmation } = req.body;
+      if (confirmation !== 'FORMAT_NUCLEAR') {
+        return res.status(400).json({ message: "Code de confirmation incorrect." });
+      }
+
+      const batchLimit = 500;
+      const collectionsToWipe = [
+        'finances', 'scolarites', 'evaluations', 'presences', 'bulletins', 
+        'bulletins_archives', 'classes', 'cours', 'examens', 'notifications', 
+        'audit_logs', 'library', 'messages'
+      ];
+
+      for (const collName of collectionsToWipe) {
+        const snapshot = await dbAdmin.collection(collName).limit(batchLimit).get();
+        if (snapshot.size > 0) {
+          const batch = dbAdmin.batch();
+          snapshot.docs.forEach(doc => batch.delete(doc.ref));
+          await batch.commit();
+        }
+      }
+
+      // Special handling for users: keep Super Admins
+      const usersSnap = await dbAdmin.collection('users').get();
+      const userBatch = dbAdmin.batch();
+      let deletedCount = 0;
+      usersSnap.docs.forEach(doc => {
+        const u = doc.data();
+        if (!u.isSuperAdmin) {
+          userBatch.delete(doc.ref);
+          deletedCount++;
+        }
+      });
+      if (deletedCount > 0) await userBatch.commit();
+
+      res.json({ message: "Application formatée avec succès. Données supprimées, Super-Admins conservés." });
+    } catch (err: any) {
+      console.error("Format error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Finance & Scolarite Unified API (Ledger Focus)
   app.get('/api/finances', authenticate, async (req: any, res: any) => {
     try {
-      const { year, month } = req.query;
-      let query: any = dbAdmin.collection('finances');
+      const { year, month, type, status } = req.query;
+      let queryRef: any = dbAdmin.collection('finances');
       
-      // If we have filters, we could try to optimize on server side
-      // For now, let's just make it faster by limiting if no filter
-      // Or just fetch all but be aware of performance
-      const snapshot = await query.get();
-      
+      queryRef = dbAdmin.collection('finances');
+      const snapshot = await queryRef.orderBy('date', 'desc').limit(5000).get();
       let records = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
       
-      // Filter out archived ones
-      records = records.filter((f: any) => !f.deletedAt);
+      if (type) {
+        records = records.filter((r: any) => r.type === type);
+      }
       
-      // If year/month requested, filter on server to reduce payload size
-      if (year) {
+      // Filter out deleted/reversed for normal stats, but allow if specifically requested
+      if (status) {
+        records = records.filter((r: any) => r.status === status);
+      } else {
+        // By default, exclude deleted and reversed
+        records = records.filter((r: any) => r.status !== 'deleted' && r.status !== 'reversed');
+      }
+      
+      // Secondary filters (Month / Year)
+      if (year && year !== 'all') {
         records = records.filter((f: any) => {
-          if (!f.date) return false;
-          const d = new Date(f.date);
+          const d = new Date(f.date || f.createdAt);
           return d.getFullYear().toString() === year;
         });
       }
       
       if (month && month !== 'all') {
         records = records.filter((f: any) => {
-          if (!f.date) return false;
-          const d = new Date(f.date);
+          const d = new Date(f.date || f.createdAt);
           return d.getMonth().toString() === month;
         });
-      }
-
-      // Sort by date descending by default
-      records.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-      // Limit to 2000 records to prevent browser crash, most recent first
-      if (records.length > 2000) {
-        records = records.slice(0, 2000);
       }
 
       res.json(records);
@@ -1619,215 +1873,12 @@ async function startServer() {
     }
   });
 
-  app.get('/api/finances/trash', authenticate, async (req: any, res: any) => {
+  app.get('/api/audit-logs', authenticate, async (req: any, res: any) => {
     try {
-      const snapshot = await dbAdmin.collection('finances').get();
-      const trash = snapshot.docs
-        .map((doc: any) => ({ id: doc.id, ...doc.data() }))
-        .filter((f: any) => !!f.deletedAt)
-        .sort((a: any, b: any) => new Date(b.deletedAt || b.date).getTime() - new Date(a.deletedAt || a.date).getTime())
-        .slice(0, 1000); // Limit trash too
-
-      res.json(trash);
+      if (req.user.role !== 'admin') return res.status(403).json({ message: "Interdit" });
+      const snapshot = await dbAdmin.collection('audit_logs').orderBy('timestamp', 'desc').limit(200).get();
+      res.json(snapshot.docs.map(doc => doc.data()));
     } catch (err: any) {
-      console.error("Trash fetch error:", err);
-      res.status(500).json({ message: err.message });
-    }
-  });
-
-  app.get('/api/charges', authenticate, async (req: any, res: any) => {
-    try {
-      const snapshot = await dbAdmin.collection('charges').orderBy('date', 'desc').get();
-      const records = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
-      res.json(records);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
-
-  app.post('/api/finances', authenticate, async (req, res) => {
-    try {
-      const { studentId, amount, date, category, description } = req.body;
-      
-      // Idempotency check: check if a similar transaction exists (same student, amount, category and date within 2 minutes)
-      if (studentId && amount) {
-        const threshold = 2 * 60 * 1000; // 2 minutes
-        const reqDate = new Date(date || new Date().toISOString()).getTime();
-        
-        const existingQuery = await dbAdmin.collection('finances')
-          .where('studentId', '==', studentId)
-          .where('amount', '==', Number(amount))
-          .where('category', '==', category)
-          .get();
-        
-        const isDuplicate = existingQuery.docs.some(doc => {
-          const docDate = new Date(doc.data().date).getTime();
-          return Math.abs(docDate - reqDate) < threshold;
-        });
-
-        if (isDuplicate) {
-          console.log(`Duplicate transaction detected for student ${studentId}, amount ${amount}. Ignoring.`);
-          return res.status(409).json({ message: 'Transaction déjà enregistrée (doublon détecté)', isDuplicate: true });
-        }
-      }
-
-      const id = Date.now().toString();
-      const newRecord = { ...req.body, id, date: req.body.date || new Date().toISOString() };
-      await dbAdmin.collection('finances').doc(id).set(newRecord);
-      res.json(newRecord);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
-
-  app.post('/api/finances/:id/archive', authenticate, async (req: any, res) => {
-    try {
-      const { reason } = req.body;
-      if (!reason) return res.status(400).json({ message: 'Raison requise' });
-      
-      const userDoc = await dbAdmin.collection('users').doc(req.user.id).get();
-      const userData = userDoc.data();
-      const deletedBy = `${userData?.firstName} ${userData?.lastName}`;
-
-      await dbAdmin.collection('finances').doc(req.params.id).update({
-        deletedAt: new Date().toISOString(),
-        deletedBy: deletedBy,
-        deletionReason: reason
-      });
-      res.json({ message: 'Transaction archivée' });
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
-
-  app.patch('/api/finances/:id', authenticate, async (req: any, res: any) => {
-    try {
-      const { amount, description, date, category, status } = req.body;
-      if (amount === undefined && !description && !date && !category && !status) {
-        return res.status(400).json({ message: 'Aucune donnée fournie' });
-      }
-      if (req.user.role !== 'admin') {
-        const userDoc = await dbAdmin.collection('users').doc(req.user.id).get();
-        const userData = userDoc.data();
-        const userEmail = req.user.email?.toLowerCase();
-        if (!userData?.isSuperAdmin && userEmail !== 'yombivictor@gmail.com' && userEmail !== 'gabrielyombi311@gmail.com') {
-           return res.status(403).json({ message: 'Interdit' });
-        }
-      }
-      const updateData: any = {};
-      if (amount !== undefined) updateData.amount = Number(amount);
-      if (description) updateData.description = description;
-      if (date) {
-        updateData.date = date;
-        // Auto-archival logic: if year is less than current year
-        const currentYear = new Date().getFullYear();
-        const d = new Date(date);
-        if (!isNaN(d.getTime())) {
-          updateData.status = d.getFullYear() < currentYear ? 'archived' : 'active';
-        }
-      }
-      if (category) updateData.category = category;
-      if (status) updateData.status = status;
-      
-      await dbAdmin.collection('finances').doc(req.params.id).update(updateData);
-      res.json({ message: 'Transaction mise à jour' });
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
-
-  app.delete('/api/finances/:id', authenticate, async (req: any, res) => {
-    try {
-      if (req.user.role !== 'admin') {
-        return res.status(403).json({ message: "Seul un administrateur peut supprimer une transaction." });
-      }
-
-      const financeRef = dbAdmin.collection('finances').doc(req.params.id);
-      const financeDoc = await financeRef.get();
-      
-      if (!financeDoc.exists) {
-        return res.status(404).json({ message: "Transaction introuvable" });
-      }
-
-      const financeData = financeDoc.data();
-      const userDoc = await dbAdmin.collection('users').doc(req.user.id).get();
-      const userData = userDoc.data();
-      const deletedBy = `${userData?.firstName} ${userData?.lastName} (${req.user.email})`;
-
-      // 1. Mark as deleted in global ledger
-      await financeRef.update({
-        deletedAt: new Date().toISOString(),
-        deletedBy: deletedBy,
-        deletionReason: 'Suppression via Tableau de Bord'
-      });
-
-      // 2. COMPREHENSIVE CLEANUP: If it's a student payment, cleanup the subcollections
-      if (financeData?.studentId && (financeData?.category === 'tuition' || financeData?.category === 'registration' || financeData?.category === 'scolarite' || financeData?.category === 'inscription')) {
-        const studentId = financeData.studentId;
-        const levelId = financeData.levelId;
-        
-        // Strategy: First try specific paths to avoid collectionGroup index requirement if possible
-        const possibleScolaIds = [studentId];
-        if (levelId) possibleScolaIds.push(`${studentId}_${levelId}`);
-        
-        const versementsToDelete: any[] = [];
-        
-        for (const sId of possibleScolaIds) {
-          const vSnap = await dbAdmin.collection('scolarites').doc(sId).collection('versements')
-            .where('financeId', '==', req.params.id)
-            .get();
-          vSnap.forEach(d => versementsToDelete.push(d.ref));
-        }
-
-        // Fallback to collectionGroup if nothing found in specific paths (might have custom ID)
-        if (versementsToDelete.length === 0) {
-          try {
-            const groupSnap = await dbAdmin.collectionGroup('versements')
-              .where('financeId', '==', req.params.id)
-              .get();
-            groupSnap.forEach(d => versementsToDelete.push(d.ref));
-          } catch (indexErr) {
-            console.warn("CollectionGroup 'versements' index might be missing, skipping fallback.");
-          }
-        }
-        
-        for (const vRef of versementsToDelete) {
-          const scolariteRef = vRef.parent.parent;
-          if (scolariteRef) {
-             // Delete the versement
-             await vRef.delete();
-             
-             // Recalculate scolarite totals
-             const scolaDoc = await scolariteRef.get();
-             if (scolaDoc.exists) {
-               const s = scolaDoc.data();
-               const subV = await scolariteRef.collection('versements').get();
-               let totalPaid = 0;
-               subV.forEach(d => { totalPaid += (Number(d.data().montant) || 0); });
-               
-               const totalDue = Number(s?.montant_total_du) || 0;
-               const reste = Math.max(0, totalDue - totalPaid);
-               const surplus = Math.max(0, totalPaid - totalDue);
-               
-               let statut = 'EN COURS';
-               if (totalPaid === 0) statut = 'NON PAYÉ';
-               else if (totalPaid >= totalDue) statut = 'SOLDÉ';
-               
-               await scolariteRef.update({
-                 total_verse: totalPaid,
-                 reste: reste,
-                 surplus: surplus,
-                 statut_paiement: statut,
-                 lastCalculated: new Date().toISOString()
-               });
-             }
-          }
-        }
-      }
-
-      res.json({ message: 'Transaction supprimée et dossiers synchronisés' });
-    } catch (err: any) {
-      console.error("Finance DELETE error:", err);
       res.status(500).json({ message: err.message });
     }
   });

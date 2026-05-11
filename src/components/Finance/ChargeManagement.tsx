@@ -28,6 +28,7 @@ import { Charge } from '../../types';
 import { formatCurrency } from '../../utils';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
+import { FinanceService } from '../../services/financeService';
 
 export default function ChargeManagement() {
   const [charges, setCharges] = useState<Charge[]>([]);
@@ -81,55 +82,33 @@ export default function ChargeManagement() {
     }
     const notes = formData.get('notes') as string;
 
-    const newFinanceRecord = {
-      type: 'expense',
-      amount: amount,
-      category: category,
-      description: description,
-      date: new Date(date).toISOString(),
-      notes: notes,
-      status: 'active',
-      paymentMode: 'Espèces', // Default for charges
-      initiatedBy: 'secretary'
-    };
-
     try {
-      // 1. Add to finances ledger via REST API
-      const response = await fetch('/api/finances', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify(newFinanceRecord)
+      await FinanceService.recordExpense({
+        amount,
+        category: category as any,
+        description,
+        date: new Date(date).toISOString(),
+        metadata: { notes }
       });
 
-      if (response.ok) {
-        // Also keep a copy in legacy 'charges' ONLY if it didn't exist before
-        // but the app now primarily uses the finances table.
-        toast.success("Dépense enregistrée et ajoutée au Grand Livre");
-        setIsModalOpen(false);
-        fetchCharges();
-      } else {
-        throw new Error("Failed to save to ledger");
-      }
-    } catch (err) {
-      toast.error("Erreur lors de l'enregistrement");
+      toast.success("Dépense enregistrée atomiquement");
+      setIsModalOpen(false);
+      fetchCharges();
+    } catch (err: any) {
+      toast.error(err.message || "Erreur lors de l'enregistrement");
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Supprimer cette dépense ? Elle sera aussi retirée du Grand Livre.")) return;
+    const reason = window.prompt("Raison de l'annulation de cette dépense :");
+    if (!reason) return;
+    
     try {
-      // Delete from finances (if it's a finance ID)
-      await deleteDoc(doc(db, 'finances', id));
-      
-      // Also try to delete from legacy charges if it exists there
-      // We might not have the charge ID if it's new, but we can try
-      toast.success("Dépense supprimée");
+      await FinanceService.reverseTransaction(id, reason);
+      toast.success("Dépense annulée (Atomique)");
       fetchCharges();
-    } catch (err) {
-      toast.error("Erreur");
+    } catch (err: any) {
+      toast.error(err.message || "Erreur lors de l'annulation");
     }
   };
 

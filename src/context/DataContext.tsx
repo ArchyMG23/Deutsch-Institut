@@ -10,8 +10,6 @@ interface DataContextType {
   classes: ClassRoom[];
   levels: Level[];
   finances: FinanceRecord[];
-  charges: any[];
-  trashFinances: FinanceRecord[];
   library: LibraryItem[];
   evaluations: Evaluation[];
   loading: boolean;
@@ -21,11 +19,25 @@ interface DataContextType {
   refreshClasses: () => Promise<void>;
   refreshLevels: () => Promise<void>;
   refreshFinances: () => Promise<void>;
-  refreshCharges: () => Promise<void>;
-  refreshTrash: () => Promise<void>;
   refreshLibrary: () => Promise<void>;
   refreshEvaluations: () => Promise<void>;
   onlineUsers: any[];
+  financeStats: {
+    totalIncome: number;
+    totalExpense: number;
+    caisseBalance: number;
+    banqueBalance: number;
+    yearIncome: number;
+    yearExpense: number;
+    monthlyHistory: {
+      month: string;
+      income: number;
+      expense: number;
+      caisse: number;
+      banque: number;
+      result: number;
+    }[];
+  };
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -37,12 +49,79 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [classes, setClasses] = useState<ClassRoom[]>([]);
   const [levels, setLevels] = useState<Level[]>([]);
   const [finances, setFinances] = useState<FinanceRecord[]>([]);
-  const [charges, setCharges] = useState<any[]>([]);
-  const [trashFinances, setTrashFinances] = useState<FinanceRecord[]>([]);
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Unified financial stats
+  const financeStats = React.useMemo(() => {
+    const activeFinances = (finances || []);
+    let caisse = 0;
+    let banque = 0;
+    let totalInc = 0;
+    let totalExp = 0;
+    let yearInc = 0;
+    let yearExp = 0;
+    
+    const currentYear = new Date().getFullYear();
+    const months = Array.from({ length: 12 }, (_, i) => ({
+      month: new Date(2000, i).toLocaleDateString('fr-FR', { month: 'short' }),
+      income: 0,
+      expense: 0,
+      caisse: 0,
+      banque: 0,
+      result: 0
+    }));
+
+    // Sort finances by date for balance tracking if needed, 
+    // but for simple monthly variation we can just sum.
+    activeFinances.forEach(f => {
+      const amount = Number(f.amount) || 0;
+      const date = new Date(f.date || f.createdAt);
+      const isIncome = f.type === 'income';
+      const year = date.getFullYear();
+      const monthIdx = date.getMonth();
+      
+      if (isIncome) {
+        totalInc += amount;
+        if (year === currentYear) {
+          yearInc += amount;
+          months[monthIdx].income += amount;
+        }
+      } else {
+        totalExp += amount;
+        if (year === currentYear) {
+          yearExp += amount;
+          months[monthIdx].expense += amount;
+        }
+      }
+
+      const effect = isIncome ? amount : -amount;
+      if (f.accountType === 'banque') {
+        banque += effect;
+        if (year === currentYear) months[monthIdx].banque += effect;
+      } else {
+        caisse += effect;
+        if (year === currentYear) months[monthIdx].caisse += effect;
+      }
+    });
+
+    // Calculate monthly result
+    months.forEach(m => {
+      m.result = m.income - m.expense;
+    });
+
+    return {
+      totalIncome: totalInc,
+      totalExpense: totalExp,
+      caisseBalance: caisse,
+      banqueBalance: banque,
+      yearIncome: yearInc,
+      yearExpense: yearExp,
+      monthlyHistory: months
+    };
+  }, [finances]);
   const lastFetchRef = useRef<number>(0);
   const lastFetchTimesRef = useRef<Record<string, number>>({});
 
@@ -134,32 +213,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchWithAuth, shouldFetch]);
 
-  const refreshCharges = useCallback(async (force: boolean = false) => {
-    if (!force && !shouldFetch('charges')) return;
-    try {
-      const res = await fetchWithAuth('/api/charges');
-      if (res.ok) {
-        setCharges(await res.json());
-        lastFetchTimesRef.current['charges'] = Date.now();
-      }
-    } catch (err) {
-      console.error("Error fetching charges:", err);
-    }
-  }, [fetchWithAuth, shouldFetch]);
-
-  const refreshTrash = useCallback(async () => {
-    if (!shouldFetch('trash')) return;
-    try {
-      const res = await fetchWithAuth('/api/finances/trash');
-      if (res.ok) {
-        setTrashFinances(await res.json());
-        lastFetchTimesRef.current['trash'] = Date.now();
-      }
-    } catch (err) {
-      console.error("Error fetching trash:", err);
-    }
-  }, [fetchWithAuth, shouldFetch]);
-
   const refreshLibrary = useCallback(async () => {
     if (!shouldFetch('library')) return;
     try {
@@ -212,7 +265,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       await Promise.all([
         refreshTeachers(),
         refreshFinances(), 
-        refreshCharges(), // Synchronized account data
         refreshLibrary(),
         refreshEvaluations()
       ]);
@@ -223,7 +275,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [user, refreshStudents, refreshTeachers, refreshClasses, refreshLevels, refreshFinances, refreshCharges, refreshLibrary, refreshEvaluations]);
+  }, [user, refreshStudents, refreshTeachers, refreshClasses, refreshLevels, refreshFinances, refreshLibrary, refreshEvaluations]);
 
   useEffect(() => {
     if (user) {
@@ -238,8 +290,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       classes,
       levels,
       finances,
-      charges,
-      trashFinances,
       library,
       evaluations,
       loading,
@@ -249,11 +299,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       refreshClasses,
       refreshLevels,
       refreshFinances,
-      refreshCharges,
-      refreshTrash,
       refreshLibrary,
       refreshEvaluations,
-      onlineUsers
+      onlineUsers,
+      financeStats
     }}>
       {children}
     </DataContext.Provider>

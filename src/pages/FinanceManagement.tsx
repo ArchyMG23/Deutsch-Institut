@@ -243,13 +243,10 @@ export default function FinanceManagement() {
   const { 
     students, 
     finances: allRecords, 
-    trashFinances, 
     refreshFinances, 
     refreshStudents, 
-    refreshTrash, 
     levels, 
     classes, 
-    charges,
     refreshLevels,
     refreshAll 
   } = useData();
@@ -319,7 +316,6 @@ export default function FinanceManagement() {
   useEffect(() => {
     refreshLevels();
     refreshFinances();
-    refreshTrash();
   }, []);
 
   const handleVerifyMatricule = async () => {
@@ -496,28 +492,15 @@ export default function FinanceManagement() {
   }, [allRecords, selectedYear, selectedMonth, searchQuery]);
 
   const { totalIncome, totalExpense, balance } = React.useMemo(() => {
-    const filteredCharges = (charges || []).filter(c => {
-      const dateVal = c.date || c.createdAt;
-      if (!dateVal) return false;
-      const d = (dateVal.toDate && typeof dateVal.toDate === 'function') ? dateVal.toDate() : new Date(dateVal);
-      const y = d.getFullYear().toString() === selectedYear;
-      const m = selectedMonth === 'all' || d.getMonth().toString() === selectedMonth;
-      return y && m;
-    });
-
     const inc = filteredByDate.filter(r => String(r.type || '').toLowerCase() === 'income').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
-    const expFromLedger = filteredByDate.filter(r => String(r.type || '').toLowerCase() === 'expense').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
-    const expFromCharges = filteredCharges.reduce((acc, c) => acc + (Number(c.montant) || 0), 0);
-    
-    // Total expenses is sum of ledger expenses and specialized charges
-    const totalExp = expFromLedger + expFromCharges;
+    const totalExp = filteredByDate.filter(r => String(r.type || '').toLowerCase() === 'expense').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
     
     return {
       totalIncome: inc,
       totalExpense: totalExp,
       balance: inc - totalExp
     };
-  }, [filteredByDate, charges, selectedYear, selectedMonth]);
+  }, [filteredByDate]);
 
   const handleSort = (key: string) => {
     setSortConfig(current => {
@@ -529,7 +512,9 @@ export default function FinanceManagement() {
   };
 
   const sortedRecords = React.useMemo(() => {
-    const records = viewMode === 'trash' ? trashFinances : filteredByDate;
+    // Filter trash manually or rely on data if needed. 
+    // For now we just show active ones in both, or we could filter by status if finances had them.
+    const records = viewMode === 'trash' ? allRecords.filter(r => r.status === 'deleted' || !!r.deletedAt) : filteredByDate;
     if (!sortConfig) return records;
 
     return [...records].sort((a, b) => {
@@ -547,7 +532,7 @@ export default function FinanceManagement() {
       const comp = sA.localeCompare(sB, 'fr', { sensitivity: 'base' });
       return sortConfig.direction === 'asc' ? comp : -comp;
     });
-  }, [viewMode, trashFinances, filteredByDate, sortConfig]);
+  }, [viewMode, allRecords, filteredByDate, sortConfig]);
 
   const handleDeleteClick = (id: string) => {
     setRecordToDelete(id);
@@ -567,7 +552,6 @@ export default function FinanceManagement() {
         setRecordToDelete(null);
         setDeletionReason('');
         refreshFinances();
-        refreshTrash();
         toast.success(t('finances.deleted_success'));
       }
     } catch (err) {

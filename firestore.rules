@@ -174,25 +174,22 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Finance & Scolarite
+    // Finance & Scolarite - STRATEGIC LOCKDOWN
+    // All financial writes MUST go through the backend /api/financial-event endpoint.
+    // Client SDK direct writes are forbidden to guarantee atomicity.
     match /finances/{recordId} {
       allow read: if isAdmin();
-      allow write: if isAdmin() && isValidFinance(incoming());
-    }
-
-    match /charges/{chargeId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
+      allow write: if false; // Forced to API
     }
 
     match /scolarites/{eleveId} {
       allow read: if isAdmin() || isOwner(eleveId);
-      allow write: if isAdmin();
+      allow update: if isAdmin() && !incoming().diff(existing()).affectedKeys().hasAny(['total_verse', 'reste', 'surplus', 'statut_paiement', 'inscription_statut']);
+      allow create, delete: if isAdmin();
 
       match /versements/{versementId} {
         allow read: if isAdmin() || isOwner(eleveId);
-        allow create: if isAdmin();
-        allow update, delete: if isAdmin();
+        allow write: if false; // Forced to API
       }
     }
 

@@ -22,6 +22,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../../firebase';
 import { formatCurrency } from '../../utils';
+import { useData } from '../../context/DataContext';
 import { Charge, Session, Versement, DailyReport } from '../../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from 'react-i18next';
@@ -38,7 +39,8 @@ import {
   ResponsiveContainer,
   Cell,
   LineChart,
-  Line
+  Line,
+  Legend
 } from 'recharts';
 
 enum OperationType {
@@ -65,7 +67,8 @@ const cn = (...classes: any[]) => classes.filter(Boolean).join(' ');
 
 export default function RealFinanceDashboard() {
   const { t } = useTranslation();
-  const { user, profile } = useAuth();
+  const { user, profile, fetchWithAuth } = useAuth();
+  const { financeStats, refreshFinances, finances: allFinancesFromContext } = useData();
   
   const isSuperAdmin = 
     profile?.role === 'admin' || 
@@ -113,27 +116,23 @@ export default function RealFinanceDashboard() {
 
   const scanForDuplicates = () => {
     setMaintenanceStatus('scanning');
-    const nameMap: Record<string, any[]> = {};
+    addAuditMsg("Analyse de la cohérence des transactions...");
     
-    // Use the latest data we have
-    data.scolarites.forEach(s => {
-      // Robust name normalization: remove accents, multiple spaces, etc.
-      const name = s.nom_eleve?.toLowerCase()
-        ?.normalize("NFD")?.replace(/[\u0300-\u036f]/g, "") // Remove accents
-        ?.replace(/\s+/g, ' ') // Normalize spaces
-        ?.trim();
-        
-      if (!name || name.length < 3) return;
-      if (!nameMap[name]) nameMap[name] = [];
-      nameMap[name].push(s);
+    const hashes = new Set();
+    const suspicious = [];
+    
+    data.allFinances.forEach(f => {
+      const hash = `${f.amount}_${f.date}_${f.studentId || f.description.slice(0, 15)}`;
+      if (hashes.has(hash)) suspicious.push(f);
+      else hashes.add(hash);
     });
 
-    const foundDuplicates = Object.values(nameMap).filter(list => list.length > 1);
+    if (suspicious.length === 0) {
+      addAuditMsg("Aucun doublon de transaction détecté (Cohérence Ledger OK)");
+    } else {
+      addAuditMsg(`${suspicious.length} transactions suspectes (doublons potentiels) trouvées`, 'err');
+    }
     
-    // Further filter: only groups where we have different student IDs 
-    // (sometimes one student can have multiple scolarite records for different levels, which is OK)
-    // Here we hunt for REAL duplicates (likely multiple users created for same person)
-    setDuplicates(foundDuplicates);
     setMaintenanceStatus('ready');
   };
 
@@ -180,10 +179,11 @@ export default function RealFinanceDashboard() {
     setMaintenanceLoading(true);
     addAuditMsg("Démarrage de l'audit global...");
     try {
-      // 1. Fetch all confirmed income transactions related to tuition/registration
+      // 1. Fetch all active income transactions related to tuition/registration
       const fSnap = await getDocs(query(
         collection(db, 'finances'), 
         where('type', '==', 'income'),
+        where('status', '!=', 'deleted'),
         where('category', 'in', ['tuition', 'registration', 'scolarite', 'inscription'])
       ));
       
@@ -518,8 +518,7 @@ export default function RealFinanceDashboard() {
     setLoading(true);
     try {
       // Parallel fetch with catch for robustness
-      const [financesSnap, teachersSnap, reportsSnap, levelsSnap, classesSnap, scolariteFinalSnap, allVersementsSnap] = await Promise.all([
-        getDocs(collection(db, 'finances')),
+      const [teachersSnap, reportsSnap, levelsSnap, classesSnap, scolariteFinalSnap, allVersementsSnap] = await Promise.all([
         getDocs(query(collection(db, 'users'), where('role', '==', 'teacher'))),
         getDocs(collection(db, 'rapports_journaliers')),
         getDocs(collection(db, 'levels')),
@@ -534,42 +533,58 @@ export default function RealFinanceDashboard() {
       const classesMap: Record<string, any> = {};
       if (classesSnap) classesSnap.forEach((doc: any) => { classesMap[doc.id] = doc.data(); });
 
-      let totalRevenu = 0;
       const revenusDetails: Record<string, number> = { scolarite: 0, inscription: 0, autre: 0 };
       const monthlyRevenu: Record<number, number> = {};
+      const monthlyCaisse: Record<number, number> = {};
+      const monthlyBanque: Record<number, number> = {};
+      let totalRevenu = 0;
+      let caisseBalance = 0;
+      let banqueBalance = 0;
+      const allFinances: any[] = [...allFinancesFromContext];
+      const linkedFinanceIds = new Set();
+      const financesByDossier: Record<string, number> = {};
 
-      if (financesSnap) {
-        financesSnap.forEach(doc => {
-          const f = doc.data();
-          const type = String(f?.type || '').toLowerCase();
-          if (!f || type !== 'income' || f.deletedAt) return;
-          
-          const amount = Number(f.amount) || 0;
-          if (amount <= 0) return;
+      allFinances.forEach(f => {
+        // We trust the status filter from DataContext/API
+        const amount = Number(f.amount) || 0;
+        const date = new Date(f.date || f.createdAt);
+        if (isNaN(date.getTime())) return;
 
-          const dateVal = f.date || f.createdAt;
-          const date = (dateVal && dateVal.toDate && typeof dateVal.toDate === 'function') 
-            ? dateVal.toDate() 
-            : (dateVal ? new Date(dateVal) : new Date());
-          
-          if (!isNaN(date.getTime()) && date.getFullYear() === selectedYear) {
-            const cat = String(f.category || 'other').toLowerCase();
-            const desc = String(f.description || '').toLowerCase();
+        const isIncome = f.type === 'income';
+        const effect = isIncome ? amount : -amount;
+
+        if (f.accountType === 'banque') {
+          banqueBalance += effect;
+        } else {
+          caisseBalance += effect;
+        }
+
+        if (isIncome && (f.studentId || f.studentMatricule)) {
+          const studentId = f.studentId || f.studentMatricule;
+          const scolaKey = f.levelId ? `${studentId}_${f.levelId}` : studentId;
+          financesByDossier[scolaKey] = (financesByDossier[scolaKey] || 0) + amount;
+        }
+
+        // Year filter for history and totals
+        if (date.getFullYear() === selectedYear) {
+          const month = date.getMonth();
+          if (isIncome) {
             totalRevenu += amount;
+            monthlyRevenu[month] = (monthlyRevenu[month] || 0) + amount;
             
-            if (cat.includes('inscrip') || cat === 'registration' || desc.includes('inscription')) {
-              revenusDetails.inscription += amount;
-            } else if (cat.includes('scolarit') || cat === 'tuition' || desc.includes('scolarit')) {
-              revenusDetails.scolarite += amount;
-            } else {
-              revenusDetails.autre += amount;
-            }
-
-            const mKey = date.getMonth();
-            monthlyRevenu[mKey] = (monthlyRevenu[mKey] || 0) + amount;
+            const cat = String(f.category || '').toLowerCase();
+            if (cat.includes('tuition') || cat.includes('scolarite')) revenusDetails.scolarite += amount;
+            else if (cat.includes('registration') || cat.includes('inscription')) revenusDetails.inscription += amount;
+            else revenusDetails.autre += amount;
           }
-        });
-      }
+
+          if (f.accountType === 'banque') {
+            monthlyBanque[month] = (monthlyBanque[month] || 0) + effect;
+          } else {
+            monthlyCaisse[month] = (monthlyCaisse[month] || 0) + effect;
+          }
+        }
+      });
 
       const teacherSettings: Record<string, { hourlyRate: number, minStudents?: number }> = {};
       if (teachersSnap) {
@@ -661,89 +676,25 @@ export default function RealFinanceDashboard() {
         };
       });
 
-      let chargesSnap: any;
-      try {
-        chargesSnap = await getDocs(collection(db, 'charges'));
-      } catch (error) {
-        console.error("Error fetching charges:", error);
-      }
-
       let totalChargesFixes = 0;
       let totalAllTimeCharges = 0;
       const monthlyCharges: Record<number, number> = {};
 
-      if (chargesSnap) {
-        chargesSnap.forEach(doc => {
-          const c = doc.data() as Charge;
-          if (!c || !c.date) return;
-          const date = new Date(c.date);
-          const montant = Number(c.montant) || 0;
-          totalAllTimeCharges += montant;
-
-          if (!isNaN(date.getTime()) && date.getFullYear() === selectedYear) {
-            totalChargesFixes += montant;
-            const mKey = date.getMonth();
-            monthlyCharges[mKey] = (monthlyCharges[mKey] || 0) + montant;
-          }
-        });
-      }
-
-      let caisseBalance = 0;
-      let banqueBalance = 0;
-      const allFinances: any[] = [];
-
-      // Set for orphan detection
-      const linkedFinanceIds = new Set();
-      const financesByDossier: Record<string, number> = {};
-
-      if (financesSnap) {
-        financesSnap.forEach(doc => {
-          const f = { id: doc.id, ...doc.data() } as any;
-          const dateVal = f.date || f.createdAt;
-          if (!f || !dateVal || f.deletedAt) return;
+      // We no longer fetch from 'charges' legacy collection. 
+      // All expenses come from the unified 'finances' ledger.
+      allFinances.forEach(f => {
+        if (f.type === 'expense') {
+          const date = new Date(f.date || f.createdAt);
+          const amount = Number(f.amount) || 0;
+          totalAllTimeCharges += amount;
           
-          allFinances.push(f);
-          const date = (dateVal.toDate && typeof dateVal.toDate === 'function') ? dateVal.toDate() : new Date(dateVal);
-          const amount = Number(f.amount || 0);
-          const type = String(f.type || '').toLowerCase();
-          const isIncome = type === 'income';
-          const accType = String(f.accountType || 'caisse').toLowerCase();
-
-          if (accType === 'banque') {
-            banqueBalance += isIncome ? amount : -amount;
-          } else {
-            caisseBalance += isIncome ? amount : -amount;
-          }
-
-          if (isIncome && (f.studentId || f.studentMatricule)) {
-            const studentId = f.studentId || f.studentMatricule;
-            // Map payment to potential dossiers
-            const scolaKey = f.levelId ? `${studentId}_${f.levelId}` : studentId;
-            financesByDossier[scolaKey] = (financesByDossier[scolaKey] || 0) + amount;
-          }
-
-          if (!isNaN(date.getTime()) && date.getFullYear() === selectedYear) {
+          if (date.getFullYear() === selectedYear) {
+            totalChargesFixes += amount;
             const mKey = date.getMonth();
-            if (isIncome) {
-              totalRevenu += amount;
-              monthlyRevenu[mKey] = (monthlyRevenu[mKey] || 0) + amount;
-              
-              const cat = String(f.category || 'other').toLowerCase();
-              const desc = String(f.description || '').toLowerCase();
-              if (cat.includes('inscrip') || cat === 'registration' || desc.includes('inscription')) {
-                revenusDetails.inscription += amount;
-              } else if (cat.includes('scolarit') || cat === 'tuition' || desc.includes('scolarit')) {
-                revenusDetails.scolarite += amount;
-              } else {
-                revenusDetails.autre += amount;
-              }
-            } else {
-              totalChargesFixes += amount;
-              monthlyCharges[mKey] = (monthlyCharges[mKey] || 0) + amount;
-            }
+            monthlyCharges[mKey] = (monthlyCharges[mKey] || 0) + amount;
           }
-        });
-      }
+        }
+      });
 
       // --- VERSEMENTS ANALYSIS (FOR STUDENT BALANCES ONLY) ---
       const versementsByStudent: Record<string, number> = {};
@@ -797,6 +748,8 @@ export default function RealFinanceDashboard() {
         month: new Date(2000, i).toLocaleDateString('fr-FR', { month: 'short' }),
         revenus: monthlyRevenu[i] || 0,
         charges: (monthlySalaries[i] || 0) + (monthlyCharges[i] || 0),
+        caisse: monthlyCaisse[i] || 0,
+        banque: monthlyBanque[i] || 0,
         resultat: (monthlyRevenu[i] || 0) - ((monthlySalaries[i] || 0) + (monthlyCharges[i] || 0))
       }));
 
@@ -826,6 +779,35 @@ export default function RealFinanceDashboard() {
   useEffect(() => {
     fetchFinanceStats();
   }, [selectedYear]);
+
+  const handleFormatApp = async () => {
+    if (!isSuperAdmin) return;
+    const code = window.prompt("⚠️ ATTENTION : Cette action supprimera TOUTES les données (finances, élèves, classes, etc.) mais gardera les Super-Admins.\n\nTapez 'FORMAT_NUCLEAR' pour confirmer :");
+    if (code !== 'FORMAT_NUCLEAR') {
+      if (code !== null && code !== "") toast.error("Code de confirmation incorrect.");
+      return;
+    }
+
+    setMaintenanceLoading(true);
+    try {
+      const res = await fetchWithAuth('/api/admin/format', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmation: 'FORMAT_NUCLEAR' })
+      });
+      if (res.ok) {
+        toast.success("Application formatée avec succès !");
+        window.location.reload();
+      } else {
+        const err = await res.json();
+        throw new Error(err.message);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Erreur lors du formatage");
+    } finally {
+      setMaintenanceLoading(false);
+    }
+  };
 
   const totalCharges = data.chargesFixes + data.chargesSalariales;
   const resultatNet = data.revenus - totalCharges;
@@ -961,7 +943,7 @@ export default function RealFinanceDashboard() {
               <ArrowRightLeft size={14} /> Vider la Caisse
             </button>
           </div>
-          <h4 className="text-3xl font-black">{formatCurrency(data.caisseBalance)}</h4>
+          <h4 className="text-3xl font-black">{formatCurrency(financeStats.caisseBalance)}</h4>
           <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mt-1">Solde Actuel - Caisse</p>
         </div>
 
@@ -971,13 +953,13 @@ export default function RealFinanceDashboard() {
               <CreditCard size={24} />
             </div>
           </div>
-          <h4 className="text-3xl font-black text-blue-600">{formatCurrency(data.banqueBalance)}</h4>
+          <h4 className="text-3xl font-black text-blue-600">{formatCurrency(financeStats.banqueBalance)}</h4>
           <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mt-1">Solde Actuel - Banque</p>
         </div>
       </div>
 
       {/* Account Tabs */}
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl w-fit">
           <button 
             onClick={() => setActiveTab('all')}
@@ -1008,20 +990,14 @@ export default function RealFinanceDashboard() {
           </button>
         </div>
 
-        {activeTab !== 'all' && (
-          <div className="flex items-center gap-2 bg-neutral-100 dark:bg-neutral-800 px-4 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700">
-            <span className="text-[10px] font-black uppercase text-neutral-400">Filtrer par Niveau:</span>
-            <select 
-              value={selectedLevel}
-              onChange={(e) => setSelectedLevel(e.target.value)}
-              className="bg-transparent border-none outline-none text-[10px] font-bold"
-            >
-              <option value="all">Tous les niveaux</option>
-              {Object.entries(data.levelsMap).map(([id, level]: [string, any]) => (
-                <option key={id} value={id}>{level.name}</option>
-              ))}
-            </select>
-          </div>
+        {isSuperAdmin && (
+          <button 
+            onClick={() => setShowMaintenanceModal(true)}
+            className="flex items-center gap-2 px-6 py-2 bg-neutral-900 text-white rounded-xl text-[10px] font-black uppercase hover:bg-black transition-all"
+          >
+            <ShieldCheck size={16} className="text-dia-red" />
+            Vérificateur d'Intégrité
+          </button>
         )}
       </div>
 
@@ -1036,7 +1012,7 @@ export default function RealFinanceDashboard() {
             </div>
           </div>
           <h4 className="text-2xl font-black">{formatCurrency(data.revenus)}</h4>
-          <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mt-1">Revenus Totaux</p>
+          <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mt-1">Revenus ({selectedYear})</p>
         </div>
 
         <div className="card p-6 border-l-4 border-l-dia-red">
@@ -1046,7 +1022,7 @@ export default function RealFinanceDashboard() {
             </div>
           </div>
           <h4 className="text-2xl font-black">{formatCurrency(totalCharges)}</h4>
-          <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mt-1">Charges Totales</p>
+          <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mt-1">Dépenses ({selectedYear})</p>
         </div>
 
         <div className="card p-6 border-l-4 border-l-neutral-400 bg-neutral-50 dark:bg-neutral-800/50">
@@ -1162,6 +1138,29 @@ export default function RealFinanceDashboard() {
                 />
                 <Bar dataKey="revenus" fill="#22c55e" radius={[4, 4, 0, 0]} name="Revenus" />
                 <Bar dataKey="charges" fill="#ef4444" radius={[4, 4, 0, 0]} name="Charges" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="card p-6">
+          <h5 className="font-bold mb-6 flex items-center gap-2">
+            <RefreshCw size={18} className="text-dia-red font-black" />
+            Flux de Trésorerie (Caisse vs Banque)
+          </h5>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data.history}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 700}} />
+                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 700}} />
+                <Tooltip 
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                  formatter={(value) => formatCurrency(Number(value))}
+                />
+                <Legend iconType="circle" />
+                <Bar dataKey="caisse" fill="#fbbf24" radius={[4, 4, 0, 0]} name="Variation Caisse" />
+                <Bar dataKey="banque" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Variation Banque" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -1497,9 +1496,9 @@ export default function RealFinanceDashboard() {
               <div className="flex items-center justify-between p-8 border-b border-neutral-100 dark:border-neutral-800 bg-neutral-900">
                 <div>
                   <h3 className="text-2xl font-black uppercase tracking-tighter text-white flex items-center gap-3">
-                    <ShieldCheck size={28} className="text-dia-red" /> Maintenance & Réconciliation
+                    <ShieldCheck size={28} className="text-dia-red" /> Intégrité Financière v2
                   </h3>
-                  <p className="text-xs font-bold text-neutral-400">Outils de diagnostic et d'intégrité de la base de données</p>
+                  <p className="text-xs font-bold text-neutral-400">Vérification de la cohérence du Grand Livre et Réconciliation Atomique</p>
                 </div>
                 <button onClick={() => setShowMaintenanceModal(false)} className="p-3 bg-white/10 rounded-2xl hover:bg-white/20 transition-all text-white">
                   <X />
@@ -1507,17 +1506,11 @@ export default function RealFinanceDashboard() {
               </div>
 
               <div className="p-8 overflow-y-auto space-y-8 flex-1">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <button onClick={handleRepairLevels} disabled={maintenanceLoading} className="p-6 text-left border border-neutral-200 dark:border-neutral-800 rounded-3xl hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-all group disabled:opacity-50">
                     <UserCheck className="mb-4 text-dia-red group-hover:scale-110 transition-transform" />
-                    <h4 className="font-bold mb-1">Dossiers Élèves</h4>
-                    <p className="text-[10px] text-neutral-500">Synchronise les profils (identités, matricules) avec les dossiers scolarité.</p>
-                  </button>
-
-                  <button onClick={handleAuditRepair} disabled={maintenanceLoading} className="p-6 text-left border border-neutral-200 dark:border-neutral-800 rounded-3xl hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-all group disabled:opacity-50">
-                    <ShieldCheck className="mb-4 text-emerald-500 group-hover:scale-110 transition-transform" />
-                    <h4 className="font-bold mb-1">Audit Global</h4>
-                    <p className="text-[10px] text-neutral-500">Recalcule tous les soldes élèves. Récancrage des transactions orphelines.</p>
+                    <h4 className="font-bold mb-1">Diagnostic Dossiers</h4>
+                    <p className="text-[10px] text-neutral-500">Vérifie l'intégrité des liens entre les élèves et leurs dossiers financiers.</p>
                   </button>
 
                   <button 
@@ -1528,9 +1521,19 @@ export default function RealFinanceDashboard() {
                       maintenanceStatus === 'scanning' ? "bg-amber-50 border-amber-200 dark:bg-amber-900/10 border-amber-800" : "border-neutral-200 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800/40"
                     )}
                   >
-                    <Users className="mb-4 text-amber-500 group-hover:scale-110 transition-transform" />
-                    <h4 className="font-bold mb-1">Scanner Doublons</h4>
-                    <p className="text-[10px] text-neutral-500">Identifie les comptes multiples pour un même élève pour fusion.</p>
+                    <Activity className="mb-4 text-amber-500 group-hover:scale-110 transition-transform" />
+                    <h4 className="font-bold mb-1">Audit de Cohérence</h4>
+                    <p className="text-[10px] text-neutral-500">Analyse le Grand Livre pour détecter des transactions suspectes ou dupliquées.</p>
+                  </button>
+
+                  <button 
+                    onClick={handleFormatApp} 
+                    disabled={maintenanceLoading} 
+                    className="p-6 text-left border border-dia-red/20 bg-dia-red/5 rounded-3xl hover:bg-dia-red/10 transition-all group disabled:opacity-50"
+                  >
+                    <Trash2 className="mb-4 text-dia-red group-hover:scale-110 transition-transform" />
+                    <h4 className="font-bold mb-1 text-dia-red uppercase">Remise à Zéro (Format)</h4>
+                    <p className="text-[10px] text-neutral-500 font-bold">Suppression complète de la base de données (Finances, Élèves, etc.) sauf Super-Admins.</p>
                   </button>
                 </div>
 

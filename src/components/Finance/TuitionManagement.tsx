@@ -2,14 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
 import { collection, query, where, getDocs, doc, setDoc, updateDoc, getDoc, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { Student, StudentScolarite, Versement, SchoolConfig, Level } from '../../types';
-import { Search, CreditCard, Printer, History as HistoryIcon, AlertCircle, CheckCircle2, User, Landmark, Share2, Send, MessageCircle, Edit2, X, Check, Trash2, RefreshCw } from 'lucide-react';
+import { Search, CreditCard, Printer, History as HistoryIcon, AlertCircle, CheckCircle2, User, Landmark, Share2, Send, MessageCircle, Edit2, X, Check, Trash2, RefreshCw, Plus } from 'lucide-react';
 import { formatCurrency, cn } from '../../utils';
 import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
 import { addAuditLog } from '../../utils/auditLogger';
 import { useAuth, OperationType, FirestoreErrorInfo } from '../../context/AuthContext';
+import { useData } from '../../context/DataContext';
 import { auth } from '../../firebase';
 import { generateWhatsAppLink, APP_NAME_FOR_LINKS } from '../../utils/contactLinks';
+import { FinanceService } from '../../services/financeService';
 
 interface TuitionManagementProps {
   students: Student[];
@@ -19,6 +21,7 @@ interface TuitionManagementProps {
 
 const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStudents, levels: propLevels, onUpdate }) => {
   const { user, profile, fetchWithAuth } = useAuth();
+  const { refreshFinances } = useData();
   const isSuperAdmin = 
     profile?.role === 'admin' || 
     profile?.isSuperAdmin || 
@@ -154,6 +157,41 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
 
     return { totalPaid, remains, surplus, status };
   }, [versements, scolarite]);
+
+  const handleAddNewDossier = async (levelName: string, tuition: number) => {
+    if (!targetStudent) return;
+    setLoading(true);
+    try {
+      const newId = `${targetStudent.uid}_${levelName.replace(/\s+/g, '_')}_${Date.now()}`;
+      const newDossier: StudentScolarite = {
+        id: newId,
+        eleve_id: targetStudent.uid,
+        matricule: targetStudent.matricule,
+        nom_eleve: `${targetStudent.lastName} ${targetStudent.firstName}`,
+        classe_id: targetStudent.classId || 'N/A',
+        filiere: 'Spécial',
+        niveau: levelName,
+        montant_total_du: tuition,
+        total_verse: 0,
+        reste: tuition,
+        surplus: 0,
+        statut_paiement: 'NON PAYÉ',
+        createdAt: new Date().toISOString()
+      };
+      
+      await setDoc(doc(db, 'scolarites', newId), newDossier);
+      toast.success(`Dossier pour ${levelName} créé.`);
+      
+      // Update history and select it
+      setScolariteHistory(prev => [newDossier, ...prev]);
+      setScolarite(newDossier);
+      setSelectedHistoryId(newId);
+    } catch (err) {
+      toast.error("Erreur creation dossier");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const selectStudent = async (student: Student, forceLevelId?: string) => {
     setLoading(true);
@@ -402,130 +440,48 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
     if (!targetStudent || !scolarite || amount <= 0) return;
     
     if (!paymentDate) {
-      toast.error("Veuillez sélectionner une date de versement obligatoirement.");
+      toast.error("Veuillez sélectionner une date de versement.");
       return;
     }
 
     setLoading(true);
     try {
-      if (paymentCategory === 'inscription' && !scolarite.niveau?.includes('A1')) {
-        const confirm = window.confirm("⚠️ ATTENTION : Les frais d'inscription ne sont normalement dus que pour le niveau A1. Ce dossier est pour un niveau supérieur. Voulez-vous quand même enregistrer ces frais d'inscription ?");
-        if (!confirm) {
-          setLoading(false);
-          return;
-        }
-      }
-
-      const recNumber = generateReceiptNumber();
-      // Use selected date. If it's today, we can use precisely currently time to avoid sort overlap
       const today = new Date().toISOString().split('T')[0];
       const finalDate = paymentDate === today 
         ? new Date().toISOString() 
         : new Date(paymentDate + 'T12:00:00Z').toISOString();
 
-      const scolaDossierLevelId = scolarite.id.includes('_') ? scolarite.id.split('_')[1] : (targetStudent.levelId || '');
+      // Ensure we target the SPECIFIC level selected in current dossier
+      const actualLevelId = scolarite.levelId || (scolarite.id.includes('_') ? scolarite.id.split('_')[1] : targetStudent.levelId);
 
-      // Sync with global finances
-      let financeId: string | undefined;
-      try {
-        const finRes = await fetchWithAuth('/api/finances', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            type: 'income',
-            amount: amount,
-            description: `${paymentCategory.charAt(0).toUpperCase() + paymentCategory.slice(1)} [${scolarite.niveau}] - ${targetStudent.lastName} ${targetStudent.firstName} (${targetStudent.matricule})`,
-            category: paymentCategory === 'scolarite' ? 'tuition' : (paymentCategory === 'inscription' ? 'registration' : 'tuition'),
-            date: finalDate,
-            accountType: accountType,
-            initiatedBy: initiatedBy,
-            status: 'active',
-            studentId: targetStudent.uid,
-            studentMatricule: targetStudent.matricule,
-            levelId: scolaDossierLevelId,
-            classId: targetStudent.classId
-          })
-        });
-        
-        if (finRes.status === 409) {
-          toast.error("Cette transaction semble déjà avoir été enregistrée (doublon détecté).");
-          setLoading(false);
-          return;
-        }
-
-        if (finRes.ok) {
-          const finData = await finRes.json();
-          financeId = finData.id;
-        }
-      } catch (financeErr) {
-        console.error("Finance sync failed:", financeErr);
-      }
-
-      const versementData: Omit<Versement, 'id'> = {
-        montant: amount,
+      await FinanceService.recordPayment({
+        amount: amount,
+        description: `${paymentCategory.charAt(0).toUpperCase() + paymentCategory.slice(1)} [${scolarite.niveau}] - ${targetStudent.lastName} ${targetStudent.firstName}`,
+        category: paymentCategory === 'inscription' ? 'registration' : 'tuition',
         date: finalDate,
-        mode_paiement: paymentMode,
+        studentId: targetStudent.uid,
+        studentName: `${targetStudent.lastName} ${targetStudent.firstName}`,
+        studentMatricule: targetStudent.matricule,
+        levelId: actualLevelId,
+        paymentMethod: paymentMode,
         accountType: accountType,
-        initiatedBy: initiatedBy,
-        categorie: paymentCategory,
-        recu_numero: recNumber,
-        caissier_id: user?.uid || 'Unknown',
-        notes: notes,
-        recu_genere_at: new Date().toISOString(),
-        recu_genere_par: user?.uid,
-        financeId: financeId
-      };
-
-      const vRef = await addDoc(collection(db, 'scolarites', scolarite.id, 'versements'), versementData);
-
-      // Logic improved: Recalculate total from actual list to avoid drift
-      const recalculatedTotal = [...versements, { id: vRef.id, ...versementData }].reduce((sum, v) => sum + (v.montant || 0), 0);
-      
-      const newTotalVerse = recalculatedTotal;
-      const newReste = Math.max(0, scolarite.montant_total_du - newTotalVerse);
-      const newSurplus = Math.max(0, newTotalVerse - scolarite.montant_total_du);
-      
-      let newStatut: StudentScolarite['statut_paiement'] = 'EN COURS';
-      if (newTotalVerse === 0) newStatut = 'NON PAYÉ';
-      else if (newSurplus > 0) newStatut = 'SURPLUS';
-      else if (newReste === 0) newStatut = 'SOLDÉ';
-
-      const updatedScolarite = {
-        ...scolarite,
-        total_verse: newTotalVerse,
-        reste: newReste,
-        surplus: newSurplus,
-        statut_paiement: newStatut
-      };
-
-      await setDoc(doc(db, 'scolarites', scolarite.id), updatedScolarite);
-      
-      setScolarite(updatedScolarite);
-      
-      const newVersementsList = [{ id: vRef.id, ...versementData }, ...versements];
-      newVersementsList.sort((a,b) => {
-        const dateA = a.date ? new Date(a.date).getTime() : 0;
-        const dateB = b.date ? new Date(b.date).getTime() : 0;
-        return dateB - dateA;
+        receiptNumber: generateReceiptNumber()
       });
-      setVersements(newVersementsList);
 
-      // 4. Add to Audit Log
-      addAuditLog("VERSEMENT_AJOUTÉ", targetStudent.uid, { montant: amount, recu: recNumber, categorie: paymentCategory });
-
-      toast.success("Versement enregistré !");
-      handleGeneratePDF({ id: vRef.id, ...versementData });
+      toast.success(`Versement pour ${scolarite.niveau} enregistré atomiquement.`);
+      
+      // Force global finance refresh to ensure dashboards match
+      await refreshFinances();
+      
+      // Refresh strictly the current student/level combo
+      await selectStudent(targetStudent, scolarite.id);
       
       if (onUpdate) onUpdate();
-
-      // Reset form
       setAmount(0);
       setNotes('');
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Erreur lors de l'enregistrement");
+      toast.error(error.message || "Erreur lors de l'enregistrement");
     } finally {
       setLoading(false);
     }
@@ -610,81 +566,27 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
 
   const handleDeletePayment = async (versementId: string) => {
     if (!targetStudent || !scolarite || !isSuperAdmin) {
-      if (!isSuperAdmin) toast.error("Désolé, vous n'avez pas les droits de super-administrateur pour supprimer un versement.");
+      if (!isSuperAdmin) toast.error("Droit super-administrateur requis.");
       return;
     }
     
-    if (!window.confirm("Êtes-vous sûr de vouloir supprimer définitivement ce versement ?\n\nCette action annulera l'entrée dans le grand livre et corrigera le solde de l'élève.")) return;
+    const reason = window.prompt("Raison de l'annulation :");
+    if (!reason) return;
 
     setLoading(true);
     try {
-      const versementToDelete = versements.find(v => v.id === versementId);
-      if (!versementToDelete) {
-        toast.error("Données du versement introuvables localement.");
-        setLoading(false);
-        return;
-      }
+      const versement = versements.find(v => v.id === versementId);
+      const idToReverse = versement?.financeId || versementId;
 
-      // 1. Delete from subcollection
-      let subColDeleted = false;
-      try {
-        await deleteDoc(doc(db, 'scolarites', scolarite.id, 'versements', versementId));
-        subColDeleted = true;
-      } catch (e: any) {
-        console.warn("Could not delete from subcollection (might be a finance-only record):", e.message);
-      }
+      await FinanceService.reverseTransaction(idToReverse, reason);
 
-      // 2. Sync with global finances
-      const idToDelete = versementToDelete.financeId || versementId;
-      let financeDeleted = false;
-      try {
-        const finRes = await fetchWithAuth(`/api/finances/${idToDelete}`, {
-          method: 'DELETE'
-        });
-        if (finRes.ok) financeDeleted = true;
-      } catch (finErr) {
-        console.error("Finance deletion failed:", finErr);
-      }
-
-      if (!subColDeleted && !financeDeleted) {
-        throw new Error("Impossible de supprimer le versement (Erreur permissions ou réseau).");
-      }
-
-      // 3. Recalculate totals - IMPORTANT: recalculate from CURRENT list excluding the deleted one
-      const remainingVersements = versements.filter(v => v.id !== versementId);
-      const newTotalVerse = remainingVersements.reduce((acc, v) => acc + (Number(v.montant) || 0), 0);
-      const newReste = Math.max(0, scolarite.montant_total_du - newTotalVerse);
-      const newSurplus = Math.max(0, newTotalVerse - scolarite.montant_total_du);
+      toast.success("Transaction annulée et solde corrigé (Atomique).");
+      await selectStudent(targetStudent, scolarite.id);
       
-      let newStatut: StudentScolarite['statut_paiement'] = 'EN COURS';
-      if (newTotalVerse === 0) newStatut = 'NON PAYÉ';
-      else if (newSurplus > 0) newStatut = 'SURPLUS';
-      else if (newReste === 0) newStatut = 'SOLDÉ';
-
-      const updatedScolarite = {
-        ...scolarite,
-        total_verse: newTotalVerse,
-        reste: newReste,
-        surplus: newSurplus,
-        statut_paiement: newStatut
-      };
-
-      await updateDoc(doc(db, 'scolarites', scolarite.id), updatedScolarite);
-      
-      setScolarite(updatedScolarite);
-      setVersements(remainingVersements);
-      
-      addAuditLog("VERSEMENT_SUPPRIMÉ", targetStudent.uid, { 
-        versementId, 
-        montant: versementToDelete.montant,
-        recu_numero: versementToDelete.recu_numero,
-        deletedBy: user?.email 
-      });
-
-      toast.success("Versement supprimé et situation mise à jour !");
+      if (onUpdate) onUpdate();
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || "Erreur lors de la suppression du versement");
+      toast.error(err.message || "Erreur lors de l'annulation");
     } finally {
       setLoading(false);
     }
@@ -923,30 +825,41 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
                 <h3 className="text-[11px] font-black uppercase text-neutral-900 dark:text-neutral-100">Historique des Niveaux (Cycles)</h3>
               </div>
               <div className="flex gap-2 overflow-x-auto pb-2 min-h-[60px] max-w-full sm:max-w-[75%] no-scrollbar bg-neutral-50/50 dark:bg-neutral-800/30 p-2 rounded-xl border border-neutral-100 dark:border-neutral-800">
-                {scolariteHistory.length > 0 ? (
-                  scolariteHistory.map(h => (
-                    <button
-                      key={h.id}
-                      onClick={() => selectStudent(targetStudent!, h.id)}
-                      className={cn(
-                        "px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap flex flex-col items-center gap-1 border-2",
-                        selectedHistoryId === h.id 
-                          ? "bg-dia-red border-dia-red text-white shadow-md shadow-dia-red/20 scale-105" 
-                          : "bg-white dark:bg-neutral-800 border-neutral-100 dark:border-neutral-700 text-neutral-500 hover:bg-neutral-50"
-                      )}
-                    >
-                      <div className="flex items-center gap-2">
-                        {h.niveau || 'Ancien'}
-                        {h.statut_paiement === 'SOLDÉ' && <CheckCircle2 size={12} className={selectedHistoryId === h.id ? "text-white" : "text-green-500"} />}
-                      </div>
-                      <span className={cn("text-[8px] opacity-70", selectedHistoryId === h.id ? "text-white" : "text-neutral-400")}>
-                        {h.filiere || 'Général'}
-                      </span>
-                    </button>
-                  ))
-                ) : (
-                  <span className="text-[10px] italic text-neutral-400">Aucun historique disponible</span>
-                )}
+                {scolariteHistory.map(h => (
+                  <button
+                    key={h.id}
+                    onClick={() => selectStudent(targetStudent!, h.id)}
+                    className={cn(
+                      "px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap flex flex-col items-center gap-1 border-2",
+                      selectedHistoryId === h.id 
+                        ? "bg-dia-red border-dia-red text-white shadow-md shadow-dia-red/20 scale-105" 
+                        : "bg-white dark:bg-neutral-800 border-neutral-100 dark:border-neutral-700 text-neutral-500 hover:bg-neutral-50"
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      {h.niveau || 'Ancien'}
+                      {h.statut_paiement === 'SOLDÉ' && <CheckCircle2 size={12} className={selectedHistoryId === h.id ? "text-white" : "text-green-500"} />}
+                    </div>
+                    <span className={cn("text-[8px] opacity-70", selectedHistoryId === h.id ? "text-white" : "text-neutral-400")}>
+                      {h.filiere || 'Général'}
+                    </span>
+                  </button>
+                ))}
+
+                <button
+                  onClick={() => {
+                    const levelName = window.prompt("Entrez le titre du nouveau dossier (ex: Vorbereitung, Re-inscription B1, etc.) :");
+                    if (levelName) {
+                      const matchingLevel = propLevels.find(l => l.name.toLowerCase() === levelName.toLowerCase());
+                      const baseTuition = matchingLevel?.tuition || 110000;
+                      handleAddNewDossier(levelName, baseTuition);
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl border-2 border-dashed border-neutral-200 dark:border-neutral-700 text-neutral-400 hover:border-dia-red hover:text-dia-red transition-all flex flex-col items-center justify-center gap-1 min-w-[100px]"
+                >
+                  <Plus size={16} />
+                  <span className="text-[8px] font-black uppercase">Nouveau Dossier</span>
+                </button>
               </div>
             </div>
 
