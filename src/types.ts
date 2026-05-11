@@ -189,6 +189,8 @@ export interface StudentScolarite {
   reste: number;
   surplus: number;
   statut_paiement: 'NON PAYÉ' | 'IMPAYÉ' | 'EN COURS' | 'SOLDÉ' | 'SURPLUS';
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Versement {

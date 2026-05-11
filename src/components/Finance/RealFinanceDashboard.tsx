@@ -1,32 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  TrendingUp, 
-  TrendingDown, 
-  DollarSign, 
-  Calendar, 
-  PieChart as PieChartIcon, 
-  ArrowUpRight, 
-  ArrowDownRight,
-  Activity,
-  Filter,
-  Clock,
-  Landmark,
-  CreditCard,
-  ArrowRightLeft,
-  Search,
-  Plus,
-  ChevronUp,
-  ChevronDown,
-  Smartphone,
-  ChevronLeft,
-  ChevronRight,
-  ShieldCheck,
-  ShieldAlert,
-  Users,
-  X,
-  PieChart,
-  Share2,
-  GraduationCap
+  TrendingUp, TrendingDown, DollarSign, Calendar, 
+  PieChart as PieChartIcon, ArrowUpRight, ArrowDownRight,
+  Activity, Filter, Clock, Landmark, CreditCard,
+  ArrowRightLeft, Search, Plus, ChevronLeft, ChevronRight,
+  ShieldCheck, ShieldAlert, Users, GraduationCap,
+  X, RefreshCw, AlertCircle, UserCheck, Share2,
+  ChevronUp, ChevronDown, Smartphone
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { 
@@ -117,105 +97,152 @@ export default function RealFinanceDashboard() {
   const scanForDuplicates = () => {
     setMaintenanceStatus('scanning');
     const nameMap: Record<string, any[]> = {};
+    
+    // Use the latest data we have
     data.scolarites.forEach(s => {
-      const name = s.nom_eleve?.toLowerCase()?.trim();
-      if (!name) return;
+      // Robust name normalization: remove accents, multiple spaces, etc.
+      const name = s.nom_eleve?.toLowerCase()
+        ?.normalize("NFD")?.replace(/[\u0300-\u036f]/g, "") // Remove accents
+        ?.replace(/\s+/g, ' ') // Normalize spaces
+        ?.trim();
+        
+      if (!name || name.length < 3) return;
       if (!nameMap[name]) nameMap[name] = [];
       nameMap[name].push(s);
     });
 
     const foundDuplicates = Object.values(nameMap).filter(list => list.length > 1);
+    
+    // Further filter: only groups where we have different student IDs 
+    // (sometimes one student can have multiple scolarite records for different levels, which is OK)
+    // Here we hunt for REAL duplicates (likely multiple users created for same person)
     setDuplicates(foundDuplicates);
     setMaintenanceStatus('ready');
   };
 
   const handleRepairLevels = async () => {
+    if (!window.confirm("Cette action va tenter de synchroniser les noms et matricules des dossiers de scolarité avec les profils élèves. Continuer ?")) return;
+    
+    setMaintenanceLoading(true);
+    let repaired = 0;
     try {
-      setMaintenanceLoading(true);
-      const financesSnap = await getDocs(collection(db, 'finances'));
-      const usersSnap = await getDocs(collection(db, 'users'));
-      const userMap: Record<string, any> = {};
-      usersSnap.forEach(u => {
-        userMap[u.id] = u.data();
-      });
+      const usersSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student')));
+      const usersMap: Record<string, any> = {};
+      usersSnap.forEach(d => { usersMap[d.id] = d.data(); });
 
-      let repairedCount = 0;
-      for (const fDoc of financesSnap.docs) {
-        const data = fDoc.data();
-        if (!data.levelId && data.studentId && userMap[data.studentId]) {
-          const userLevelId = userMap[data.studentId].levelId;
-          const userClassId = userMap[data.studentId].classId;
-          if (userLevelId) {
-            await updateDoc(fDoc.ref, { 
-              levelId: userLevelId,
-              classId: userClassId || null
-            });
-            repairedCount++;
+      const scolaSnap = await getDocs(collection(db, 'scolarites'));
+      for (const sDoc of scolaSnap.docs) {
+        const s = sDoc.data();
+        const studentId = s.eleve_id || sDoc.id.split('_')[0];
+        const user = usersMap[studentId];
+        
+        if (user) {
+          const updates: any = {};
+          if (!s.nom_eleve) updates.nom_eleve = `${user.lastName} ${user.firstName}`;
+          if (!s.matricule) updates.matricule = user.matricule;
+          if (!s.eleve_id) updates.eleve_id = studentId;
+          
+          if (Object.keys(updates).length > 0) {
+            await updateDoc(sDoc.ref, updates);
+            repaired++;
           }
         }
       }
-      toast.success(`${repairedCount} enregistrements financiers mis à jour avec le niveau de l'élève !`);
+      toast.success(`${repaired} dossiers synchronisés avec les profils utilisateurs.`);
       fetchFinanceStats();
-    } catch (err) {
-      console.error("Repair error:", err);
-      toast.error("Erreur lors de la réparation des niveaux.");
+    } catch (e) {
+      toast.error("Erreur lors de la réparation");
     } finally {
       setMaintenanceLoading(false);
     }
   };
 
   const handleAuditRepair = async () => {
+    if (!window.confirm("L'audit global va recalculer tous les soldes basés sur les transactions confirmées. Cette opération peut être longue. Continuer ?")) return;
+    
+    setMaintenanceLoading(true);
     try {
-      setMaintenanceLoading(true);
-      const financesSnap = await getDocs(query(collection(db, 'finances'), where('type', '==', 'income')));
-      let repairs = 0;
+      // 1. Fetch all confirmed income transactions related to tuition
+      const fSnap = await getDocs(query(
+        collection(db, 'finances'), 
+        where('type', '==', 'income'),
+        where('category', 'in', ['tuition', 'registration', 'scolarite', 'inscription'])
+      ));
+      
+      const paymentsByStudent: Record<string, any[]> = {};
+      fSnap.forEach(doc => {
+        const f = doc.data();
+        if (!f.studentId) return;
+        if (!paymentsByStudent[f.studentId]) paymentsByStudent[f.studentId] = [];
+        paymentsByStudent[f.studentId].push({ id: doc.id, ...f });
+      });
 
-      for (const fDoc of financesSnap.docs) {
-        const f = fDoc.data();
-        if (!f.studentId) continue;
+      // 2. For each student, check their scolarites
+      const scolaSnap = await getDocs(collection(db, 'scolarites'));
+      let fixedCount = 0;
 
-        // Ensure student has a matching versement in their scolarite subcollection
-        const vSnap = await getDocs(query(collection(db, 'scolarites', f.studentId, 'versements'), where('financeId', '==', fDoc.id)));
+      for (const sDoc of scolaSnap.docs) {
+        const s = sDoc.data();
+        const studentId = s.eleve_id || sDoc.id.split('_')[0];
+        const studentPayments = paymentsByStudent[studentId] || [];
         
-        if (vSnap.empty) {
-          // Re-syncing
-          await addDoc(collection(db, 'scolarites', f.studentId, 'versements'), {
-            montant: Number(f.amount),
-            date: f.date || new Date().toISOString(),
-            mode_paiement: f.paymentMode || 'Autre',
-            categorie: (f.category === 'registration' ? 'inscription' : 'scolarite'),
-            recu_numero: f.receiptNumber || `REPAIR-${fDoc.id.slice(-4)}`,
-            caissier_id: f.initiatedBy || 'System',
-            notes: 'Synchronisé via Audit de Maintenance',
-            financeId: fDoc.id
-          });
-          repairs++;
+        // Audit subcollection versements vs grand livre
+        const vSnap = await getDocs(collection(db, 'scolarites', sDoc.id, 'versements'));
+        const vFinanceIds = new Set();
+        vSnap.forEach(vd => { if (vd.data().financeId) vFinanceIds.add(vd.data().financeId); });
+
+        // If a finance payment is not in versements subcollection, add it
+        for (const p of studentPayments) {
+           if (!vFinanceIds.has(p.id)) {
+             await addDoc(collection(db, 'scolarites', sDoc.id, 'versements'), {
+               montant: p.amount,
+               date: p.date,
+               financeId: p.id,
+               mode_paiement: p.paymentMethod || 'Espèces',
+               categorie: (p.category === 'registration' || p.category === 'inscription') ? 'inscription' : 'scolarite',
+               recu_numero: p.receiptNumber || `AUDIT-${p.id.slice(-6)}`,
+               caissier_id: 'System-Audit',
+               notes: "Recouvert par audit global"
+             });
+             fixedCount++;
+           }
         }
       }
 
-      alert(`Audit terminé. ${repairs} enregistrements ont été synchronisés.`);
+      toast.success(`Audit terminé. ${fixedCount} versements orphelins ont été ré-ancrés.`);
       fetchFinanceStats();
-    } catch (err) {
-      console.error(err);
-      alert("Erreur lors de l'audit");
+    } catch (error) {
+      console.error("Audit error:", error);
+      toast.error("Erreur lors de l'audit et réparation");
     } finally {
       setMaintenanceLoading(false);
     }
   };
 
   const handleMerge = async (survivor: any, victim: any) => {
-    if (!window.confirm(`Êtes-vous sûr ? Tous les paiements de ${victim.nom_eleve} seront transférés vers le compte principal, et le doublon sera supprimé.`)) {
+    if (!window.confirm(`Êtes-vous sûr ? Tous les paiements de ${victim.nom_eleve} seront transférés vers ${survivor.nom_eleve}, et le compte doublon sera supprimé.`)) {
       return;
     }
 
     try {
       setMaintenanceLoading(true);
-      // 1. Move versements
-      const versementsSnap = await getDocs(collection(db, 'scolarites', victim.eleve_id, 'versements'));
-      for (const vDoc of versementsSnap.docs) {
-        const vData = vDoc.data();
-        await addDoc(collection(db, 'scolarites', survivor.eleve_id, 'versements'), vData);
-        await deleteDoc(vDoc.ref);
+      // 1. Move versements from ALL scolarite records of the victim
+      const qScolaVictim = query(collection(db, 'scolarites'), where('eleve_id', '==', victim.eleve_id));
+      const victimScolas = await getDocs(qScolaVictim);
+      
+      for (const scolaDoc of victimScolas.docs) {
+        const versementsSnap = await getDocs(collection(db, 'scolarites', scolaDoc.id, 'versements'));
+        for (const vDoc of versementsSnap.docs) {
+          const vData = vDoc.data();
+          // We move them to the survivor's primary scolarite record (or matching level)
+          // For simplicity during merge, we move to survivor's main ID
+          await addDoc(collection(db, 'scolarites', survivor.id, 'versements'), {
+            ...vData,
+            mergeNote: `Fusionné depuis ${victim.matricule}`
+          });
+          await deleteDoc(vDoc.ref);
+        }
+        await deleteDoc(scolaDoc.ref);
       }
 
       // 2. Update Finance records
@@ -230,20 +257,19 @@ export default function RealFinanceDashboard() {
         await updateDoc(fDoc.ref, { 
           studentId: survivor.eleve_id,
           studentMatricule: survivor.matricule,
-          description: newDesc
+          description: newDesc + " (Fusion de compte)"
         });
       }
 
-      // 3. Delete victim student and their scolarite
+      // 3. Delete victim user document
       await deleteDoc(doc(db, 'users', victim.eleve_id));
-      await deleteDoc(doc(db, 'scolarites', victim.eleve_id));
 
-      alert("Fusion réussie !");
+      toast.success("Fusion réussie !");
       await fetchFinanceStats();
       scanForDuplicates();
     } catch (err) {
       console.error(err);
-      alert("Erreur lors de la fusion: " + (err instanceof Error ? err.message : String(err)));
+      toast.error("Erreur lors de la fusion: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setMaintenanceLoading(false);
     }
@@ -320,49 +346,25 @@ export default function RealFinanceDashboard() {
   const fetchFinanceStats = async () => {
     setLoading(true);
     try {
-      // 1. Aggreger les REVENUS (Versements scolarités)
-      let levelsSnap;
-      try {
-        levelsSnap = await getDocs(collection(db, 'levels'));
-      } catch (e) {
-        handleFirestoreError(e, OperationType.LIST, 'levels');
-      }
+      // Parallel fetch with catch for robustness
+      const [financesSnap, teachersSnap, reportsSnap, levelsSnap, classesSnap] = await Promise.all([
+        getDocs(query(collection(db, 'finances'), where('status', '==', 'active'))),
+        getDocs(query(collection(db, 'users'), where('role', '==', 'teacher'))),
+        getDocs(collection(db, 'rapports_journaliers')),
+        getDocs(collection(db, 'levels')),
+        getDocs(collection(db, 'classes'))
+      ].map(p => p.catch(e => { console.warn("Partial fetch failed:", e); return null; })));
 
-      let classesSnap;
-      try {
-        classesSnap = await getDocs(collection(db, 'classes'));
-      } catch (e) {
-        handleFirestoreError(e, OperationType.LIST, 'classes');
-      }
-      
       const levelsMap: Record<string, any> = {};
-      if (levelsSnap) {
-        levelsSnap.forEach(doc => levelsMap[doc.id] = doc.data());
-      }
+      if (levelsSnap) levelsSnap.forEach((doc: any) => { levelsMap[doc.id] = doc.data(); });
       
       const classesMap: Record<string, any> = {};
-      if (classesSnap) {
-        classesSnap.forEach(doc => classesMap[doc.id] = doc.data());
-      }
+      if (classesSnap) classesSnap.forEach((doc: any) => { classesMap[doc.id] = doc.data(); });
 
-      // ... rest of the logic ...
       let totalRevenu = 0;
-      const revenusDetails: Record<string, number> = {
-        scolarite: 0,
-        inscription: 0,
-        autre: 0
-      };
-      
-      const monthlyRevenu: Record<string, number> = {};
+      const revenusDetails: Record<string, number> = { scolarite: 0, inscription: 0, autre: 0 };
+      const monthlyRevenu: Record<number, number> = {};
 
-      // Unified Finance Records
-      let financesSnap;
-      try {
-        financesSnap = await getDocs(collection(db, 'finances'));
-      } catch (e) {
-        handleFirestoreError(e, OperationType.LIST, 'finances');
-      }
-      
       if (financesSnap) {
         financesSnap.forEach(doc => {
           const f = doc.data();
@@ -377,7 +379,6 @@ export default function RealFinanceDashboard() {
           if (!isNaN(date.getTime()) && date.getFullYear() === selectedYear) {
             const cat = String(f.category || 'other').toLowerCase();
             const desc = String(f.description || '').toLowerCase();
-            
             totalRevenu += amount;
             
             if (cat.includes('inscrip') || cat === 'registration' || desc.includes('inscription')) {
@@ -394,21 +395,6 @@ export default function RealFinanceDashboard() {
         });
       }
 
-      // 3. Aggreger les CHARGES SALARIALES (Rapports soumis)
-      let reportsSnap;
-      try {
-        reportsSnap = await getDocs(query(collection(db, 'rapports_journaliers'), where('statut', '==', 'soumis')));
-      } catch (error) {
-        handleFirestoreError(error, OperationType.LIST, 'rapports_journaliers');
-      }
-
-      let teachersSnap: any;
-      try {
-        teachersSnap = await getDocs(collection(db, 'teachers'));
-      } catch (error) {
-        handleFirestoreError(error, OperationType.LIST, 'teachers');
-      }
-      
       const teacherSettings: Record<string, { hourlyRate: number, minStudents?: number }> = {};
       if (teachersSnap) {
         teachersSnap.forEach((doc: any) => {
@@ -421,17 +407,16 @@ export default function RealFinanceDashboard() {
       }
 
       let totalSalaires = 0;
-      const monthlySalaries: Record<string, number> = {};
+      const monthlySalaries: Record<number, number> = {};
       const classHours: Record<string, number> = {};
       const sessionDetails: any[] = [];
 
       if (reportsSnap) {
-        // Sort reports by date to calculate cumulative hours
         const sortedReports = reportsSnap.docs
           .map(doc => ({ id: doc.id, ...doc.data() } as DailyReport))
           .filter(r => r.date)
           .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  
+   
         sortedReports.forEach(r => {
           const date = new Date(r.date);
           if (isNaN(date.getTime())) return;
@@ -440,10 +425,9 @@ export default function RealFinanceDashboard() {
           const level = cls ? levelsMap[cls.levelId] : null;
           const quota = level?.hours || 0;
           
-          // Track hours per class
           classHours[r.classe_id] = (classHours[r.classe_id] || 0) + (Number(r.duree_heures) || 0);
           const currentTotal = classHours[r.classe_id];
-  
+   
           if (date.getFullYear() === selectedYear) {
             const settings = teacherSettings[r.enseignant_id];
             const rate = settings?.hourlyRate || 3000;
@@ -452,13 +436,12 @@ export default function RealFinanceDashboard() {
             
             let status: 'ok' | 'insufficient' | 'excess' = 'ok';
             let remunerated = isConditionMet;
-  
-            // Quota Logic
+   
             if (quota > 0 && currentTotal > quota + 10) {
               status = 'excess';
               if (!r.valide_par_admin) remunerated = false;
             }
-  
+   
             const salaire = remunerated ? (Number(r.duree_heures) || 0) * rate : 0;
             
             if (date.getMonth() === selectedMonth) {
@@ -475,7 +458,7 @@ export default function RealFinanceDashboard() {
                 status
               });
             }
-  
+   
             totalSalaires += salaire;
             const mKey = date.getMonth();
             monthlySalaries[mKey] = (monthlySalaries[mKey] || 0) + salaire;
@@ -483,10 +466,9 @@ export default function RealFinanceDashboard() {
         });
       }
 
-      // Calculate Class Quota status for display
       const classQuotas = Object.entries(classHours).map(([classId, total]) => {
         const cls = classesMap[classId];
-        const level = cls ? levelsMap[cls.levelId] : null;
+        const level = cls ? (cls.levelId ? levelsMap[cls.levelId] : null) : null;
         const quota = level?.hours || 0;
         const diff = total - quota;
         
@@ -503,8 +485,6 @@ export default function RealFinanceDashboard() {
         };
       });
 
-      // 3. Aggregger les CHARGES FIXES (Manual charges)
-      const pathCharges = 'charges';
       let chargesSnap: any;
       try {
         chargesSnap = await getDocs(collection(db, 'charges'));
@@ -514,7 +494,7 @@ export default function RealFinanceDashboard() {
 
       let totalChargesFixes = 0;
       let totalAllTimeCharges = 0;
-      const monthlyCharges: Record<string, number> = {};
+      const monthlyCharges: Record<number, number> = {};
 
       if (chargesSnap) {
         chargesSnap.forEach(doc => {
@@ -532,8 +512,6 @@ export default function RealFinanceDashboard() {
         });
       }
 
-      // 4. Aggreger les TRANSACTIONS DU GRAND LIVRE (finances)
-      // This includes expenses (incomes already counted in step 2)
       let caisseBalance = -totalAllTimeCharges;
       let banqueBalance = 0;
       const allFinances: any[] = [];
@@ -549,7 +527,6 @@ export default function RealFinanceDashboard() {
           const isIncome = f.type === 'income';
           const accType = f.accountType || 'caisse';
 
-          // Update balances regardless of year filter (cumulative)
           if (accType === 'banque') {
             banqueBalance += isIncome ? amount : -amount;
           } else {
@@ -558,7 +535,6 @@ export default function RealFinanceDashboard() {
 
           if (!isNaN(date.getTime()) && date.getFullYear() === selectedYear) {
             const mKey = date.getMonth();
-  
             if (f.type === 'expense') {
               totalChargesFixes += amount;
               monthlyCharges[mKey] = (monthlyCharges[mKey] || 0) + amount;
@@ -567,7 +543,6 @@ export default function RealFinanceDashboard() {
         });
       }
 
-      // 5. Fetch Global Scolarite Status and Yearly Progress
       let scolariteFinalSnap;
       try {
         scolariteFinalSnap = await getDocs(collection(db, 'scolarites'));
@@ -575,25 +550,23 @@ export default function RealFinanceDashboard() {
         console.error("Error fetching scolarites for summary:", e);
       }
       
-      let allVersementsSnap: any = { forEach: () => {} };
+      let allVersementsSnap: any = [];
       try {
-        allVersementsSnap = await getDocs(collectionGroup(db, 'versements'));
+        const vSnap = await getDocs(collectionGroup(db, 'versements'));
+        allVersementsSnap = vSnap.docs;
       } catch (e) {
-        console.warn("CollectionGroup query for 'versements' failed. Fallback to individual scolarite records.", e);
+        console.warn("CollectionGroup query for 'versements' failed.", e);
       }
       
       const versementsByStudent: Record<string, number> = {};
-      
-      // 5a. Aggregate from scolarites subcollections (CUMULATIVE for status)
       allVersementsSnap.forEach((vDoc: any) => {
         const v = vDoc.data();
-        const studentId = vDoc.ref.parent.parent?.id;
-        if (studentId) {
-          versementsByStudent[studentId] = (versementsByStudent[studentId] || 0) + (Number(v.montant) || 0);
+        const scolaId = vDoc.ref.parent.parent?.id;
+        if (scolaId) {
+          versementsByStudent[scolaId] = (versementsByStudent[scolaId] || 0) + (Number(v.montant) || 0);
         }
       });
  
-      // 5b. CROSS-SYNC: Also aggregate from general finances (the "confirmed" list)
       const financesByStudent: Record<string, number> = {};
       if (financesSnap) {
         financesSnap.forEach(doc => {
@@ -605,14 +578,12 @@ export default function RealFinanceDashboard() {
  
       const scolarites = scolariteFinalSnap?.docs.map(d => {
         const s = d.data();
-        const studentId = d.id;
-        const subCollectionPaid = versementsByStudent[studentId] || 0;
+        const scolaId = d.id;
+        const studentId = s.eleve_id || d.id.split('_')[0];
+        const subCollectionPaid = versementsByStudent[scolaId] || 0;
         const financeReportedPaid = financesByStudent[studentId] || 0;
-        
-        // Use the maximum of both to ensure we don't miss confirmed payments
         const totalPaid = Math.max(subCollectionPaid, financeReportedPaid);
-        
-        const totalDue = s.montant_total_du || 0;
+        const totalDue = Number(s.montant_total_du) || 0;
         const reste = Math.max(0, totalDue - totalPaid);
         
         let statut = 'NON PAYÉ';
@@ -620,10 +591,10 @@ export default function RealFinanceDashboard() {
         else if (totalPaid > 0) statut = 'EN COURS';
  
         return {
-          id: studentId,
+          id: scolaId,
           eleve_id: studentId,
           ...s,
-          nom_eleve: s.nom_eleve || '', // Ensure nom_eleve is available for sorting
+          nom_eleve: s.nom_eleve || '',
           total_verse: totalPaid,
           reste: reste,
           statut_paiement: statut
@@ -1434,9 +1405,27 @@ export default function RealFinanceDashboard() {
                         Réparer Niveaux
                       </button>
                     </div>
+                 <div className="pt-6 border-t border-neutral-100 dark:border-neutral-800">
+                 <div className="bg-neutral-900 text-white p-6 rounded-3xl space-y-4">
+                    <h5 className="text-[10px] font-black uppercase text-dia-red">Statut du Système & Cache</h5>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="bg-white/5 p-3 rounded-2xl border border-white/10">
+                        <p className="text-[8px] text-white/40 uppercase mb-1">Dossiers</p>
+                        <p className="text-sm font-black">{data.scolarites.length}</p>
+                      </div>
+                      <button 
+                        onClick={() => window.location.reload()}
+                        className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl text-[9px] font-black uppercase transition-all flex items-center justify-center gap-2"
+                      >
+                        <RefreshCw size={14} /> Reset Cache
+                      </button>
+                    </div>
+                    <p className="text-[9px] text-white/30 italic text-center">Rechargez si les changements ne sont pas visibles immédiatement.</p>
                  </div>
+               </div>
               </div>
             </div>
+          </div>
           </motion.div>
         </div>
       )}

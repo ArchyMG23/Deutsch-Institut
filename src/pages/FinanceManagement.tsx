@@ -1111,19 +1111,23 @@ export default function FinanceManagement() {
                           
                           if (!isMatch) return false;
                           
-                          // Normalize key for deduplication
-                          const normalizedName = l.name.trim().toUpperCase();
-                          const key = `${normalizedName}-${lStream}`;
+                          // More aggressive normalization: remove any existing suffixes in parentheses to get base name
+                          const baseName = l.name.replace(/\s*\(.*?\)/g, '').trim().toUpperCase();
+                          const key = `${baseName}-${lStream}`;
+                          
                           if (seen.has(key)) return false;
                           seen.add(key);
                           return true;
                         })
                         .sort((a, b) => a.name.localeCompare(b.name))
                         .map(l => {
-                          const lStream = (l.stream || l.type || '').trim();
-                          const displayName = l.name.toUpperCase().includes(lStream.toUpperCase())
-                            ? l.name
-                            : `${l.name} (${lStream})`;
+                          const lStreamRaw = (l.stream || l.type || '').trim();
+                          const baseNameRaw = l.name.replace(/\s*\(.*?\)/g, '').trim();
+                          
+                          // Standardize display name: Base Name (Stream)
+                          const displayName = lStreamRaw 
+                            ? (baseNameRaw.toUpperCase().includes(lStreamRaw.toUpperCase()) ? baseNameRaw : `${baseNameRaw} (${lStreamRaw})`)
+                            : l.name;
                           
                           return (
                             <option key={l.id} value={l.id}>

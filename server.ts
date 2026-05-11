@@ -1008,17 +1008,23 @@ async function startServer() {
         }
 
         // Create main Tuition record
+        const levelDoc = await dbAdmin.collection('levels').doc(studentData.levelId || 'a1').get();
+        const levelData = levelDoc.exists ? levelDoc.data() : null;
+
         await dbAdmin.collection('scolarites').doc(userRecord.uid).set({
           id: userRecord.uid,
           eleve_id: userRecord.uid,
           matricule: newStudent.matricule,
           nom_eleve: `${newStudent.firstName} ${newStudent.lastName}`,
           classe_id: newStudent.classId || 'N/A',
+          niveau: levelData?.name || 'Niveau non défini',
+          filiere: levelData?.stream || 'Général',
           montant_total_du: tuitionTotal,
           total_verse: totalInitial,
           reste: Math.max(0, tuitionTotal - totalInitial),
           surplus: Math.max(0, totalInitial - tuitionTotal),
-          statut_paiement: totalInitial >= tuitionTotal ? 'SOLDÉ' : (totalInitial > 0 ? 'EN COURS' : 'NON PAYÉ')
+          statut_paiement: totalInitial >= tuitionTotal ? 'SOLDÉ' : (totalInitial > 0 ? 'EN COURS' : 'NON PAYÉ'),
+          createdAt: new Date().toISOString()
         });
 
       // Record Inscription if any
@@ -1179,6 +1185,42 @@ async function startServer() {
       const oldStudent = oldStudentDoc.data() as any;
 
       await studentRef.set(studentData, { merge: true });
+
+      // Sync Scolarite if levelId changed
+      if (studentData.levelId && studentData.levelId !== oldStudent.levelId) {
+        try {
+          const newLevelId = studentData.levelId;
+          const levelDoc = await dbAdmin.collection('levels').doc(newLevelId).get();
+          const levelData = levelDoc.exists ? levelDoc.data() : null;
+          const tuition = (levelData?.tuition || 110000) + 10000;
+          
+          const newScolaId = `${req.params.id}_${newLevelId}`;
+          const scolaRef = dbAdmin.collection('scolarites').doc(newScolaId);
+          const scolaSnap = await scolaRef.get();
+          
+          if (!scolaSnap.exists) {
+            await scolaRef.set({
+              id: newScolaId,
+              eleve_id: req.params.id,
+              matricule: studentData.matricule || oldStudent.matricule,
+              nom_eleve: `${studentData.firstName || oldStudent.firstName} ${studentData.lastName || oldStudent.lastName}`,
+              classe_id: studentData.classId || oldStudent.classId || 'N/A',
+              filiere: levelData?.stream || 'N/A',
+              niveau: levelData?.name || 'Inconnu',
+              montant_total_du: tuition,
+              total_verse: 0,
+              reste: tuition,
+              surplus: 0,
+              statut_paiement: 'NON PAYÉ',
+              createdAt: new Date().toISOString()
+            });
+            console.log(`[SYNC] Created new scolarite record for student ${req.params.id} at level ${newLevelId}`);
+          }
+        } catch (err) {
+          console.error("Error syncing scolarite on level change:", err);
+        }
+      }
+
       await userRef.set({
         email: studentData.email,
         firstName: studentData.firstName,

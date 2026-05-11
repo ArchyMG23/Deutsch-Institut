@@ -3,9 +3,59 @@ import { Sidebar } from './Sidebar';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useTranslation } from 'react-i18next';
-import { Sun, Moon } from 'lucide-react';
+import { Sun, Moon, Users } from 'lucide-react';
 import { cn } from '../utils';
 import LanguageSwitcher from './LanguageSwitcher';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase';
+import { UserProfile } from '../types';
+
+function OnlineAdmins() {
+  const { profile } = useAuth();
+  const [onlineAdmins, setOnlineAdmins] = useState<UserProfile[]>([]);
+
+  useEffect(() => {
+    if (!profile) return;
+
+    // Fetch online admins who are not the current user
+    const q = query(
+      collection(db, 'users'),
+      where('role', '==', 'admin'),
+      where('status', '==', 'online')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const admins = snapshot.docs
+        .map(d => d.data() as UserProfile)
+        .filter(admin => admin.uid !== profile.uid);
+      setOnlineAdmins(admins);
+    });
+
+    return () => unsubscribe();
+  }, [profile]);
+
+  if (onlineAdmins.length === 0) return null;
+
+  return (
+    <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800 animate-in fade-in zoom-in duration-300">
+      <div className="flex -space-x-1">
+        {onlineAdmins.slice(0, 3).map((admin) => (
+          <div 
+            key={admin.uid}
+            className="w-4 h-4 rounded-full bg-blue-500 border-2 border-white dark:border-neutral-950 flex items-center justify-center text-[6px] text-white font-bold"
+            title={`${admin.firstName} ${admin.lastName} (Connecté)`}
+          >
+            {admin.firstName[0]}{admin.lastName[0]}
+          </div>
+        ))}
+      </div>
+      {onlineAdmins.length > 3 && (
+        <span className="text-[8px] font-bold text-blue-600">+{onlineAdmins.length - 3}</span>
+      )}
+      <Users size={8} className="ml-1 text-blue-600" />
+    </div>
+  );
+}
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { profile } = useAuth();
@@ -47,18 +97,31 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               {profile?.role}
             </div>
             
-            <div className="shrink-0 flex items-center gap-3 px-4 py-1.5 rounded-full bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-neutral-500">
+            <div className="shrink-0 flex items-center gap-3 px-4 py-2 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-neutral-500 shadow-sm relative group">
               <div className={cn(
-                "w-2.5 h-2.5 rounded-full transition-all duration-500",
-                profile?.status === 'online' ? "bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.5)]" : "bg-neutral-400"
-              )} />
+                "w-3 h-3 rounded-full transition-all duration-500 relative",
+                profile?.status === 'online' ? "bg-green-500 animate-pulse" : "bg-neutral-400"
+              )}>
+                {profile?.status === 'online' && (
+                  <span className="absolute inset-0 rounded-full bg-green-500 animate-ping opacity-25"></span>
+                )}
+              </div>
               <div className="flex flex-col">
-                <span className="text-[10px] sm:text-xs font-black uppercase leading-tight">
-                  {profile?.status === 'online' ? t('common.online') : profile?.status}
-                </span>
-                <span className="text-[9px] font-bold text-neutral-400 leading-tight">
-                  {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] sm:text-xs font-black uppercase leading-tight text-neutral-900 dark:text-neutral-100">
+                    {profile?.status === 'online' ? t('common.online') : profile?.status}
+                  </span>
+                  <OnlineAdmins />
+                </div>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2 leading-tight">
+                  <span className="text-[9px] font-bold text-neutral-400 uppercase">
+                    {new Date().toLocaleDateString(i18n.language === 'de' ? 'de-DE' : i18n.language === 'en' ? 'en-US' : 'fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                  </span>
+                  <span className="hidden sm:inline text-[9px] text-neutral-300">•</span>
+                  <span className="text-[9px] font-black text-dia-red">
+                    {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                </div>
               </div>
             </div>
           </div>

@@ -43,6 +43,8 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
   const [matricule, setMatricule] = useState('');
   const [targetStudent, setTargetStudent] = useState<Student | null>(null);
   const [scolarite, setScolarite] = useState<StudentScolarite | null>(null);
+  const [scolariteHistory, setScolariteHistory] = useState<StudentScolarite[]>([]);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const [versements, setVersements] = useState<Versement[]>([]);
   const [loading, setLoading] = useState(false);
   const [studentsList, setStudentsList] = useState<Student[]>(propStudents || []);
@@ -54,6 +56,10 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
     annee_scolaire: '2025-2026',
     format_recu: 'A5'
   });
+
+  const currentStudentLevel = levels.find(l => l.id === targetStudent?.levelId);
+  const studentStream = currentStudentLevel?.stream || 'N/A';
+  const studentLevelName = currentStudentLevel?.name || 'N/A';
 
   // Sync with props
   useEffect(() => {
@@ -115,6 +121,21 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
     fetchData();
   }, [propLevels, propStudents]);
 
+  // Handle studentId from URL params (important for navigation from StudentManagement)
+  useEffect(() => {
+    const hashParts = window.location.hash.split('?');
+    if (hashParts.length > 1) {
+      const params = new URLSearchParams(hashParts[1]);
+      const studentId = params.get('studentId');
+      if (studentId && studentsList.length > 0) {
+        const student = studentsList.find(s => s.uid === studentId);
+        if (student && (!targetStudent || targetStudent.uid !== studentId)) {
+          selectStudent(student);
+        }
+      }
+    }
+  }, [studentsList, targetStudent]);
+
   const cumulativeTotals = React.useMemo(() => {
     if (!scolarite) return null;
     const totalPaid = versements.reduce((acc, v) => acc + (Number(v.montant) || 0), 0);
@@ -128,62 +149,100 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
     return { totalPaid, remains, surplus, status };
   }, [versements, scolarite]);
 
-  const selectStudent = async (student: Student) => {
+  const selectStudent = async (student: Student, forceLevelId?: string) => {
     setLoading(true);
     setTargetStudent(student);
     setMatricule(student.matricule);
     
-    // DUPLICATE DETECTOR & AUTO-MERGE: Check if there are other student accounts with same name
-    const duplicates = studentsList.filter(s => 
-      s.uid !== student.uid && 
-      s.firstName.toLowerCase() === student.firstName.toLowerCase() && 
-      s.lastName.toLowerCase() === student.lastName.toLowerCase()
-    );
-
-    if (duplicates.length > 0) {
-      toast.warning(`${duplicates.length} autre(s) compte(s) trouvé(s) pour "${student.lastName} ${student.firstName}". Les versements pourraient être dispersés.`);
-    }
-
     try {
-      // Fetch targetStudent Level info for tuition totals
+      // 1. Fetch ALL scolarite records for this student to build history
+      const qScolaE = query(collection(db, 'scolarites'), where('eleve_id', '==', student.uid));
+      const snapE = await getDocs(qScolaE);
+      
+      const qScolaM = query(collection(db, 'scolarites'), where('matricule', '==', student.matricule));
+      const snapM = await getDocs(qScolaM);
+
+      const scolaDocs = new Map();
+      snapE.forEach(d => scolaDocs.set(d.id, { id: d.id, ...d.data() }));
+      snapM.forEach(d => {
+        if (!scolaDocs.has(d.id)) scolaDocs.set(d.id, { id: d.id, ...d.data() });
+      });
+
+      let history = Array.from(scolaDocs.values()) as StudentScolarite[];
+
+      // Robustness: ensure the default record (ID = student.uid) is included even if fields were missing
+      if (!scolaDocs.has(student.uid)) {
+        const directDoc = await getDoc(doc(db, 'scolarites', student.uid));
+        if (directDoc.exists()) {
+          const directData = { id: directDoc.id, ...directDoc.data() } as StudentScolarite;
+          // Fix missing eleve_id field if needed
+          if (!directData.eleve_id) {
+            await updateDoc(doc(db, 'scolarites', student.uid), { eleve_id: student.uid });
+            directData.eleve_id = student.uid;
+          }
+          history.push(directData);
+        }
+      }
+
+      // Sort history by date (newest first)
+      history.sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      });
+
+      setScolariteHistory(history);
+
+      // 2. Identify the active record
+      let activeScola: StudentScolarite | null = null;
+      const currentLevel = levels.find(l => l.id === student.levelId);
+      
+      if (forceLevelId) {
+        activeScola = history.find(h => h.id === forceLevelId) || null;
+      } else if (currentLevel) {
+        // Find scolarite that matches current student level name EXACTLY
+        activeScola = history.find(h => h.niveau === currentLevel.name);
+        
+        if (!activeScola) {
+          // Fallback: if there's only one record and it's the student.uid one, use it 
+          // (it might just need a level name update if the student was just created)
+          const defaultScola = history.find(h => h.id === student.uid);
+          if (defaultScola && (history.length === 1 || !defaultScola.niveau || defaultScola.niveau === 'Niveau non défini')) {
+            activeScola = defaultScola;
+          }
+        }
+      }
+
       const studentLevel = levels.find(l => l.id === student.levelId);
       const levelTuition = studentLevel?.tuition || 110000;
-      // Add standard registration fee (10,000) to total pool
       const defaultTuition = levelTuition + 10000;
-      
       const stream = studentLevel?.stream || 'N/A';
       const levelName = studentLevel?.name || 'N/A';
 
-      // Fetch scolarite master record
-      let scolariteSnap;
-      try {
-        scolariteSnap = await getDoc(doc(db, 'scolarites', student.uid));
-      } catch (e) {
-        handleFirestoreError(e, OperationType.GET, `scolarites/${student.uid}`);
-      }
-      
-      if (scolariteSnap!.exists()) {
-        const data = scolariteSnap!.data() as StudentScolarite;
-        // ONLY update stream/level names, but keep the EXISTING tuition amount unless it is 0
-        if (data.filiere !== stream || data.niveau !== levelName) {
-          const updated = { 
-            ...data, 
-            filiere: stream, 
-            niveau: levelName,
-            // Keep existing montant_total_du if it's already set (> 0)
-            montant_total_du: data.montant_total_du || defaultTuition,
-            reste: Math.max(0, (data.montant_total_du || defaultTuition) - data.total_verse),
-            surplus: Math.max(0, data.total_verse - (data.montant_total_du || defaultTuition))
-          };
-          await updateDoc(doc(db, 'scolarites', student.uid), updated);
-          setScolarite(updated);
-        } else {
-          setScolarite(data);
+      if (activeScola) {
+        // SYNCHRONIZATION LOGIC: 
+        // If the record corresponds to the student's current level name,
+        // ensure the filiere and level metadata are correctly synced with the level document.
+        const shouldSync = (activeScola.niveau === levelName && activeScola.filiere !== stream) || 
+                          (!activeScola.niveau || activeScola.niveau === 'Niveau non défini') ||
+                          (activeScola.id === student.uid && !activeScola.niveau);
+
+        if (shouldSync) {
+           await updateDoc(doc(db, 'scolarites', activeScola.id), { 
+             niveau: levelName,
+             filiere: stream,
+             montant_total_du: activeScola.montant_total_du || defaultTuition
+           });
+           activeScola.niveau = levelName;
+           activeScola.filiere = stream;
         }
+        setScolarite(activeScola);
+        setSelectedHistoryId(activeScola.id);
       } else {
-        // Initialize if not exists
+        // Create new record for this level for the student (ID: uid_levelId)
+        const newId = `${student.uid}_${student.levelId}`;
         const initialScolarite: StudentScolarite = {
-          id: student.uid,
+          id: newId,
           eleve_id: student.uid,
           matricule: student.matricule,
           nom_eleve: `${student.lastName} ${student.firstName}`,
@@ -194,75 +253,108 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
           total_verse: 0,
           reste: defaultTuition,
           surplus: 0,
-          statut_paiement: 'EN COURS'
+          statut_paiement: 'NON PAYÉ',
+          createdAt: new Date().toISOString()
         };
         try {
-          await setDoc(doc(db, 'scolarites', student.uid), initialScolarite);
+          await setDoc(doc(db, 'scolarites', newId), initialScolarite);
         } catch (e) {
-          handleFirestoreError(e, OperationType.WRITE, `scolarites/${student.uid}`);
+          handleFirestoreError(e, OperationType.WRITE, `scolarites/${newId}`);
         }
         setScolarite(initialScolarite);
+        setSelectedHistoryId(initialScolarite.id);
+        const newHistory = [...history, initialScolarite].sort((a, b) => {
+          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return dateB - dateA;
+        });
+        setScolariteHistory(newHistory);
+        activeScola = initialScolarite;
       }
 
-      // Fetch versements subcollection
+      // 3. Fetch versements for the selected record
       let versemntsSnap;
       try {
-        versemntsSnap = await getDocs(collection(db, 'scolarites', student.uid, 'versements'));
+        versemntsSnap = await getDocs(collection(db, 'scolarites', activeScola.id, 'versements'));
       } catch (e) {
-        handleFirestoreError(e, OperationType.LIST, `scolarites/${student.uid}/versements`);
+        handleFirestoreError(e, OperationType.LIST, `scolarites/${activeScola.id}/versements`);
       }
       
-      const vList = versemntsSnap!.docs.map(d => ({ id: d.id, ...d.data() } as Versement));
+      const vListRaw = versemntsSnap!.docs.map(d => ({ id: d.id, ...d.data() } as Versement));
+      
+      // Deduplicate vList against itself
+      const vList: Versement[] = [];
+      vListRaw.forEach(current => {
+        const isDup = vList.some(kept => 
+          (kept.financeId && current.financeId && kept.financeId === current.financeId) ||
+          (Math.abs(new Date(kept.date).getTime() - new Date(current.date).getTime()) < 5 * 60 * 1000 && Math.abs((kept.montant || 0) - (current.montant || 0)) < 1)
+        );
+        if (!isDup) vList.push(current);
+      });
       
       // --- CROSS-SYNC WITH GENERAL FINANCES ---
-      // Fetch any finance records linked to this student for reconciliation checks
       let financeList: any[] = [];
       try {
-        // 1. Precise match by studentId
-        const qFin = query(collection(db, 'finances'), where('studentId', '==', student.uid), where('type', '==', 'income'));
+        const qFin = query(
+          collection(db, 'finances'), 
+          where('studentId', '==', student.uid), 
+          where('type', '==', 'income'),
+          where('levelId', '==', student.levelId) // Try to filter by level if available
+        );
         const finSnap = await getDocs(qFin);
         financeList = finSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // 2. Fuzzy match by matricule
-        const allFinSnap = await getDocs(query(collection(db, 'finances'), where('type', '==', 'income')));
-        allFinSnap.forEach(d => {
-           const f = d.data();
-           if (!f.studentId && f.description && f.description.includes(student.matricule)) {
-              if (!financeList.find(existing => existing.id === d.id)) {
-                 financeList.push({ id: d.id, ...f });
-              }
+        const qMat = query(collection(db, 'finances'), where('studentMatricule', '==', student.matricule), where('type', '==', 'income'));
+        const matSnap = await getDocs(qMat);
+        matSnap.forEach(d => {
+           const data = d.data();
+           // Only add if not already in list AND (no levelId on finance OR matches current selected level record's level)
+           if (!financeList.find(f => f.id === d.id)) {
+             if (!data.levelId || (activeScola && data.description?.includes(activeScola.niveau || ''))) {
+               financeList.push({ id: d.id, ...data });
+             }
            }
         });
       } catch (finErr) {
         console.error("Failed to fetch general finances:", finErr);
       }
 
-      // Reconciliation is now handled manually via the "Réconcilier" button to prevent duplication loops.
+      const mergedHistory = [...vList];
+      financeList.forEach(fin => {
+        const isAlreadyInHistory = mergedHistory.some(v => 
+          v.financeId === fin.id || v.id === fin.id ||
+          (Math.abs(new Date(v.date).getTime() - new Date(fin.date).getTime()) < 10 * 60 * 1000 && Math.abs((v.montant || 0) - (fin.amount || 0)) < 1)
+        );
+        
+        if (!isAlreadyInHistory) {
+          mergedHistory.push({
+            id: fin.id,
+            montant: fin.amount,
+            date: fin.date,
+            mode_paiement: 'Autre' as any,
+            categorie: (fin.category === 'registration' || fin.category === 'inscription') ? 'inscription' : 'scolarite',
+            recu_numero: 'AUTO-FIN',
+            caissier_id: fin.initiatedBy || 'Système',
+            notes: `[Finance] ${fin.description || ''}`,
+            financeId: fin.id
+          } as Versement);
+        }
+      });
       
-      vList.sort((a,b) => {
+      mergedHistory.sort((a,b) => {
         const dateA = a.date ? new Date(a.date).getTime() : 0;
         const dateB = b.date ? new Date(b.date).getTime() : 0;
         return dateB - dateA;
       });
 
-      setVersements(vList);
+      setVersements(mergedHistory);
 
       // --- DYNAMIC RE-CALCULATION ---
-      const totalPaid = vList.reduce((acc, v) => acc + (Number(v.montant) || 0), 0);
-      const existingData = scolariteSnap!.exists() ? scolariteSnap!.data() as StudentScolarite : null;
-      const finalTuition = existingData?.montant_total_du || defaultTuition;
+      const totalPaid = mergedHistory.reduce((acc, v) => acc + (Number(v.montant) || 0), 0);
+      const finalTuition = activeScola.montant_total_du || defaultTuition;
 
       const updatedScolarite = {
-        ...(existingData || {
-          id: student.uid,
-          eleve_id: student.uid,
-          matricule: student.matricule,
-          nom_eleve: `${student.lastName} ${student.firstName}`,
-          classe_id: student.classId || 'N/A',
-          filiere: stream,
-          niveau: levelName,
-        }),
-        montant_total_du: finalTuition,
+        ...activeScola,
         total_verse: totalPaid,
         reste: Math.max(0, finalTuition - totalPaid),
         surplus: Math.max(0, totalPaid - finalTuition),
@@ -270,10 +362,7 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
       } as StudentScolarite;
 
       setScolarite(updatedScolarite);
-      
-      // Update Firestore with fresh totals
-      await setDoc(doc(db, 'scolarites', student.uid), updatedScolarite);
-      // -------------------------------
+      await setDoc(doc(db, 'scolarites', activeScola.id), updatedScolarite);
     } catch (err) {
       console.error(err);
       toast.error("Erreur de chargement");
@@ -368,7 +457,7 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
         financeId: financeId
       };
 
-      const vRef = await addDoc(collection(db, 'scolarites', targetStudent.uid, 'versements'), versementData);
+      const vRef = await addDoc(collection(db, 'scolarites', scolarite.id, 'versements'), versementData);
 
       // Logic improved: Recalculate total from actual list to avoid drift
       const recalculatedTotal = [...versements, { id: vRef.id, ...versementData }].reduce((sum, v) => sum + (v.montant || 0), 0);
@@ -390,7 +479,7 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
         statut_paiement: newStatut
       };
 
-      await setDoc(doc(db, 'scolarites', targetStudent.uid), updatedScolarite);
+      await setDoc(doc(db, 'scolarites', scolarite.id), updatedScolarite);
       
       setScolarite(updatedScolarite);
       
@@ -509,17 +598,18 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
       if (!versementToDelete) return;
 
       // 1. Delete from subcollection
-      await deleteDoc(doc(db, 'scolarites', targetStudent.uid, 'versements', versementId));
+      try {
+        await deleteDoc(doc(db, 'scolarites', scolarite.id, 'versements', versementId));
+      } catch (e) {}
 
-      // 2. Sync with global finances if financeId exists
-      if (versementToDelete.financeId) {
-        try {
-          await fetchWithAuth(`/api/finances/${versementToDelete.financeId}`, {
-            method: 'DELETE'
-          });
-        } catch (finErr) {
-          console.error("Finance deletion failed:", finErr);
-        }
+      // 2. Sync with global finances
+      const idToDelete = versementToDelete.financeId || versementId;
+      try {
+        await fetchWithAuth(`/api/finances/${idToDelete}`, {
+          method: 'DELETE'
+        });
+      } catch (finErr) {
+        console.error("Finance deletion failed:", finErr);
       }
 
       // 3. Recalculate totals
@@ -540,7 +630,7 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
         statut_paiement: newStatut
       };
 
-      await updateDoc(doc(db, 'scolarites', targetStudent.uid), updatedScolarite);
+      await updateDoc(doc(db, 'scolarites', scolarite.id), updatedScolarite);
       
       setScolarite(updatedScolarite);
       setVersements(versements.filter(v => v.id !== versementId));
@@ -580,7 +670,7 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
           updateData.date = newDateStr;
       }
       
-      await updateDoc(doc(db, 'scolarites', targetStudent.uid, 'versements', versementId), updateData);
+      await updateDoc(doc(db, 'scolarites', scolarite.id, 'versements', versementId), updateData);
 
       // 2. Sync with global finances if financeId exists
       if (versementToUpdate.financeId) {
@@ -617,7 +707,7 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
                         })
                     });
                     // Store the found ID back to the versement for future use
-                    await updateDoc(doc(db, 'scolarites', targetStudent.uid, 'versements', versementId), {
+                    await updateDoc(doc(db, 'scolarites', scolarite.id, 'versements', versementId), {
                         financeId: relatedFinance.id
                     });
                 }
@@ -655,7 +745,7 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
         statut_paiement: newStatut
       };
 
-      await updateDoc(doc(db, 'scolarites', targetStudent.uid), updatedScolarite);
+      await updateDoc(doc(db, 'scolarites', scolarite.id), updatedScolarite);
       
       setScolarite(updatedScolarite);
       setVersements(updatedVersements);
@@ -785,71 +875,173 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="lg:col-span-2 space-y-6">
-              {/* Level & Target Tuition Setup */}
-              <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 flex flex-wrap items-center gap-4">
-              <div className="flex-1 min-w-[200px]">
-                <p className="text-[10px] font-black uppercase text-neutral-400 mb-1">Filière / Niveau Actuel</p>
-                <div className="flex gap-2">
-                  <select 
-                    value={targetStudent.levelId || ''}
-                    onChange={async (e) => {
-                      const newLevelId = e.target.value;
-                      const level = levels.find(l => l.id === newLevelId);
-                      if (level) {
-                        try {
-                          await updateDoc(doc(db, 'users', targetStudent.uid), { levelId: newLevelId });
-                          const newScolarite = { 
-                            ...scolarite!, 
-                            filiere: level.stream || 'N/A',
-                            niveau: level.name,
-                            // Keep the same tuition, only update labels
-                          };
-                          await updateDoc(doc(db, 'scolarites', targetStudent.uid), newScolarite);
-                          setScolarite(newScolarite);
-                          setTargetStudent({...targetStudent, levelId: newLevelId});
-                          toast.success(`Niveau mis à jour vers ${level.name}`);
-                        } catch (err) {
-                          toast.error("Erreur mise à jour niveau");
-                        }
-                      }
-                    }}
-                    className="flex-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg p-2 text-xs font-bold"
-                  >
-                    <option value="">Sélectionner un niveau</option>
-                    {levels.map(l => (
-                      <option key={l.id} value={l.id}>{l.name} ({l.stream})</option>
-                    ))}
-                  </select>
-                </div>
+                <div className="space-y-6">
+          <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-100 dark:border-neutral-800 pb-3">
+              <div className="flex items-center gap-2">
+                <History size={16} className="text-dia-red" />
+                <h3 className="text-[11px] font-black uppercase text-neutral-900 dark:text-neutral-100">Historique des Niveaux (Cycles)</h3>
               </div>
-              <div className="w-40">
-                <p className="text-[10px] font-black uppercase text-neutral-400 mb-1">Total Scolarité (FCFA)</p>
-                <input 
-                  type="number"
-                  value={scolarite.montant_total_du}
-                  onChange={async (e) => {
-                    const newTotal = Number(e.target.value);
-                    const newScolarite = { 
-                      ...scolarite, 
-                      montant_total_du: newTotal,
-                      reste: Math.max(0, newTotal - scolarite.total_verse),
-                      surplus: Math.max(0, scolarite.total_verse - newTotal)
-                    };
-                    setScolarite(newScolarite);
-                  }}
-                  onBlur={async (e) => {
-                    const newTotal = Number(e.target.value);
-                    await updateDoc(doc(db, 'scolarites', targetStudent.uid), { 
-                      montant_total_du: newTotal,
-                      reste: Math.max(0, newTotal - scolarite.total_verse),
-                      surplus: Math.max(0, scolarite.total_verse - newTotal)
-                    });
-                    toast.success("Montant total mis à jour");
-                  }}
-                  className="w-full bg-neutral-50 dark:bg-neutral-800 border-2 border-dia-red/20 rounded-lg p-2 text-xs font-black text-dia-red"
-                />
+              <div className="flex gap-2 overflow-x-auto pb-2 min-h-[60px] max-w-full sm:max-w-[75%] no-scrollbar bg-neutral-50/50 dark:bg-neutral-800/30 p-2 rounded-xl border border-neutral-100 dark:border-neutral-800">
+                {scolariteHistory.length > 0 ? (
+                  scolariteHistory.map(h => (
+                    <button
+                      key={h.id}
+                      onClick={() => selectStudent(targetStudent!, h.id)}
+                      className={cn(
+                        "px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap flex flex-col items-center gap-1 border-2",
+                        selectedHistoryId === h.id 
+                          ? "bg-dia-red border-dia-red text-white shadow-md shadow-dia-red/20 scale-105" 
+                          : "bg-white dark:bg-neutral-800 border-neutral-100 dark:border-neutral-700 text-neutral-500 hover:bg-neutral-50"
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        {h.niveau || 'Ancien'}
+                        {h.statut_paiement === 'SOLDÉ' && <CheckCircle2 size={12} className={selectedHistoryId === h.id ? "text-white" : "text-green-500"} />}
+                      </div>
+                      <span className={cn("text-[8px] opacity-70", selectedHistoryId === h.id ? "text-white" : "text-neutral-400")}>
+                        {h.filiere || 'Général'}
+                      </span>
+                    </button>
+                  ))
+                ) : (
+                  <span className="text-[10px] italic text-neutral-400">Aucun historique disponible</span>
+                )}
               </div>
             </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl p-3 border border-neutral-100 dark:border-neutral-700">
+                        <p className="text-[9px] font-black uppercase text-neutral-400 mb-1">Dossier de Scolarité Sélectionné</p>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-black text-dia-red">{scolarite.niveau || 'Niveau Inconnu'}</span>
+                          <div className="flex items-center gap-2">
+                            {isSuperAdmin && (
+                              <button 
+                                onClick={async () => {
+                                  if (!window.confirm("Voulez-vous forcer la correction du niveau et de la filière de ce dossier basé sur le niveau actuel du profil élève ?")) return;
+                                  
+                                  const level = levels.find(l => l.id === targetStudent!.levelId);
+                                  if (!level) {
+                                    toast.error("Le profil élève n'a pas de niveau défini.");
+                                    return;
+                                  }
+                                  setLoading(true);
+                                  try {
+                                    await updateDoc(doc(db, 'scolarites', scolarite.id), {
+                                      niveau: level.name,
+                                      filiere: level.stream
+                                    });
+                                    setScolarite({...scolarite, niveau: level.name, filiere: level.stream});
+                                    // Update history too
+                                    setScolariteHistory(prev => prev.map(h => h.id === scolarite.id ? {...h, niveau: level.name, filiere: level.stream} : h));
+                                    toast.success("Métadonnées synchronisées !");
+                                  } catch (e) { toast.error("Échec synchro"); }
+                                  finally { setLoading(false); }
+                                }}
+                                className="p-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-lg hover:bg-dia-red hover:text-white transition-colors"
+                                title="Forcer la synchronisation avec le cursus actuel"
+                              >
+                                <RefreshCw size={12} />
+                              </button>
+                            )}
+                            <span className={cn(
+                              "px-2 py-0.5 rounded-full text-[9px] font-black uppercase",
+                              scolarite.statut_paiement === 'SOLDÉ' ? "bg-green-100 text-green-600" : "bg-orange-100 text-orange-600"
+                            )}>
+                              {scolarite.statut_paiement}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col mt-1">
+                          <p className="text-[9px] font-black uppercase text-neutral-400 mb-0.5">Filière / Dossier</p>
+                          {isSuperAdmin ? (
+                            <div className="flex items-center gap-2">
+                              <input 
+                                type="text"
+                                value={scolarite.filiere || ''}
+                                onChange={(e) => setScolarite({...scolarite!, filiere: e.target.value})}
+                                onBlur={async (e) => {
+                                   try {
+                                     await updateDoc(doc(db, 'scolarites', scolarite.id), { filiere: e.target.value });
+                                     toast.success("Filière mise à jour");
+                                   } catch(err) { toast.error("Erreur mise à jour"); }
+                                }}
+                                className="bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 rounded-lg px-2 py-0.5 text-[10px] font-bold text-neutral-600 dark:text-neutral-300 w-32"
+                              />
+                              <p className="text-[8px] text-neutral-400 italic">(Sync auto: {studentStream})</p>
+                            </div>
+                          ) : (
+                            <p className="text-[10px] font-bold text-neutral-500">Filière: {scolarite.filiere || 'Général'}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl p-3 border border-neutral-100 dark:border-neutral-700">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-[9px] font-black uppercase text-neutral-400">Cursus Actuel (Niveau de l'élève)</p>
+                          <Edit2 size={10} className="text-neutral-400" />
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <select 
+                            value={targetStudent.levelId || ''}
+                            onChange={async (e) => {
+                              const newLevelId = e.target.value;
+                              const level = levels.find(l => l.id === newLevelId);
+                              if (level && window.confirm(`CHANGEMENT DE CURSUS : Voulez-vous inscrire l'élève au niveau ${level.name} ?\n\nSi un dossier pour ce niveau n'existe pas encore, il sera créé.`)) {
+                                setLoading(true);
+                                try {
+                                  await updateDoc(doc(db, 'users', targetStudent.uid), { levelId: newLevelId });
+                                  const updated = {...targetStudent, levelId: newLevelId};
+                                  setTargetStudent(updated);
+                                  // This will auto-create or find the record
+                                  await selectStudent(updated);
+                                  toast.success(`Cursus mis à jour vers ${level.name} !`);
+                                } catch (err) {
+                                  toast.error("Erreur durant la mise à jour");
+                                } finally { setLoading(false); }
+                              }
+                            }}
+                            className="flex-1 bg-transparent text-xs font-black text-neutral-900 dark:text-neutral-100 outline-none cursor-pointer"
+                          >
+                            {levels.map(l => (
+                              <option key={l.id} value={l.id}>{l.name} ({l.stream || 'N/A'})</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-dia-red/10 rounded-full flex items-center justify-center text-dia-red">
+                        <Landmark size={20} />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-neutral-400">Objectif du dossier (Scolarité + Inscription)</p>
+                        <span className="text-xl font-black text-dia-red">{formatCurrency(scolarite.montant_total_du)}</span>
+                      </div>
+                    </div>
+                    <div className="w-40">
+                      <p className="text-[9px] font-black uppercase text-neutral-400 mb-1">Ajuster (Super Admin)</p>
+                      <input 
+                        type="number"
+                        value={scolarite.montant_total_du}
+                        disabled={!isSuperAdmin}
+                        onChange={(e) => setScolarite(prev => prev ? { ...prev, montant_total_du: Number(e.target.value) } : null)}
+                        onBlur={async (e) => {
+                          if (isSuperAdmin) {
+                            const val = Number(e.target.value);
+                            await updateDoc(doc(db, 'scolarites', scolarite.id), { montant_total_du: val });
+                            toast.success("Objectif financier mis à jour.");
+                          }
+                        }}
+                        className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg p-2 text-xs font-black text-dia-red text-right"
+                      />
+                    </div>
+                  </div>
+                </div>
 
             {/* Payment Form */}
             <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 shadow-sm">
@@ -990,7 +1182,7 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
               </button>
             </div>
 
-            {/* History */}
+          {/* History */}
             <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 shadow-sm">
               <h3 className="text-lg font-black uppercase mb-6 flex items-center gap-2">
                 <History size={20} className="text-dia-red" /> Historique des versements
@@ -1000,130 +1192,86 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
                   <div key={v.id} className="flex flex-col p-4 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-100 dark:border-neutral-700 rounded-xl group hover:border-dia-red/30 transition-colors">
                     <div className="flex items-center justify-between">
                       {editingVersementId === v.id ? (
-                        <div className="flex-1 pr-4 space-y-3">
-                          <div className="flex items-center gap-2">
-                            <input 
-                              type="number"
-                              value={editAmount}
-                              onChange={(e) => setEditAmount(Number(e.target.value))}
-                              className="flex-1 px-3 py-1.5 bg-white dark:bg-neutral-900 border-2 border-dia-red rounded-lg font-black text-lg outline-none"
-                            />
-                            <span className="text-xs font-bold text-neutral-400">FCFA</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <input 
-                              type="date"
-                              value={editDate}
-                              onChange={(e) => setEditDate(e.target.value)}
-                              className="flex-1 px-3 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg text-xs outline-none font-bold text-neutral-500"
-                            />
-                          </div>
-                          <input 
-                            type="text"
-                            value={editNotes}
-                            onChange={(e) => setEditNotes(e.target.value)}
-                            placeholder="Raison de la modification..."
-                            className="w-full px-3 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg text-xs outline-none"
-                          />
-                        </div>
+                         <div className="flex-1 pr-4 space-y-3">
+                           <div className="flex items-center gap-2">
+                             <input 
+                               type="number"
+                               value={editAmount}
+                               onChange={(e) => setEditAmount(Number(e.target.value))}
+                               className="flex-1 px-3 py-1.5 bg-white dark:bg-neutral-900 border-2 border-dia-red rounded-lg font-black text-lg outline-none"
+                             />
+                             <span className="text-xs font-bold text-neutral-400">FCFA</span>
+                           </div>
+                           <div className="flex items-center gap-2">
+                             <input 
+                               type="date"
+                               value={editDate}
+                               onChange={(e) => setEditDate(e.target.value)}
+                               className="flex-1 px-3 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg text-xs outline-none font-bold text-neutral-500"
+                             />
+                           </div>
+                           <input 
+                             type="text"
+                             value={editNotes}
+                             onChange={(e) => setEditNotes(e.target.value)}
+                             placeholder="Raison de la modification..."
+                             className="w-full px-3 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg text-xs outline-none"
+                           />
+                         </div>
                       ) : (
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-black text-lg">{formatCurrency(v.montant)}</span>
-                            <span className="text-[10px] font-bold px-2 py-0.5 bg-neutral-200 dark:bg-neutral-700 rounded text-neutral-500 uppercase">{v.mode_paiement}</span>
-                            {v.categorie !== 'scolarite' && (
-                              <span className="text-[8px] font-black px-1.5 py-0.5 bg-orange-100 text-orange-600 rounded uppercase">{v.categorie}</span>
-                            )}
-                          </div>
-                          <div className="text-xs text-neutral-500 flex items-center gap-3">
-                            <span>{new Date(v.date).toLocaleDateString()}</span>
-                            <span>{v.recu_numero}</span>
-                          </div>
-                        </div>
+                         <div>
+                           <div className="flex items-center gap-2 mb-1">
+                             <span className="font-black text-lg">{formatCurrency(v.montant)}</span>
+                             <span className="text-[10px] font-bold px-2 py-0.5 bg-neutral-200 dark:bg-neutral-700 rounded text-neutral-500 uppercase">{v.mode_paiement}</span>
+                             {v.categorie !== 'scolarite' && (
+                               <span className="text-[8px] font-black px-1.5 py-0.5 bg-orange-100 text-orange-600 rounded uppercase">{v.categorie}</span>
+                             )}
+                           </div>
+                           <div className="text-xs text-neutral-500 flex items-center gap-3">
+                             <span>{new Date(v.date).toLocaleDateString()}</span>
+                             <span>{v.recu_numero}</span>
+                           </div>
+                         </div>
                       )}
-                      
+
                       <div className="flex items-center justify-end gap-2">
                         {editingVersementId === v.id ? (
                           <>
-                            <button 
-                              onClick={() => handleUpdatePayment(v.id)}
-                              className="p-3 bg-green-600 text-white rounded-full shadow-lg hover:bg-green-700 active:scale-95 transition-all"
-                              title="Valider la modification"
-                            >
-                              <Check size={18} />
-                            </button>
-                            <button 
-                              onClick={() => setEditingVersementId(null)}
-                              className="p-3 bg-neutral-200 dark:bg-neutral-700 text-neutral-600 rounded-full shadow-sm hover:bg-neutral-300 transition-all"
-                              title="Annuler"
-                            >
-                              <X size={18} />
-                            </button>
+                            <button onClick={() => handleUpdatePayment(v.id)} className="p-3 bg-green-600 text-white rounded-full shadow-lg"><Check size={18} /></button>
+                            <button onClick={() => setEditingVersementId(null)} className="p-3 bg-neutral-200 dark:bg-neutral-700 text-neutral-600 rounded-full shadow-sm"><X size={18} /></button>
                           </>
                         ) : (
                           <>
                             {isSuperAdmin && (
                               <>
-                                <button 
-                                  onClick={() => {
-                                    setEditingVersementId(v.id);
-                                    setEditAmount(v.montant);
-                                    setEditNotes(v.notes || '');
-                                    setEditDate(v.date ? (v.date.includes('T') ? v.date.split('T')[0] : v.date) : new Date().toISOString().split('T')[0]);
-                                  }}
-                                  className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-blue-600 hover:scale-110 transition-transform"
-                                  title="Modifier ce versement (Super Admin)"
-                                >
-                                  <Edit2 size={18} />
-                                </button>
-                                <button 
-                                  onClick={() => handleDeletePayment(v.id)}
-                                  className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-red-600 hover:scale-110 hover:bg-red-50 transition-transform"
-                                  title="Supprimer ce versement (Super Admin)"
-                                >
-                                  <Trash2 size={18} />
-                                </button>
+                                <button onClick={() => { setEditingVersementId(v.id); setEditAmount(v.montant); setEditNotes(v.notes || ''); setEditDate(v.date?.split('T')[0] || ''); }} className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-blue-600"><Edit2 size={18} /></button>
+                                <button onClick={() => handleDeletePayment(v.id)} className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-red-600"><Trash2 size={18} /></button>
                               </>
                             )}
-                            <button 
-                              onClick={() => handleGeneratePDF(v)}
-                              className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-dia-red hover:scale-110 transition-transform"
-                              title="Réimprimer le reçu"
-                            >
-                              <Printer size={18} />
-                            </button>
+                            <button onClick={() => handleGeneratePDF(v)} className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-dia-red"><Printer size={18} /></button>
                             <button 
                               onClick={() => {
-                                const msg = `━━━━━━━━━━━━━━━━━━━━━━━\n🧾 *REÇU DE PAIEMENT*\n*${APP_NAME_FOR_LINKS}*\n━━━━━━━━━━━━━━━━━━━━━━━\n\nBonjour,\nNous confirmons la réception du versement suivant pour l'élève *${targetStudent.firstName} ${targetStudent.lastName}* :\n\n🔹 *Montant* : ${formatCurrency(v.montant)}\n🔹 *Reçu N°* : ${v.recu_numero}\n🔹 *Date* : ${new Date(v.date).toLocaleDateString()}\n🔹 *Mode* : ${v.mode_paiement}\n\n📊 *SITUATION FINANCIÈRE* :\n- Déjà versé : ${formatCurrency(scolarite.total_verse)}\n- *RESTE À PAYER* : ${formatCurrency(scolarite.reste)}\n\nMerci de votre confiance. 🙏\n━━━━━━━━━━━━━━━━━━━━━━━`;
-                                const a = document.createElement('a');
-                                a.href = generateWhatsAppLink(targetStudent.parentPhone || targetStudent.phone || '', msg);
-                                a.target = '_blank';
-                                a.click();
+                                const msg = `🧾 *REÇU* : ${formatCurrency(v.montant)} pour ${targetStudent.firstName} ${targetStudent.lastName}. Reste: ${formatCurrency(scolarite.reste)}.`;
+                                window.open(generateWhatsAppLink(targetStudent.parentPhone || '', msg), '_blank');
                               }}
-                              className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-green-600 hover:scale-110 transition-transform"
-                              title="Envoyer par WhatsApp"
-                            >
-                              <MessageCircle size={18} />
-                            </button>
+                              className="p-3 bg-white dark:bg-neutral-700 rounded-full shadow-sm text-green-600"
+                            ><MessageCircle size={18} /></button>
                           </>
                         )}
                       </div>
                     </div>
-                    {v.notes && !editingVersementId && (
-                      <p className="mt-2 text-[10px] text-neutral-400 italic">Note: {v.notes}</p>
-                    )}
+                    {v.notes && !editingVersementId && <p className="mt-2 text-[10px] text-neutral-400 italic">Note: {v.notes}</p>}
                   </div>
                 ))}
                 {versements.length === 0 && (
-                  <p className="text-center py-8 text-neutral-400 italic">Aucun versement enregistré.</p>
-                )}
+                    <p className="text-center py-8 text-neutral-400 italic">Aucun versement enregistré.</p>
+                  )}
               </div>
             </div>
-          </div>
+            </div>
 
-          {/* Student Status Summary */}
-          <div className="space-y-6">
-            <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 shadow-sm">
+            <div className="space-y-6">
+              <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 shadow-sm">
               <div className="flex flex-col items-center text-center mb-6">
                 <div className="w-20 h-20 bg-neutral-100 dark:bg-neutral-800 rounded-full flex items-center justify-center mb-3">
                   <User size={40} className="text-neutral-400" />
@@ -1154,6 +1302,7 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
                   </span>
                 </div>
               </div>
+              </div>
 
               <div className="space-y-4 border-t pt-6 border-neutral-100 dark:border-neutral-800">
                 <div className="flex justify-between items-center text-[10px] font-black text-neutral-400 uppercase tracking-tighter mb-[-8px]">
@@ -1162,7 +1311,7 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
                     onClick={async () => {
                       try {
                         setLoading(true);
-                        const versementsSnap = await getDocs(collection(db, 'scolarites', targetStudent.uid, 'versements'));
+                        const versementsSnap = await getDocs(collection(db, 'scolarites', scolarite.id, 'versements'));
                         const allVersements = versementsSnap.docs.map(d => ({ id: d.id, ...d.data() as Versement }));
                         
                         // --- DEDUPLICATION LOGIC ---
@@ -1174,9 +1323,9 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
                         allVersements.forEach(current => {
                           const isDup = keptVersements.some(kept => {
                             const timeDiff = Math.abs(new Date(kept.date).getTime() - new Date(current.date).getTime());
-                            const sameAmount = kept.montant === current.montant;
+                            const sameAmount = Number(kept.montant) === Number(current.montant);
                             const sameCat = kept.categorie === current.categorie;
-                            return sameAmount && sameCat && timeDiff < (3 * 60 * 1000); // 3 minutes threshold
+                            return sameAmount && sameCat && timeDiff < (10 * 60 * 1000); // 10 minutes threshold matches merge logic
                           });
                           
                           if (isDup) {
@@ -1185,14 +1334,14 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
                             keptVersements.push(current);
                           }
                         });
-
+ 
                         if (duplicatesToDelete.length > 0) {
                           for (const id of duplicatesToDelete) {
-                            await deleteDoc(doc(db, 'scolarites', targetStudent.uid, 'versements', id));
+                            await deleteDoc(doc(db, 'scolarites', scolarite.id, 'versements', id));
                             // Also try to find and delete in finances
                             const v = allVersements.find(v => v.id === id);
                             if (v?.financeId) {
-                               await fetchWithAuth(`/api/finances/${v.financeId}`, { method: 'DELETE' });
+                               await fetchWithAuth(`/api/finances/${v.financeId}`, { method: 'DELETE' }).catch(() => {});
                             }
                           }
                           toast.warning(`${duplicatesToDelete.length} versement(s) doublon(s) supprimé(s) automatiquement.`);
@@ -1269,33 +1418,13 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
                     </button>
                   </div>
                 )}
-                {scolarite.surplus > 0 && (
-                  <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center gap-3 text-blue-700 dark:text-blue-400">
-                    <AlertCircle size={20} />
-                    <div className="text-xs">
-                      <p className="font-bold">Trop-perçu (Surplus)</p>
-                      <p className="font-black text-lg">{formatCurrency(scolarite.surplus)}</p>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
-
-            <div className="bg-dia-red/5 border border-dia-red/20 rounded-2xl p-6">
-              <h5 className="text-xs font-black uppercase text-dia-red mb-3 flex items-center gap-2">
-                <Landmark size={14} /> Mémo Administration
-              </h5>
-              <p className="text-xs leading-relaxed text-dia-red/70 font-medium">
-                Vérifiez toujours l'identité de l'élève avant de valider un versement.
-                Une fois validé, un versement ne peut plus être modifié, seulement archivé par un administrateur système.
-              </p>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
 };
 
 export default TuitionManagement;

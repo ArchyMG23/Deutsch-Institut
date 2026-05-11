@@ -1351,6 +1351,17 @@ export default function StudentManagement() {
                   <p className="text-sm font-bold">
                     {formatCurrency((selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0))} / {formatCurrency(levels.find(l => l.id === selectedStudent.levelId)?.tuition || 0)}
                   </p>
+                  <button 
+                    onClick={() => {
+                        setIsDetailModalOpen(false);
+                        // Redirect to Finance with student selected
+                        window.location.hash = `#/finance?studentId=${selectedStudent.uid}`;
+                    }}
+                    className="mt-2 text-[10px] font-black uppercase text-dia-red hover:underline flex items-center gap-1"
+                  >
+                    <History size={12} />
+                    {t('students.view_history') || 'Voir Historique'}
+                  </button>
                 </div>
               </div>
               <div className="pt-6 border-t border-neutral-100 dark:border-neutral-800 flex gap-3 flex-wrap">
