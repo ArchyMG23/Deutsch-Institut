@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
 import { collection, query, where, getDocs, doc, setDoc, updateDoc, getDoc, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { Student, StudentScolarite, Versement, SchoolConfig, Level } from '../../types';
-import { Search, CreditCard, Printer, History, AlertCircle, CheckCircle2, User, Landmark, Share2, Send, MessageCircle, Edit2, X, Check, Trash2, RefreshCw } from 'lucide-react';
+import { Search, CreditCard, Printer, History as HistoryIcon, AlertCircle, CheckCircle2, User, Landmark, Share2, Send, MessageCircle, Edit2, X, Check, Trash2, RefreshCw } from 'lucide-react';
 import { formatCurrency, cn } from '../../utils';
 import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
@@ -879,7 +879,7 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
           <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-100 dark:border-neutral-800 pb-3">
               <div className="flex items-center gap-2">
-                <History size={16} className="text-dia-red" />
+                <HistoryIcon size={16} className="text-dia-red" />
                 <h3 className="text-[11px] font-black uppercase text-neutral-900 dark:text-neutral-100">Historique des Niveaux (Cycles)</h3>
               </div>
               <div className="flex gap-2 overflow-x-auto pb-2 min-h-[60px] max-w-full sm:max-w-[75%] no-scrollbar bg-neutral-50/50 dark:bg-neutral-800/30 p-2 rounded-xl border border-neutral-100 dark:border-neutral-800">
@@ -913,50 +913,99 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl p-3 border border-neutral-100 dark:border-neutral-700">
                         <p className="text-[9px] font-black uppercase text-neutral-400 mb-1">Dossier de Scolarité Sélectionné</p>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-black text-dia-red">{scolarite.niveau || 'Niveau Inconnu'}</span>
-                          <div className="flex items-center gap-2">
-                            {isSuperAdmin && (
-                              <button 
-                                onClick={async () => {
-                                  if (!window.confirm("Voulez-vous forcer la correction du niveau et de la filière de ce dossier basé sur le niveau actuel du profil élève ?")) return;
-                                  
-                                  const level = levels.find(l => l.id === targetStudent!.levelId);
-                                  if (!level) {
-                                    toast.error("Le profil élève n'a pas de niveau défini.");
-                                    return;
-                                  }
-                                  setLoading(true);
+                        <div className="flex items-center justify-between gap-4">
+                          {isSuperAdmin ? (
+                            <div className="flex-1 flex flex-col gap-1">
+                              <input 
+                                type="text"
+                                value={scolarite.niveau || ''}
+                                onChange={(e) => setScolarite({...scolarite!, niveau: e.target.value})}
+                                onBlur={async (e) => {
                                   try {
-                                    await updateDoc(doc(db, 'scolarites', scolarite.id), {
-                                      niveau: level.name,
-                                      filiere: level.stream
-                                    });
-                                    setScolarite({...scolarite, niveau: level.name, filiere: level.stream});
-                                    // Update history too
-                                    setScolariteHistory(prev => prev.map(h => h.id === scolarite.id ? {...h, niveau: level.name, filiere: level.stream} : h));
-                                    toast.success("Métadonnées synchronisées !");
-                                  } catch (e) { toast.error("Échec synchro"); }
-                                  finally { setLoading(false); }
+                                    await updateDoc(doc(db, 'scolarites', scolarite.id), { niveau: e.target.value });
+                                    setScolariteHistory(prev => prev.map(h => h.id === scolarite.id ? { ...h, niveau: e.target.value } : h));
+                                    toast.success("Niveau du dossier mis à jour");
+                                  } catch (err) { toast.error("Erreur mise à jour"); }
                                 }}
-                                className="p-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-lg hover:bg-dia-red hover:text-white transition-colors"
-                                title="Forcer la synchronisation avec le cursus actuel"
-                              >
-                                <RefreshCw size={12} />
-                              </button>
-                            )}
-                            <span className={cn(
-                              "px-2 py-0.5 rounded-full text-[9px] font-black uppercase",
-                              scolarite.statut_paiement === 'SOLDÉ' ? "bg-green-100 text-green-600" : "bg-orange-100 text-orange-600"
-                            )}>
-                              {scolarite.statut_paiement}
-                            </span>
+                                className="bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 rounded-lg px-2 py-1 text-sm font-black text-dia-red w-full focus:ring-1 focus:ring-dia-red outline-none"
+                                placeholder="Niveau (ex: A1)"
+                              />
+                            </div>
+                          ) : (
+                            <span className="text-sm font-black text-dia-red">{scolarite.niveau || 'Niveau Inconnu'}</span>
+                          )}
+                          <div className="flex items-center gap-2">
+                             {isSuperAdmin && (
+                               <div className="flex items-center gap-1">
+                                 <button 
+                                   onClick={async () => {
+                                     if (!window.confirm("Voulez-vous forcer la correction du niveau et de la filière de ce dossier basé sur le niveau actuel du profil élève ?")) return;
+                                     
+                                     const level = levels.find(l => l.id === targetStudent!.levelId);
+                                     if (!level) {
+                                       toast.error("Le profil élève n'a pas de niveau défini.");
+                                       return;
+                                     }
+                                     setLoading(true);
+                                     try {
+                                       await updateDoc(doc(db, 'scolarites', scolarite.id), {
+                                         niveau: level.name,
+                                         filiere: level.stream
+                                       });
+                                       setScolarite({...scolarite, niveau: level.name, filiere: level.stream});
+                                       // Update history too
+                                       setScolariteHistory(prev => prev.map(h => h.id === scolarite.id ? {...h, niveau: level.name, filiere: level.stream} : h));
+                                       toast.success("Métadonnées synchronisées !");
+                                     } catch (e) { toast.error("Échec synchro"); }
+                                     finally { setLoading(false); }
+                                   }}
+                                   className="p-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-lg hover:bg-dia-red hover:text-white transition-colors"
+                                   title="Forcer la synchronisation avec le cursus actuel"
+                                 >
+                                   <RefreshCw size={12} />
+                                 </button>
+                                 <button 
+                                   onClick={async () => {
+                                     if (!window.confirm("ÊTES-VOUS SÛR DE VOULOIR SUPPRIMER CE DOSSIER DE SCOLARITÉ ? Cette action est irréversible et supprimera le dossier sélectionné de l'historique de l'élève.")) return;
+                                     
+                                     setLoading(true);
+                                     try {
+                                       await deleteDoc(doc(db, 'scolarites', scolarite.id));
+                                       toast.success("Dossier supprimé !");
+                                       // Refresh history
+                                       const q = query(collection(db, 'scolarites'), where('eleve_id', '==', targetStudent!.uid || targetStudent!.id));
+                                       const snap = await getDocs(q);
+                                       const history = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as StudentScolarite));
+                                       setScolariteHistory(history);
+                                       if (history.length > 0) {
+                                         selectStudent(targetStudent!, history[0].id);
+                                       } else {
+                                         setScolarite(null);
+                                         setSelectedHistoryId(null);
+                                       }
+                                     } catch (e) { toast.error("Erreur suppression"); }
+                                     finally { setLoading(false); }
+                                   }}
+                                   className="p-1.5 bg-red-100 dark:bg-red-900/20 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-colors"
+                                   title="Supprimer ce dossier"
+                                 >
+                                   <Trash2 size={12} />
+                                 </button>
+                               </div>
+                             )}
+                             <span className={cn(
+                               "px-2 py-0.5 rounded-full text-[9px] font-black uppercase",
+                               scolarite.statut_paiement === 'SOLDÉ' ? "bg-green-100 text-green-600" : "bg-orange-100 text-orange-600"
+                             )}>
+                               {scolarite.statut_paiement}
+                             </span>
                           </div>
                         </div>
-                        <div className="flex flex-col mt-1">
-                          <p className="text-[9px] font-black uppercase text-neutral-400 mb-0.5">Filière / Dossier</p>
-                          {isSuperAdmin ? (
-                            <div className="flex items-center gap-2">
+                        
+                        <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-700">
+                          <div className="flex flex-col">
+                            <p className="text-[9px] font-black uppercase text-neutral-400 mb-0.5">Filière / Dossier</p>
+                            {isSuperAdmin ? (
                               <input 
                                 type="text"
                                 value={scolarite.filiere || ''}
@@ -964,16 +1013,36 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
                                 onBlur={async (e) => {
                                    try {
                                      await updateDoc(doc(db, 'scolarites', scolarite.id), { filiere: e.target.value });
+                                     setScolariteHistory(prev => prev.map(h => h.id === scolarite.id ? {...h, filiere: e.target.value} : h));
                                      toast.success("Filière mise à jour");
                                    } catch(err) { toast.error("Erreur mise à jour"); }
                                 }}
-                                className="bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 rounded-lg px-2 py-0.5 text-[10px] font-bold text-neutral-600 dark:text-neutral-300 w-32"
+                                className="bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 rounded-lg px-2 py-1 text-[10px] font-bold text-neutral-600 dark:text-neutral-300 w-full focus:ring-1 focus:ring-dia-red outline-none"
                               />
-                              <p className="text-[8px] text-neutral-400 italic">(Sync auto: {studentStream})</p>
-                            </div>
-                          ) : (
-                            <p className="text-[10px] font-bold text-neutral-500">Filière: {scolarite.filiere || 'Général'}</p>
-                          )}
+                            ) : (
+                              <p className="text-[10px] font-bold text-neutral-500">{scolarite.filiere || 'Général'}</p>
+                            )}
+                          </div>
+                          <div className="flex flex-col">
+                            <p className="text-[9px] font-black uppercase text-neutral-400 mb-0.5">Classe du Dossier</p>
+                            {isSuperAdmin ? (
+                              <input 
+                                type="text"
+                                value={scolarite.classe_id || ''}
+                                onChange={(e) => setScolarite({...scolarite!, classe_id: e.target.value})}
+                                onBlur={async (e) => {
+                                   try {
+                                     await updateDoc(doc(db, 'scolarites', scolarite.id), { classe_id: e.target.value });
+                                     toast.success("Classe mise à jour");
+                                   } catch(err) { toast.error("Erreur mise à jour"); }
+                                }}
+                                className="bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 rounded-lg px-2 py-1 text-[10px] font-bold text-neutral-600 dark:text-neutral-300 w-full focus:ring-1 focus:ring-dia-red outline-none"
+                                placeholder="ex: B1-A"
+                              />
+                            ) : (
+                              <p className="text-[10px] font-bold text-neutral-500">{scolarite.classe_id || 'Non assignée'}</p>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -1185,7 +1254,7 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
           {/* History */}
             <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 shadow-sm">
               <h3 className="text-lg font-black uppercase mb-6 flex items-center gap-2">
-                <History size={20} className="text-dia-red" /> Historique des versements
+                <HistoryIcon size={20} className="text-dia-red" /> Historique des versements
               </h3>
               <div className="space-y-4">
                 {versements.map((v) => (

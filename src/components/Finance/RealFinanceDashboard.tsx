@@ -348,7 +348,7 @@ export default function RealFinanceDashboard() {
     try {
       // Parallel fetch with catch for robustness
       const [financesSnap, teachersSnap, reportsSnap, levelsSnap, classesSnap] = await Promise.all([
-        getDocs(query(collection(db, 'finances'), where('status', '==', 'active'))),
+        getDocs(collection(db, 'finances')),
         getDocs(query(collection(db, 'users'), where('role', '==', 'teacher'))),
         getDocs(collection(db, 'rapports_journaliers')),
         getDocs(collection(db, 'levels')),
@@ -368,13 +368,16 @@ export default function RealFinanceDashboard() {
       if (financesSnap) {
         financesSnap.forEach(doc => {
           const f = doc.data();
-          if (!f || f.type !== 'income' || f.deletedAt) return;
+          const type = String(f?.type || '').toLowerCase();
+          if (!f || type !== 'income' || f.deletedAt) return;
           
           const amount = Number(f.amount) || 0;
           if (amount <= 0) return;
 
-          const dateStr = f.date || f.createdAt;
-          const date = dateStr ? new Date(dateStr) : new Date();
+          const dateVal = f.date || f.createdAt;
+          const date = (dateVal && dateVal.toDate && typeof dateVal.toDate === 'function') 
+            ? dateVal.toDate() 
+            : (dateVal ? new Date(dateVal) : new Date());
           
           if (!isNaN(date.getTime()) && date.getFullYear() === selectedYear) {
             const cat = String(f.category || 'other').toLowerCase();
@@ -519,13 +522,15 @@ export default function RealFinanceDashboard() {
       if (financesSnap) {
         financesSnap.forEach(doc => {
           const f = { id: doc.id, ...doc.data() } as any;
-          if (!f || !f.date || f.deletedAt) return;
+          const dateVal = f.date || f.createdAt;
+          if (!f || !dateVal || f.deletedAt) return;
           
           allFinances.push(f);
-          const date = new Date(f.date);
+          const date = (dateVal.toDate && typeof dateVal.toDate === 'function') ? dateVal.toDate() : new Date(dateVal);
           const amount = Number(f.amount || 0);
-          const isIncome = f.type === 'income';
-          const accType = f.accountType || 'caisse';
+          const type = String(f.type || '').toLowerCase();
+          const isIncome = type === 'income';
+          const accType = String(f.accountType || 'caisse').toLowerCase();
 
           if (accType === 'banque') {
             banqueBalance += isIncome ? amount : -amount;
@@ -535,7 +540,7 @@ export default function RealFinanceDashboard() {
 
           if (!isNaN(date.getTime()) && date.getFullYear() === selectedYear) {
             const mKey = date.getMonth();
-            if (f.type === 'expense') {
+            if (type === 'expense') {
               totalChargesFixes += amount;
               monthlyCharges[mKey] = (monthlyCharges[mKey] || 0) + amount;
             }

@@ -482,26 +482,31 @@ export default function FinanceManagement() {
 
   const filteredByDate = React.useMemo(() => {
     return allRecords.filter(r => {
-      if (!r.date) return false;
-      const d = new Date(r.date);
+      const dateVal = r.date || r.createdAt;
+      if (!dateVal) return false;
+      const d = (dateVal.toDate && typeof dateVal.toDate === 'function') ? dateVal.toDate() : new Date(dateVal);
       const yearMatch = d.getFullYear().toString() === selectedYear;
       const monthMatch = selectedMonth === 'all' || d.getMonth().toString() === selectedMonth;
       if (!yearMatch || !monthMatch) return false;
       const query = searchQuery.toLowerCase();
-      return (r.description || '').toLowerCase().includes(query) || (r.category || '').toLowerCase().includes(query);
+      return (r.description || '').toLowerCase().includes(query) || 
+             (r.category || '').toLowerCase().includes(query) ||
+             (r.studentMatricule || '').toLowerCase().includes(query);
     });
   }, [allRecords, selectedYear, selectedMonth, searchQuery]);
 
   const { totalIncome, totalExpense, balance } = React.useMemo(() => {
     const filteredCharges = (charges || []).filter(c => {
-      const d = new Date(c.date);
+      const dateVal = c.date || c.createdAt;
+      if (!dateVal) return false;
+      const d = (dateVal.toDate && typeof dateVal.toDate === 'function') ? dateVal.toDate() : new Date(dateVal);
       const y = d.getFullYear().toString() === selectedYear;
       const m = selectedMonth === 'all' || d.getMonth().toString() === selectedMonth;
       return y && m;
     });
 
-    const inc = filteredByDate.filter(r => r.type === 'income').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
-    const expFromLedger = filteredByDate.filter(r => r.type === 'expense').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
+    const inc = filteredByDate.filter(r => String(r.type || '').toLowerCase() === 'income').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
+    const expFromLedger = filteredByDate.filter(r => String(r.type || '').toLowerCase() === 'expense').reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
     const expFromCharges = filteredCharges.reduce((acc, c) => acc + (Number(c.montant) || 0), 0);
     
     // Total expenses is sum of ledger expenses and specialized charges

@@ -20,13 +20,18 @@ import { toast } from 'sonner';
 
 export default function LevelManagement() {
   const { t } = useTranslation();
-  const { fetchWithAuth } = useAuth();
+  const { user, fetchWithAuth, profile } = useAuth();
   const { levels, loading, refreshLevels } = useData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingLevel, setEditingLevel] = useState<Level | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>({ key: 'name', direction: 'asc' });
   const [submitting, setSubmitting] = useState(false);
+
+  const isSuperAdmin = (profile as any)?.isSuperAdmin || 
+                       (user as any)?.isSuperAdmin || 
+                       user?.email === 'yombivictor@gmail.com' || 
+                       user?.email === 'gabrielyombi311@gmail.com';
 
   useEffect(() => {
     refreshLevels();
@@ -40,7 +45,7 @@ export default function LevelManagement() {
     const formData = new FormData(e.currentTarget);
     
     const typeValue = formData.get('type') as string;
-    const streamValue = typeValue.charAt(0).toUpperCase() + typeValue.slice(1);
+    const streamValue = (formData.get('stream') as string) || (typeValue.charAt(0).toUpperCase() + typeValue.slice(1));
     
     const newLevel = {
       name: formData.get('name'),
@@ -58,7 +63,7 @@ export default function LevelManagement() {
       });
       if (res.ok) {
         setIsAddModalOpen(false);
-        refreshLevels();
+        await refreshLevels(true);
         toast.success(t('levels.level_added'));
       } else {
         const errorData = await res.json();
@@ -78,7 +83,7 @@ export default function LevelManagement() {
     const formData = new FormData(e.currentTarget);
     
     const typeValue = formData.get('type') as string;
-    const streamValue = typeValue.charAt(0).toUpperCase() + typeValue.slice(1);
+    const streamValue = (formData.get('stream') as string) || (typeValue.charAt(0).toUpperCase() + typeValue.slice(1));
     
     const updatedLevel = {
       name: formData.get('name'),
@@ -97,7 +102,7 @@ export default function LevelManagement() {
       });
       if (res.ok) {
         setEditingLevel(null);
-        refreshLevels();
+        await refreshLevels(true);
         toast.success(t('levels.level_updated'));
       } else {
         const errorData = await res.json();
@@ -112,15 +117,22 @@ export default function LevelManagement() {
   };
 
   const handleDeleteLevel = async (id: string) => {
+    if (!isSuperAdmin) {
+      toast.error('Seul le Super Administrateur peut supprimer des niveaux.');
+      return;
+    }
     if (!window.confirm(t('levels.confirm_delete'))) return;
     try {
       const res = await fetchWithAuth(`/api/levels/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        refreshLevels();
+        await refreshLevels(true);
         toast.success(t('levels.level_deleted'));
+      } else {
+        toast.error(t('common.error'));
       }
     } catch (err) {
       console.error("Error deleting level:", err);
+      toast.error("Erreur technique lors de la suppression");
     }
   };
 
@@ -157,13 +169,15 @@ export default function LevelManagement() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h3 className="text-xl font-bold">{t('levels.title')}</h3>
-        <button 
-          onClick={() => setIsAddModalOpen(true)}
-          className="btn-primary flex items-center gap-2"
-        >
-          <Plus size={18} />
-          <span>{t('levels.add_level')}</span>
-        </button>
+        {isSuperAdmin && (
+          <button 
+            onClick={() => setIsAddModalOpen(true)}
+            className="btn-primary flex items-center gap-2"
+          >
+            <Plus size={18} />
+            <span>{t('levels.add_level')}</span>
+          </button>
+        )}
       </div>
 
       <div className="card p-4 flex flex-col sm:flex-row gap-4 items-center">
@@ -204,23 +218,32 @@ export default function LevelManagement() {
               <div className="w-12 h-12 rounded-2xl bg-dia-red/10 text-dia-red flex items-center justify-center">
                 <Layers size={24} />
               </div>
-              <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button 
-                  onClick={() => setEditingLevel(level)}
-                  className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-all"
-                >
-                  <Edit2 size={16} className="text-neutral-500" />
-                </button>
-                <button 
-                  onClick={() => handleDeleteLevel(level.id)}
-                  className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
-                >
-                  <Trash2 size={16} className="text-red-600" />
-                </button>
+              <div className="flex gap-2">
+                {isSuperAdmin && (
+                  <>
+                    <button 
+                      onClick={() => setEditingLevel(level)}
+                      className="p-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-all"
+                      title={t('common.edit')}
+                    >
+                      <Edit2 size={16} className="text-neutral-600 dark:text-neutral-400" />
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteLevel(level.id)}
+                      className="p-2 bg-red-50 dark:bg-red-900/10 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/20 transition-all"
+                      title={t('common.delete')}
+                    >
+                      <Trash2 size={16} className="text-red-600" />
+                    </button>
+                  </>
+                )}
               </div>
             </div>
             
-            <h4 className="text-2xl font-bold mb-4">{level.name}</h4>
+            <div className="mb-4">
+              <p className="text-[10px] font-black uppercase text-dia-red mb-1">{level.stream || t('common.general')}</p>
+              <h4 className="text-2xl font-bold">{level.name}</h4>
+            </div>
             
             <div className="space-y-3">
               <div className="flex items-center gap-3 text-sm">
@@ -248,12 +271,24 @@ export default function LevelManagement() {
             </div>
             <form onSubmit={handleAddLevel} className="p-8 space-y-6">
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Type de Formation</label>
-                  <select name="type" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
-                    <option value="allemand">Allemand</option>
-                    <option value="anglais">Anglais</option>
-                  </select>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Type (Langue)</label>
+                    <select name="type" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
+                      <option value="allemand">Allemand</option>
+                      <option value="anglais">Anglais</option>
+                      <option value="autre">Autre</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Cycle / Filière</label>
+                    <input 
+                      name="stream" 
+                      placeholder="ex: Général"
+                      type="text" 
+                      className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" 
+                    />
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('levels.name')}</label>
@@ -302,12 +337,24 @@ export default function LevelManagement() {
             </div>
             <form onSubmit={handleEditLevel} className="p-8 space-y-6">
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Type de Formation</label>
-                  <select name="type" defaultValue={editingLevel.type || 'allemand'} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
-                    <option value="allemand">Allemand</option>
-                    <option value="anglais">Anglais</option>
-                  </select>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Type (Langue)</label>
+                    <select name="type" defaultValue={editingLevel.type || 'allemand'} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
+                      <option value="allemand">Allemand</option>
+                      <option value="anglais">Anglais</option>
+                      <option value="autre">Autre</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Cycle / Filière</label>
+                    <input 
+                      name="stream" 
+                      defaultValue={editingLevel.stream}
+                      type="text" 
+                      className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" 
+                    />
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('levels.name')}</label>

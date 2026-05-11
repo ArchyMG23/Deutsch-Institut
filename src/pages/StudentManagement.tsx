@@ -12,6 +12,7 @@ import {
   Phone,
   Calendar,
   X,
+  History as HistoryIcon,
   Edit,
   Eye,
   CreditCard,
@@ -1359,7 +1360,7 @@ export default function StudentManagement() {
                     }}
                     className="mt-2 text-[10px] font-black uppercase text-dia-red hover:underline flex items-center gap-1"
                   >
-                    <History size={12} />
+                    <HistoryIcon size={12} />
                     {t('students.view_history') || 'Voir Historique'}
                   </button>
                 </div>

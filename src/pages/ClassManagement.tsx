@@ -4,7 +4,8 @@ import {
   Search, 
   Plus, 
   X, 
-  Edit, 
+  Edit2, 
+  Trash2,
   Users, 
   Calendar, 
   Clock, 
@@ -317,6 +318,22 @@ export default function ClassManagement() {
     }
   };
 
+  const handleDeleteClass = async (id: string) => {
+    if (!window.confirm(t('classes.delete_confirm') || 'Voulez-vous vraiment supprimer cette classe ?')) return;
+    try {
+      const res = await fetchWithAuth(`/api/classes/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        refreshClasses();
+        toast.success(t('classes.deleted_success') || 'Classe supprimée avec succès');
+      } else {
+        toast.error(t('common.error'));
+      }
+    } catch (err) {
+      console.error("Error deleting class:", err);
+      toast.error(t('common.error'));
+    }
+  };
+
   const filteredClasses = classes.filter(c => 
     c.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -415,6 +432,27 @@ export default function ClassManagement() {
               <div className="flex justify-between items-start mb-4">
                 <div className="w-12 h-12 rounded-2xl bg-dia-red/10 text-dia-red flex items-center justify-center">
                   <Layout size={24} />
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedClass(cls);
+                      setIsDetailModalOpen(true);
+                    }}
+                    className="p-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-all"
+                  >
+                    <Edit2 size={16} className="text-neutral-600" />
+                  </button>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteClass(cls.id);
+                    }}
+                    className="p-2 bg-red-50 dark:bg-red-900/10 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/20 transition-all"
+                  >
+                    <Trash2 size={16} className="text-red-600" />
+                  </button>
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <span className={cn(
