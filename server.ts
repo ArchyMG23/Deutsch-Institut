@@ -762,7 +762,7 @@ async function startServer() {
         return res.status(403).json({ message: 'Seul le Super Administrateur peut réinitialiser le système' });
       }
 
-      const { confirmation } = req.body;
+      const confirmation = req.body?.confirmation;
       if (confirmation !== 'RESET_FACTORY') {
         return res.status(400).json({ message: 'Code de confirmation incorrect (Attendu: RESET_FACTORY)' });
       }
@@ -1437,51 +1437,65 @@ async function startServer() {
       
       console.log(`[HARD-DELETE] Executing atomic wipe for ${studentId} (${matricule})`);
 
-      // DELETE IN BATCHES
       // 1. All finance records related to this student
-      const financeRefs = [];
-      const f1 = await dbAdmin.collection('finances').where('studentId', '==', studentId).get();
-      f1.forEach(d => financeRefs.push(d.ref));
-      if (matricule) {
-        const f2 = await dbAdmin.collection('finances').where('studentMatricule', '==', matricule).get();
-        f2.forEach(d => {
-           if (!financeRefs.find(r => r.id === d.id)) financeRefs.push(d.ref);
-        });
-      }
-
-      // 2. All scolarite records (including ones with different IDs if they moved levels)
-      const scolaRefs = [];
-      const s1 = await dbAdmin.collection('scolarites').where('eleve_id', '==', studentId).get();
-      s1.forEach(d => scolaRefs.push(d.ref));
-      if (matricule) {
-        const s2 = await dbAdmin.collection('scolarites').where('matricule', '==', matricule).get();
-        s2.forEach(d => {
-           if (!scolaRefs.find(r => r.id === d.id)) scolaRefs.push(d.ref);
-        });
-      }
-
-      // 3. Delete versements for each scolarite record
-      for (const sRef of scolaRefs) {
-        const vSnap = await sRef.collection('versements').get();
-        let vBatch = dbAdmin.batch();
-        let vCount = 0;
-        vSnap.forEach(d => {
-          vBatch.delete(d.ref);
-          vCount++;
-          if (vCount === 450) { vBatch.commit(); vBatch = dbAdmin.batch(); vCount = 0; }
-        });
-        if (vCount > 0) await vBatch.commit();
-      }
-
-      // 4. Wipe main records
-      let mainBatch = dbAdmin.batch();
-      financeRefs.forEach(ref => mainBatch.delete(ref));
-      scolaRefs.forEach(ref => mainBatch.delete(ref));
-      mainBatch.delete(dbAdmin.collection('students').doc(studentId));
-      mainBatch.delete(dbAdmin.collection('users').doc(studentId));
-      mainBatch.delete(dbAdmin.collection('vorbereitung').doc(studentId));
+      const financeSnap = await dbAdmin.collection('finances')
+        .where('studentId', '==', studentId)
+        .where('status', '==', 'active')
+        .get();
       
-      await mainBatch.commit();
+      // Calculate amount to deduct from balances
+      const balanceAdjustments: Record<string, number> = {};
+      financeSnap.docs.forEach(d => {
+        const data = d.data();
+        const account = data.accountType || data.compte_destination || 'caisse';
+        const amount = Number(data.amount || 0);
+        balanceAdjustments[account] = (balanceAdjustments[account] || 0) + amount;
+      });
+
+      // 2. Begin multi-step deletion
+      // Update balances first
+      for (const [account, total] of Object.entries(balanceAdjustments)) {
+        const balanceRef = dbAdmin.collection('comptes').doc(account === 'banque' ? 'banque' : 'caisse');
+        await balanceRef.update({
+          solde_actuel: admin.firestore.FieldValue.increment(-total),
+          derniere_maj: new Date().toISOString()
+        });
+      }
+
+      // 3. Delete related collections in batches
+      const collectionsToClean = ['finances', 'scolarites', 'vorbereitung'];
+      for (const coll of collectionsToClean) {
+        const field = coll === 'finances' ? 'studentId' : 'eleve_id';
+        const snap = await dbAdmin.collection(coll).where(field, '==', studentId).get();
+        
+        let batch = dbAdmin.batch();
+        let count = 0;
+        for (const doc of snap.docs) {
+          if (coll === 'scolarites') {
+             // Subcollection versements
+             const vSnap = await doc.ref.collection('versements').get();
+             vSnap.forEach(vd => {
+               batch.delete(vd.ref);
+               count++;
+               if (count >= 450) { batch.commit(); batch = dbAdmin.batch(); count = 0; }
+             });
+          }
+          batch.delete(doc.ref);
+          count++;
+          if (count >= 450) { batch.commit(); batch = dbAdmin.batch(); count = 0; }
+        }
+        if (count > 0) await batch.commit();
+      }
+
+      // 4. Handle Vacances Inscriptions (collectionGroup or nested)
+      const insSnap = await dbAdmin.collectionGroup('inscriptions').where('eleve_id', '==', studentId).get();
+      let insBatch = dbAdmin.batch();
+      insSnap.forEach(d => insBatch.delete(d.ref));
+      await insBatch.commit();
+
+      // 5. Delete Student and User
+      await dbAdmin.collection('students').doc(studentId).delete();
+      await dbAdmin.collection('users').doc(studentId).delete();
 
       try {
         await authAdmin.deleteUser(studentId);
@@ -1490,7 +1504,7 @@ async function startServer() {
       }
 
       console.log(`[HARD-DELETE] Wipe complete for ${studentId}`);
-      res.json({ message: "L'élève et TOUT son historique financier ont été atomiquement effacés du système." });
+      res.json({ message: "L'élève et TOUT son historique financier ont été atomiquement effacés du système, et les soldes de caisse mis à jour." });
     } catch (err: any) {
       console.error("Hard delete error:", err);
       res.status(500).json({ message: err.message });
@@ -1710,12 +1724,12 @@ async function startServer() {
 
   // --- NEW FINANCIAL SYSTEM ---
   
-  // 1. Payment (Scolarité/Vorbereitung)
+  // 1. Maintenance Sync (Tool: Sync Modules)
   app.post('/api/maintenance/sync-modules', authenticate, async (req: any, res: any) => {
     try {
       if (req.user.role !== 'admin') return res.status(403).json({ message: "Interdit" });
       
-      const results = { scolarites: 0, vorbereitung: 0, vacances: 0 };
+      const results = { scolarites: 0, vorbereitung: 0, vacances: 0, cleaned: 0 };
       
       // 1. Fetch EVERYTHING in bulk
       const [studentsSnap, financesSnap, sessionsSnap, scolaritesSnap, vorbereitungSnap, inscriptionsSnap] = await Promise.all([
@@ -1727,7 +1741,8 @@ async function startServer() {
         dbAdmin.collectionGroup('inscriptions').get()
       ]);
 
-      const students = studentsSnap.docs;
+      const studentIds = new Set(studentsSnap.docs.map(d => d.id));
+      const studentsMap = new Map(studentsSnap.docs.map(d => [d.id, d.data()]));
       const sessions = sessionsSnap.docs;
       
       // Map finances by studentId
@@ -1750,13 +1765,50 @@ async function startServer() {
         insByStudent[sid].push({ id: d.id, ref: d.ref, data, sessId: sessIdFromPath });
       });
 
-      const scolaritesMap = new Map(scolaritesSnap.docs.map(d => [d.id, d.data()]));
-      const vorbereitungMap = new Map(vorbereitungSnap.docs.map(d => [d.id, d.data()]));
+      const scolarites = scolaritesSnap.docs;
+      const vorbereitung = vorbereitungSnap.docs;
 
-      const batch = dbAdmin.batch();
+      let batch = dbAdmin.batch();
+      let opCount = 0;
 
-      // Process each student
-      for (const studentDoc of students) {
+      const commitIfFull = async () => {
+        if (opCount >= 450) {
+          await batch.commit();
+          batch = dbAdmin.batch();
+          opCount = 0;
+        }
+      };
+
+      // --- CLEANUP ORPHANS FIRST ---
+      // a) Clean orphaned Scolarites
+      for (const doc of scolarites) {
+        if (!studentIds.has(doc.id)) {
+          // No such student, delete scolarite module doc
+          batch.delete(doc.ref);
+          results.cleaned++;
+          opCount++; await commitIfFull();
+        }
+      }
+      // b) Clean orphaned Vorbereitung
+      for (const doc of vorbereitung) {
+        if (!studentIds.has(doc.id)) {
+          batch.delete(doc.ref);
+          results.cleaned++;
+          opCount++; await commitIfFull();
+        }
+      }
+      // c) Clean orphaned Inscriptions
+      for (const doc of inscriptionsSnap.docs) {
+        const sid = doc.data().eleve_id;
+        if (!sid || !studentIds.has(sid)) {
+          batch.delete(doc.ref);
+          results.cleaned++;
+          opCount++; await commitIfFull();
+        }
+      }
+
+      // --- SYNC ACTIVE STUDENTS ---
+      for (const studentDoc of studentsSnap.docs) {
         const sid = studentDoc.id;
         const sData = studentDoc.data();
         const studentFinances = financesByStudent[sid] || [];
@@ -1764,28 +1816,54 @@ async function startServer() {
         // Scolarité
         const scols = studentFinances.filter(f => f.category === 'Scolarité');
         const totalScol = scols.reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
-        if (scolaritesMap.has(sid)) {
-          const due = Number(scolaritesMap.get(sid)?.montant_total_du) || 0;
-          batch.update(dbAdmin.collection('scolarites').doc(sid), {
+        const scolDoc = scolaritesSnap.docs.find(d => d.id === sid);
+        if (scolDoc || totalScol > 0) {
+          const scolRef = dbAdmin.collection('scolarites').doc(sid);
+          const due = Number(scolDoc?.data()?.montant_total_du) || (sData.levelId ? 110000 : 0);
+          
+          const obj = {
+            eleve_id: sid,
+            matricule: sData.matricule || '',
+            nom_eleve: `${sData.firstName || ''} ${sData.lastName || ''}`,
             total_verse: totalScol,
             reste: Math.max(0, due - totalScol),
             statut_paiement: totalScol >= due ? 'SOLDÉ' : (totalScol > 0 ? 'EN COURS' : 'NON PAYÉ'),
             updatedAt: new Date().toISOString()
-          });
+          };
+
+          if (!scolDoc) {
+             batch.set(scolRef, { ...obj, montant_total_du: due, createdAt: new Date().toISOString() });
+          } else {
+             batch.update(scolRef, obj);
+          }
+          opCount++; await commitIfFull();
           results.scolarites++;
         }
 
         // Vorbereitung
         const vorbs = studentFinances.filter(f => f.category === 'Vorbereitung' || f.category === 'vorbereitung');
         const totalVorb = vorbs.reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
-        if (vorbereitungMap.has(sid)) {
-          const due = Number(vorbereitungMap.get(sid)?.montant_total_du) || 0;
-          batch.update(dbAdmin.collection('vorbereitung').doc(sid), {
+        const vorbDoc = vorbereitungSnap.docs.find(d => d.id === sid);
+        if (vorbDoc || totalVorb > 0) {
+          const vorbRef = dbAdmin.collection('vorbereitung').doc(sid);
+          const due = Number(vorbDoc?.data()?.montant_total_du) || 0;
+          
+          const obj = {
+            eleve_id: sid,
+            matricule: sData.matricule || '',
+            nom_eleve: `${sData.firstName || ''} ${sData.lastName || ''}`,
             total_verse: totalVorb,
             reste: Math.max(0, due - totalVorb),
             statut_paiement: totalVorb >= due ? 'SOLDÉ' : (totalVorb > 0 ? 'EN COURS' : 'NON PAYÉ'),
             updatedAt: new Date().toISOString()
-          });
+          };
+
+          if (!vorbDoc) {
+             batch.set(vorbRef, { ...obj, montant_total_du: due, createdAt: new Date().toISOString() });
+          } else {
+             batch.update(vorbRef, obj);
+          }
+          opCount++; await commitIfFull();
           results.vorbereitung++;
         }
 
@@ -1808,12 +1886,10 @@ async function startServer() {
           }
         });
 
-        // Loop through all sessions for this student
         for (const sessionDoc of sessions) {
           const sessId = sessionDoc.id;
           const sessData = sessionDoc.data();
           const paidForSess = paymentsBySession[sessId] || 0;
-          
           const existingIns = insByStudent[sid]?.find(i => i.sessId === sessId);
           
           if (existingIns || paidForSess > 0) {
@@ -1837,13 +1913,14 @@ async function startServer() {
             } else {
               batch.update(insRef, obj);
             }
+            opCount++; await commitIfFull();
             results.vacances++;
           }
         }
       }
 
-      await batch.commit();
-      res.json({ message: 'Synchronisation terminée', results });
+      if (opCount > 0) await batch.commit();
+      res.json({ message: 'Synchronisation et nettoyage terminés', results });
     } catch (err: any) {
       console.error("Sync error:", err);
       res.status(500).json({ message: err.message });
@@ -2106,29 +2183,34 @@ async function startServer() {
   // 4. Recalculate balances (Tool 1)
   app.post('/api/finances/recalculate', authenticate, checkSuperAdmin, async (req, res) => {
     try {
-      const snapshot = await dbAdmin.collection('transactions').get();
+      const snapshot = await dbAdmin.collection('finances').where('status', '==', 'active').get();
       let caisse = 0;
       let banque = 0;
 
       snapshot.forEach(doc => {
         const d = doc.data();
-        const amt = Number(d.montant) || 0;
-        const dest = d.compte_destination;
-        const src = d.compte_source;
+        const amt = Number(d.amount) || 0;
+        const account = d.accountType || d.compte_destination || 'caisse';
 
-        if (d.type === 'virement_cb') {
-          if (src === 'caisse') caisse -= d.montant; else if (src === 'banque') banque -= d.montant;
-          if (dest === 'caisse') caisse += d.montant; else if (dest === 'banque') banque += d.montant;
-        } else {
-          if (dest === 'caisse') caisse += amt;
-          else if (dest === 'banque') banque += amt;
-        }
+        if (account === 'caisse') caisse += amt;
+        else if (account === 'banque') banque += amt;
       });
 
-      await dbAdmin.collection('comptes').doc('caisse').set({ solde_actuel: caisse, derniere_maj: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-      await dbAdmin.collection('comptes').doc('banque').set({ solde_actuel: banque, derniere_maj: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      // Special case: check if there are expenses or other transactions that should deduct
+      // For now, these are the main inputs. If we have expenses (depenses), we should subtract them.
+      const expensesSnap = await dbAdmin.collection('expenses').get();
+      expensesSnap.forEach(d => {
+        const data = d.data();
+        const amt = Number(data.amount) || 0;
+        const account = data.account || 'caisse';
+        if (account === 'caisse') caisse -= amt;
+        else if (account === 'banque') banque -= amt;
+      });
 
-      res.json({ caisse, banque });
+      await dbAdmin.collection('comptes').doc('caisse').set({ solde_actuel: caisse, derniere_maj: admin.firestore.FieldValue.serverTimestamp(), nom: 'Caisse Principale' }, { merge: true });
+      await dbAdmin.collection('comptes').doc('banque').set({ solde_actuel: banque, derniere_maj: admin.firestore.FieldValue.serverTimestamp(), nom: 'Compte Bancaire' }, { merge: true });
+
+      res.json({ message: 'Balances recalculées avec succès', caisse, banque });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -2137,24 +2219,47 @@ async function startServer() {
   // Tool 2: Cleanup Orphans
   app.post('/api/finances/cleanup-orphans', authenticate, checkSuperAdmin, async (req, res) => {
     try {
-      const transactions = await dbAdmin.collection('transactions').where('eleve_id', '!=', null).get();
-      const students = await dbAdmin.collection('students').get();
-      const studentIds = new Set(students.docs.map(d => d.id));
+      const financesSnap = await dbAdmin.collection('finances').get();
+      const legacyTransSnap = await dbAdmin.collection('transactions').get();
+      const studentsSnap = await dbAdmin.collection('students').get();
+      const studentIds = new Set(studentsSnap.docs.map(d => d.id));
       
-      const orphans = transactions.docs.filter(d => !studentIds.has(d.data().eleve_id));
+      const orphansFinance = financesSnap.docs.filter(d => {
+        const sid = d.data().studentId || d.data().eleve_id;
+        return sid && !studentIds.has(sid);
+      });
+
+      const orphansLegacy = legacyTransSnap.docs.filter(d => {
+        const sid = d.data().eleve_id || d.data().studentId;
+        return sid && !studentIds.has(sid);
+      });
       
       if (req.body.action === 'delete') {
         let batch = dbAdmin.batch();
         let count = 0;
-        for (const doc of orphans) {
+        
+        // Clean Finances
+        for (const doc of orphansFinance) {
           batch.delete(doc.ref);
           count++;
-          if (count === 400) { await batch.commit(); batch = dbAdmin.batch(); count = 0; }
+          if (count >= 450) { await batch.commit(); batch = dbAdmin.batch(); count = 0; }
         }
+        
+        // Clean Legacy
+        for (const doc of orphansLegacy) {
+          batch.delete(doc.ref);
+          count++;
+          if (count >= 450) { await batch.commit(); batch = dbAdmin.batch(); count = 0; }
+        }
+
         if (count > 0) await batch.commit();
-        res.json({ message: `${orphans.length} orphelins supprimés` });
+        res.json({ message: `${orphansFinance.length + orphansLegacy.length} transactions orphelines supprimées` });
       } else {
-        res.json({ count: orphans.length, orphans: orphans.map(d => ({ id: d.id, studentId: d.data().eleve_id })) });
+        res.json({ 
+          financeOrphans: orphansFinance.length, 
+          legacyOrphans: orphansLegacy.length,
+          total: orphansFinance.length + orphansLegacy.length 
+        });
       }
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -2235,7 +2340,7 @@ async function startServer() {
         return res.status(403).json({ message: "Seul un Super Administrateur peut formater l'application." });
       }
 
-      const { confirmation } = req.body;
+      const confirmation = req.body?.confirmation;
       if (confirmation !== 'FORMAT_NUCLEAR') {
         return res.status(400).json({ message: "Code de confirmation incorrect." });
       }
@@ -2322,24 +2427,112 @@ async function startServer() {
 
   app.delete('/api/finances/:id', authenticate, async (req: any, res: any) => {
     try {
-      if (req.user.role !== 'admin') return res.status(403).json({ message: "Interdit" });
+      const userSnap = await dbAdmin.collection('users').doc(req.user.id).get();
+      const userData = userSnap.data();
+      const isPowerUser = userData?.role === 'admin' || userData?.isSuperAdmin;
+      
+      if (!isPowerUser) return res.status(403).json({ message: "Interdit: Droits d'administrateur requis pour annuler une transaction." });
       
       const { id } = req.params;
-      const { reason } = req.body;
+      const reason = req.body?.reason || 'Suppression manuelle';
 
-      // Soft delete: update status to deleted
-      await dbAdmin.collection('finances').doc(id).update({
-        status: 'deleted',
-        deletedAt: new Date().toISOString(),
-        deletedBy: req.user.id,
-        deletionReason: reason || 'Suppression manuelle'
+      await dbAdmin.runTransaction(async (transaction) => {
+        // 1. Fetch the transaction
+        const financeRef = dbAdmin.collection('finances').doc(id);
+        const fSnap = await transaction.get(financeRef);
+        
+        if (!fSnap.exists) throw new Error('Transaction introuvable');
+        
+        const fData = fSnap.data() as any;
+        if (fData.status === 'deleted') throw new Error('Transaction déjà supprimée');
+
+        const amount = Number(fData.amount || fData.montant || 0);
+        const studentId = fData.studentId || fData.eleve_id;
+        const account = fData.accountType || fData.compte_destination || 'caisse';
+        const category = fData.category || fData.type_versement;
+
+        // READ ALL NECESSARY DOCS
+        const balanceRef = dbAdmin.collection('comptes').doc(account === 'banque' ? 'banque' : 'caisse');
+        const bSnap = await transaction.get(balanceRef);
+
+        let scodaRef = null;
+        let scodaSnap = null;
+        if (studentId && ['Scolarité', 'vorbereitung', 'Vorbereitung'].includes(category)) {
+          const coll = ['vorbereitung', 'Vorbereitung'].includes(category) ? 'vorbereitung' : 'scolarites';
+          scodaRef = dbAdmin.collection(coll).doc(studentId);
+          scodaSnap = await transaction.get(scodaRef);
+        }
+
+        // Handle Vacances Inscriptions
+        let insRef = null;
+        let insSnap = null;
+        if (studentId && ['vacances', 'vacance', 'Cours de Vacances', 'Vacances'].includes(category)) {
+           // We need to find the session. If sessionId is missing, we might have trouble but let's try
+           if (fData.sessionId) {
+              insRef = dbAdmin.collection('cours_vacances').doc(fData.sessionId).collection('inscriptions').doc(studentId);
+              insSnap = await transaction.get(insRef);
+           }
+        }
+
+        // 2. Reverse balance
+        if (bSnap.exists) {
+          transaction.update(balanceRef, {
+            solde_actuel: admin.firestore.FieldValue.increment(-amount),
+            derniere_maj: new Date().toISOString()
+          });
+        }
+
+        // 3. Update Scolarité/Vorbereitung module
+        if (scodaSnap && scodaSnap.exists && scodaRef) {
+          const s = scodaSnap.data() as any;
+          const newTotal = Math.max(0, (Number(s.total_verse) || 0) - amount);
+          const due = Number(s.montant_total_du) || 0;
+          transaction.update(scodaRef, {
+            total_verse: newTotal,
+            reste: Math.max(0, due - newTotal),
+            statut_paiement: newTotal >= due ? 'SOLDÉ' : (newTotal > 0 ? 'EN COURS' : 'NON PAYÉ'),
+            updatedAt: new Date().toISOString()
+          });
+          // Also delete from subcollection versements if exists
+          transaction.delete(scodaRef.collection('versements').doc(id));
+        }
+
+        // 4. Update Vacances module
+        if (insSnap && insSnap.exists && insRef) {
+          const i = insSnap.data() as any;
+          const newTotal = Math.max(0, (Number(i.total_verse) || 0) - amount);
+          const due = Number(i.montant_total_du) || 0;
+          transaction.update(insRef, {
+            total_verse: newTotal,
+            reste: Math.max(0, due - newTotal),
+            statut: newTotal >= due ? 'SOLDÉ' : (newTotal > 0 ? 'EN COURS' : 'EN ATTENTE'),
+            updatedAt: new Date().toISOString()
+          });
+          transaction.delete(insRef.collection('versements').doc(id));
+        }
+
+        // 5. Update main student record payments array
+        if (studentId) {
+          const sRef = dbAdmin.collection('students').doc(studentId);
+          const sSnap = await transaction.get(sRef);
+          if (sSnap.exists) {
+            const sData = sSnap.data() as any;
+            const updatedPayments = (sData.payments || []).filter((p: any) => p.id !== id);
+            transaction.update(sRef, { payments: updatedPayments });
+          }
+        }
+
+        // 6. Soft delete main transaction
+        transaction.update(financeRef, {
+          status: 'deleted',
+          deletedAt: new Date().toISOString(),
+          deletedBy: req.user.email,
+          deletionReason: reason
+        });
       });
 
-      // If it was linked to a scolarite versement, we should mark it as deleted there too
-      // However, simplified for now: DataContext filters out 'deleted'
-      
-      addLog('INFO', `Transaction supprimée: ${id}`, { reason, by: req.user.id });
-      res.json({ message: 'Transaction supprimée' });
+      addLog('INFO', `Transaction annulée: ${id}`, { reason, by: req.user.email });
+      res.json({ message: 'Transaction annulée avec succès et soldes mis à jour.' });
     } catch (err: any) {
       console.error("Finance delete error:", err);
       res.status(500).json({ message: err.message });
@@ -2514,97 +2707,7 @@ async function startServer() {
   });
 
   // Levels API
-  app.delete('/api/finances/:id', authenticate, async (req: any, res) => {
-    try {
-      if (req.user.role !== 'admin') return res.status(403).json({ message: "Interdit" });
-      const transId = req.params.id;
 
-      await dbAdmin.runTransaction(async (transaction) => {
-        // 1. Fetch the transaction from several possible locations
-        const financeRef = dbAdmin.collection('finances').doc(transId);
-        const transRef = dbAdmin.collection('transactions').doc(transId);
-        
-        const fSnap = await transaction.get(financeRef);
-        if (!fSnap.exists) throw new Error('Transaction introuvable dans le Grand Livre');
-        
-        const fData = fSnap.data() as any;
-        const amount = Number(fData.montant || 0);
-        const studentId = fData.studentId || fData.eleve_id;
-        const account = fData.accountType || fData.compte_destination;
-        const category = fData.category || fData.type_versement || fData.type;
-
-        // READ ALL REMAINING DOCS BEFORE ANY WRITES
-        const balanceRef = dbAdmin.collection('comptes').doc(account === 'banque' ? 'banque' : 'caisse');
-        const bSnap = await transaction.get(balanceRef);
-
-        let scodaSnap = null;
-        let scodaRef = null;
-        if (studentId && (category === 'Scolarité' || category === 'vorbereitung' || category === 'Inscription')) {
-          const coll = (category === 'vorbereitung') ? 'vorbereitung' : 'scolarites';
-          scodaRef = dbAdmin.collection(coll).doc(studentId);
-          scodaSnap = await transaction.get(scodaRef);
-        }
-
-        let studentSnap = null;
-        let studentRef = null;
-        if (studentId) {
-          studentRef = dbAdmin.collection('students').doc(studentId);
-          studentSnap = await transaction.get(studentRef);
-        }
-
-        // 2. Reverse account balance
-        if (bSnap.exists) {
-          const currentBal = bSnap.data()?.solde_actuel || 0;
-          transaction.update(balanceRef, { 
-            solde_actuel: currentBal - amount, 
-            derniere_maj: new Date().toISOString() 
-          });
-        }
-
-        // 3. Update Student Schooling / Vorbereitung if applicable
-        if (scodaSnap && scodaSnap.exists && scodaRef) {
-          const scoda = scodaSnap.data() as any;
-          const newTotal = Math.max(0, (scoda.total_verse || 0) - amount);
-          const due = scoda.montant_total_du || 0;
-          
-          transaction.update(scodaRef, {
-            total_verse: newTotal,
-            reste: Math.max(0, due - newTotal),
-            statut_paiement: newTotal >= due ? 'SOLDÉ' : (newTotal > 0 ? 'EN COURS' : 'NON PAYÉ'),
-            updatedAt: new Date().toISOString()
-          });
-
-          // Also delete the individual record in the subcollection
-          const verRef = scodaRef.collection('versements').doc(transId);
-          transaction.delete(verRef);
-        }
-
-        // Also remove from student's history array
-        if (studentSnap && studentSnap.exists && studentRef) {
-           const student = studentSnap.data() as any;
-           const filteredPayments = (student.payments || []).filter((p: any) => p.receiptId !== fData.recu_numero && p.id !== transId);
-           transaction.update(studentRef, { payments: filteredPayments });
-        }
-
-        // 4. Delete logically from both locations
-        transaction.update(financeRef, { 
-          status: 'deleted', 
-          deletedAt: new Date().toISOString(), 
-          deletedBy: req.user.email 
-        });
-        transaction.update(transRef, { 
-          supprimé: true, 
-          deletedAt: new Date().toISOString(), 
-          deletedBy: req.user.email 
-        });
-      });
-
-      res.json({ message: 'Transaction annulée avec succès' });
-    } catch (err: any) {
-      console.error("Error deleting transaction:", err);
-      res.status(500).json({ message: err.message });
-    }
-  });
 
   app.get('/api/levels', authenticate, async (req, res) => {
     try {

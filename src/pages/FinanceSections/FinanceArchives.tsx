@@ -14,7 +14,7 @@ export default function FinanceArchives() {
   const [filterAccount, setFilterAccount] = useState('all');
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const isAdmin = user?.role === 'admin';
+  const isAuthorized = user?.role === 'admin' || user?.isSuperAdmin;
 
   const handleDelete = async (id: string, libelle: string) => {
     if (!window.confirm(`Êtes-vous sûr de vouloir ANNULER la transaction : "${libelle}" ?\n\nCela recalculera les soldes de l'élève et du compte concernés.`)) return;
@@ -177,7 +177,7 @@ export default function FinanceArchives() {
                         </td>
                         <td className="px-8 py-5 whitespace-nowrap">
                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              {isAdmin && (
+                              {isAuthorized && (
                                 <button 
                                   onClick={() => handleDelete(f.id, f.libelle)}
                                   disabled={deletingId === f.id}
