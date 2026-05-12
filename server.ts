@@ -502,12 +502,10 @@ async function startServer() {
   const validatePassword = (password: string) => {
     const minLength = 6;
     const hasUppercase = /[A-Z]/.test(password);
-    const hasDot = /\./.test(password);
     const hasDigit = /\d/.test(password);
 
     if (password.length < minLength) return { isValid: false, message: "Le mot de passe doit contenir au moins 6 caractères." };
     if (!hasUppercase) return { isValid: false, message: "Le mot de passe doit contenir au moins une majuscule." };
-    if (!hasDot) return { isValid: false, message: "Le mot de passe doit contenir au moins un point (.)." };
     if (!hasDigit) return { isValid: false, message: "Le mot de passe doit contenir au moins un chiffre." };
 
     return { isValid: true, message: "" };
