@@ -93,6 +93,26 @@ export default function FinanceMaintenance() {
         {/* Tool 4: Integrity Check */}
         <motion.div whileHover={{ y: -5 }} className="bg-white dark:bg-neutral-900 p-8 rounded-[2.5rem] border-2 border-neutral-100 dark:border-neutral-800 shadow-sm">
           <div className="flex items-start justify-between mb-6">
+            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
+              <RefreshCw size={24} className={running === 'SyncModules' ? 'animate-spin' : ''} />
+            </div>
+            <button 
+              onClick={() => runTool('/api/maintenance/sync-modules', 'SyncModules')}
+              disabled={!!running}
+              className="btn-primary py-2 px-6 rounded-xl hover:scale-105 active:scale-95 transition-all bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
+            >
+              Sync
+            </button>
+          </div>
+          <h3 className="text-xl font-black text-neutral-900 dark:text-white uppercase mb-2">Sync Modules</h3>
+          <p className="text-sm font-bold text-neutral-500 uppercase leading-relaxed">
+            Recalcule les paiements d'après le grand livre pour Scolarité, Vorbereitung et Cours de Vacances.
+          </p>
+        </motion.div>
+
+        {/* Tool 4: Integrity Check (Existing) */}
+        <motion.div whileHover={{ y: -5 }} className="bg-white dark:bg-neutral-900 p-8 rounded-[2.5rem] border-2 border-neutral-100 dark:border-neutral-800 shadow-sm">
+          <div className="flex items-start justify-between mb-6">
             <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
               <CheckCircle2 size={24} />
             </div>

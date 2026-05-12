@@ -216,6 +216,21 @@ service cloud.firestore {
       }
     }
 
+    match /cours_vacances/{sessionId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+
+      match /inscriptions/{studentId} {
+        allow read: if isAdmin() || isOwner(studentId);
+        allow write: if isAdmin();
+
+        match /versements/{versementId} {
+          allow read: if isAdmin() || isOwner(studentId);
+          allow write: if false; // Forced to API
+        }
+      }
+    }
+
     match /sorties/{sortieId} {
       allow read: if isAdmin();
       allow write: if false; // Forced to API
@@ -224,6 +239,11 @@ service cloud.firestore {
     // Collection Group for Versements - REQUIRED for Financial Dashboard
     match /{path=**}/versements/{versementId} {
       allow read: if isAdmin();
+    }
+
+    match /transactions/{transId} {
+      allow read: if isAdmin();
+      allow write: if false; // Ledger is immutable from client
     }
 
     match /levels/{levelId} {
@@ -254,7 +274,7 @@ service cloud.firestore {
       }
     }
 
-    match /audit_log/{logId} {
+    match /audit_logs/{logId} {
       allow read: if isAdmin();
       allow create: if isSignedIn();
       allow update, delete: if false;

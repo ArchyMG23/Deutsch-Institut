@@ -1,17 +1,47 @@
 import React, { useState, useMemo } from 'react';
 import { History, Search, Download, Filter, Printer, Calendar, ArrowUpDown, Trash2, Edit2, AlertCircle } from 'lucide-react';
 import { useData } from '../../context/DataContext';
+import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, cn } from '../../utils';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
 
 export default function FinanceArchives() {
-  const { finances, loading } = useData();
+  const { finances, loading, refreshFinances, refreshStudents } = useData();
+  const { user, fetchWithAuth } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterAccount, setFilterAccount] = useState('all');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const isAdmin = user?.role === 'admin';
+
+  const handleDelete = async (id: string, libelle: string) => {
+    if (!window.confirm(`Êtes-vous sûr de vouloir ANNULER la transaction : "${libelle}" ?\n\nCela recalculera les soldes de l'élève et du compte concernés.`)) return;
+    
+    setDeletingId(id);
+    try {
+      const res = await fetchWithAuth(`/api/finances/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success("Transaction annulée avec succès");
+        refreshFinances(true);
+        refreshStudents(true);
+      } else {
+        const err = await res.json();
+        toast.error(err.message || "Erreur de suppression");
+      }
+    } catch (err) {
+      toast.error("Erreur serveur lors de la suppression");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const filteredFinances = useMemo(() => {
     return (finances || []).filter(f => {
+      // Don't show technically deleted ones unless searching for them
+      if (f.status === 'deleted' && !searchTerm.includes('trash')) return false;
+
       const matchSearch = String(f.libelle || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                           String(f.matricule || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                           String(f.recu_numero || '').toLowerCase().includes(searchTerm.toLowerCase());
@@ -147,7 +177,17 @@ export default function FinanceArchives() {
                         </td>
                         <td className="px-8 py-5 whitespace-nowrap">
                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-400 hover:text-dia-red transition-all">
+                              {isAdmin && (
+                                <button 
+                                  onClick={() => handleDelete(f.id, f.libelle)}
+                                  disabled={deletingId === f.id}
+                                  className="p-2 hover:bg-dia-red/10 rounded-lg text-neutral-400 hover:text-dia-red transition-all"
+                                  title="Annuler cette transaction"
+                                >
+                                   {deletingId === f.id ? <div className="w-4 h-4 border-2 border-dia-red border-t-transparent rounded-full animate-spin" /> : <Trash2 size={16} />}
+                                </button>
+                              )}
+                              <button className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-400 hover:text-neutral-900 transition-all">
                                  <AlertCircle size={16} />
                               </button>
                            </div>

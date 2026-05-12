@@ -231,8 +231,8 @@
       },
       "required": ["montant", "date", "mode_paiement"]
     },
-    "audit_log": {
-      "title": "Audit Log",
+    "audit_logs": {
+      "title": "Audit Logs",
       "description": "System-wide activity log",
       "type": "object",
       "properties": {
@@ -243,6 +243,45 @@
         "details": { "type": "object" }
       },
       "required": ["action", "user_id", "timestamp"]
+    },
+    "cours_vacances": {
+      "title": "Summer Course Session",
+      "description": "Definition of a summer course session",
+      "type": "object",
+      "properties": {
+        "titre": { "type": "string" },
+        "dateDescription": { "type": "string" },
+        "prix": { "type": "number" },
+        "cycle": { "type": "string", "enum": ["Allemand", "Anglais"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      }
+    },
+    "vacances_inscription": {
+      "title": "Summer Course Enrollment",
+      "description": "Student enrollment in a summer session",
+      "type": "object",
+      "properties": {
+        "eleve_id": { "type": "string" },
+        "nom": { "type": "string" },
+        "prenom": { "type": "string" },
+        "matricule": { "type": "string" },
+        "montant_total_du": { "type": "number" },
+        "total_verse": { "type": "number" },
+        "reste": { "type": "number" },
+        "statut": { "type": "string" }
+      }
+    },
+    "transactions": {
+      "title": "Financial Transaction",
+      "description": "Individual financial record in the ledger",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "description": { "type": "string" }
+      }
     }
   },
   "firestore": {
@@ -278,12 +317,24 @@
       "schema": "versement",
       "description": "Payments for intensive prep"
     },
+    "/cours_vacances/{sessionId}": {
+      "schema": "cours_vacances",
+      "description": "Summer course sessions"
+    },
+    "/cours_vacances/{sessionId}/inscriptions/{studentId}": {
+      "schema": "vacances_inscription",
+      "description": "Summer course enrollments"
+    },
+    "/cours_vacances/{sessionId}/inscriptions/{studentId}/versements/{versementId}": {
+      "schema": "versement",
+      "description": "Summer course payments"
+    },
     "/sorties/{sortieId}": {
       "schema": "sorties",
       "description": "Expense details"
     },
-    "/audit_log/{logId}": {
-      "schema": "audit_log",
+    "/audit_logs/{logId}": {
+      "schema": "audit_logs",
       "description": "Audit trail"
     },
     "/users/{userId}": {
@@ -301,6 +352,10 @@
     "/finances/{recordId}": {
       "schema": "finances",
       "description": "Financial records"
+    },
+    "/transactions/{transId}": {
+      "schema": "transactions",
+      "description": "Detailed ledger transactions"
     },
     "/classes/{classId}": {
       "schema": "classes",

@@ -1151,9 +1151,11 @@ async function startServer() {
     const modePaiement = req.body.modePaiement || 'Espèces';
     const compteDestination = req.body.compteDestination || 'caisse';
 
-    let montantInscription = 10000;
-    if (fraisType === 'Réduction 50%') montantInscription = 5000;
-    if (fraisType === 'Réduction totale') montantInscription = 0;
+    let montantInscription = (req.body.inscriptionAmount !== undefined) ? Number(req.body.inscriptionAmount) : 10000;
+    if (req.body.inscriptionAmount === undefined) {
+      if (fraisType === 'Réduction 50%') montantInscription = 5000;
+      if (fraisType === 'Réduction totale') montantInscription = 0;
+    }
     
     try {
       const passValidation = validatePassword(password || 'DIA2026.');
@@ -1212,8 +1214,16 @@ async function startServer() {
       batch.set(dbAdmin.collection('students').doc(studentId), newStudent);
 
       batch.set(dbAdmin.collection('scolarites').doc(studentId), {
-        eleve_id: studentId, matricule, levelId: levelIdForTuition, montant_total_du: tuitionTotal,
-        total_verse: 0, reste: tuitionTotal, surplus: false, statut_paiement: 'NON PAYÉ', nom_eleve: `${studentData.firstName} ${studentData.lastName}`, createdAt
+        eleve_id: studentId, 
+        matricule, 
+        levelId: levelIdForTuition, 
+        montant_total_du: tuitionTotal,
+        total_verse: 0, 
+        reste: tuitionTotal, 
+        surplus: false, 
+        statut_paiement: tuitionTotal === 0 ? 'SOLDÉ' : 'NON PAYÉ', 
+        nom_eleve: `${studentData.firstName} ${studentData.lastName}`, 
+        createdAt
       });
 
       // 4. Inscription Transaction (Record even if 0 to track registration date)
@@ -1243,6 +1253,9 @@ async function startServer() {
       res.json({ ...newStudent, tempPassword: password || 'DIA2026.' });
     } catch (err: any) {
       console.error("Student registration error:", err);
+      if (err.code === 'auth/email-already-exists' || err.code === 'auth/uid-already-exists') {
+        return res.status(409).json({ message: "Cet étudiant est déjà inscrit dans le système (Email/Matricule déjà utilisé)." });
+      }
       res.status(500).json({ message: err.message });
     }
   });
@@ -1698,8 +1711,146 @@ async function startServer() {
   // --- NEW FINANCIAL SYSTEM ---
   
   // 1. Payment (Scolarité/Vorbereitung)
+  app.post('/api/maintenance/sync-modules', authenticate, async (req: any, res: any) => {
+    try {
+      if (req.user.role !== 'admin') return res.status(403).json({ message: "Interdit" });
+      
+      const studentsSnap = await dbAdmin.collection('students').get();
+      const results = { scolarites: 0, vorbereitung: 0, vacances: 0 };
+
+      for (const studentDoc of studentsSnap.docs) {
+        const studentId = studentDoc.id;
+        
+        // 1. Sync Scolarites
+        const scolRef = dbAdmin.collection('scolarites').doc(studentId);
+        const scolSnap = await scolRef.get();
+        if (scolSnap.exists) {
+          const transSnap = await dbAdmin.collection('finances')
+            .where('studentId', '==', studentId)
+            .where('category', '==', 'Scolarité')
+            .where('status', '==', 'active')
+            .get();
+          
+          const totalPaid = transSnap.docs.reduce((sum, d) => sum + (d.data().amount || 0), 0);
+          const data = scolSnap.data() as any;
+          const due = data.montant_total_du || 0;
+          
+          await scolRef.update({
+            total_verse: totalPaid,
+            reste: Math.max(0, due - totalPaid),
+            statut_paiement: totalPaid >= due ? 'SOLDÉ' : (totalPaid > 0 ? 'EN COURS' : 'NON PAYÉ'),
+            updatedAt: new Date().toISOString()
+          });
+          results.scolarites++;
+        }
+
+        // 2. Sync Vorbereitung
+        const vorbRef = dbAdmin.collection('vorbereitung').doc(studentId);
+        const vorbSnap = await vorbRef.get();
+        if (vorbSnap.exists) {
+           const transSnap = await dbAdmin.collection('finances')
+            .where('studentId', '==', studentId)
+            .where('category', '==', 'Vorbereitung')
+            .where('status', '==', 'active')
+            .get();
+          
+          const totalPaid = transSnap.docs.reduce((sum, d) => sum + (d.data().amount || 0), 0);
+          const data = vorbSnap.data() as any;
+          const due = data.montant_total_du || 0;
+          
+          await vorbRef.update({
+            total_verse: totalPaid,
+            reste: Math.max(0, due - totalPaid),
+            statut_paiement: totalPaid >= due ? 'SOLDÉ' : (totalPaid > 0 ? 'EN COURS' : 'NON PAYÉ'),
+            updatedAt: new Date().toISOString()
+          });
+          results.vorbereitung++;
+        }
+
+        // 3. Sync Cours Vacances
+        const transVacSnap = await dbAdmin.collection('finances')
+          .where('studentId', '==', studentId)
+          .where('category', '==', 'vacances')
+          .where('status', '==', 'active')
+          .get();
+        
+        if (transVacSnap.size > 0) {
+          const sessionsSnap = await dbAdmin.collection('cours_vacances').get();
+          const paymentsBySession: Record<string, number> = {};
+          
+          transVacSnap.docs.forEach(d => {
+            const data = d.data();
+            // Try to find session ID: from field, or from notes/title
+            let sid = data.sessionId;
+            if (!sid && data.notes) {
+              // Try to find a session where titre is mentioned in notes
+              const sessionMatch = sessionsSnap.docs.find(s => {
+                const sTitle = s.data().titre.toLowerCase();
+                return data.notes.toLowerCase().includes(sTitle);
+              });
+              if (sessionMatch) sid = sessionMatch.id;
+            }
+            
+            // Default to the most recent session if still no ID find
+            if (!sid && sessionsSnap.size > 0) {
+              sid = sessionsSnap.docs[0].id; // The most recent session is usually first (since they are ordered by createdAt desc)
+            }
+
+            if (sid) {
+              paymentsBySession[sid] = (paymentsBySession[sid] || 0) + (data.amount || 0);
+            }
+          });
+
+          for (const sessionDoc of sessionsSnap.docs) {
+            const sid = sessionDoc.id;
+            const paidForThisSession = paymentsBySession[sid] || 0;
+            
+            if (paidForThisSession > 0) {
+              const insRef = sessionDoc.ref.collection('inscriptions').doc(studentId);
+              const insSnap = await insRef.get();
+              
+              const sessionData = sessionDoc.data();
+              const due = (insSnap.data() as any)?.montant_total_du || sessionData.prix || 25000;
+              
+              const studentRef = dbAdmin.collection('students').doc(studentId);
+              const sSnap = await studentRef.get();
+              const sData = sSnap.data() || {};
+
+              const updateObj = {
+                eleve_id: studentId,
+                nom: sData.lastName || '',
+                prenom: sData.firstName || '',
+                matricule: sData.matricule || '',
+                total_verse: paidForThisSession,
+                reste: Math.max(0, due - paidForThisSession),
+                statut: paidForThisSession >= due ? 'SOLDÉ' : 'EN COURS',
+                updatedAt: new Date().toISOString()
+              };
+
+              if (!insSnap.exists) {
+                // Auto enroll if student has payments but no enrollment doc
+                await insRef.set({
+                  ...updateObj,
+                  montant_total_du: due,
+                  enrolledAt: new Date().toISOString()
+                });
+              } else {
+                await insRef.update(updateObj);
+              }
+              results.vacances++;
+            }
+          }
+        }
+      }
+
+      res.json({ message: 'Synchronisation terminée', results });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post('/api/finances/payment', authenticate, async (req: any, res) => {
-    const { studentId, amount, date, paymentMethod, accountType, type, levelId, notes } = req.body;
+    const { studentId, amount, date, paymentMethod, accountType, type, levelId, notes, sessionId, sessionTitle } = req.body;
     if (!studentId || !amount || amount <= 0) return res.status(400).json({ message: 'Données invalides' });
 
     try {
@@ -1708,111 +1859,174 @@ async function startServer() {
       const createdAt = new Date().toISOString();
 
       await dbAdmin.runTransaction(async (transaction) => {
+        // 1. ALL READS FIRST
         const studentRef = dbAdmin.collection('students').doc(studentId);
-        const studentDoc = await transaction.get(studentRef);
+        const balanceRef = dbAdmin.collection('comptes').doc(accountType === 'banque' ? 'banque' : 'caisse');
+        
+        const [studentDoc, balanceDoc] = await Promise.all([
+          transaction.get(studentRef),
+          transaction.get(balanceRef)
+        ]);
+
         if (!studentDoc.exists) throw new Error('Étudiant introuvable');
-        
         const student = studentDoc.data() as any;
-        const coll = (type === 'vorbereitung' || req.body.category === 'vorbereitung') ? 'vorbereitung' : 'scolarites';
-        const scolariteRef = dbAdmin.collection(coll).doc(studentId);
-        const scolariteDoc = await transaction.get(scolariteRef);
+
+        // Conditional Reads for Scolarite/Vorbereitung
+        let scolariteDoc = null;
+        let levelSnap = null;
+        let scolariteRef = null;
         
-        if (!scolariteDoc.exists) {
-          // Determine the correct total due based on student's level or custom tuition
-          const levelId = student.levelId;
-          let due = 110000; // Default fallback
+        if (type !== 'vacances') {
+          const coll = (type === 'vorbereitung' || req.body.category === 'vorbereitung') ? 'vorbereitung' : 'scolarites';
+          scolariteRef = dbAdmin.collection(coll).doc(studentId);
+          scolariteDoc = await transaction.get(scolariteRef);
           
-          if (student.totalTuition) {
-            due = Number(student.totalTuition);
-          } else if (levelId) {
-            const levelSnap = await transaction.get(dbAdmin.collection('levels').doc(levelId));
-            if (levelSnap.exists) due = levelSnap.data()?.tuition || 110000;
+          if (!scolariteDoc.exists && !student.totalTuition && student.levelId && req.body.totalDue === undefined) {
+             levelSnap = await transaction.get(dbAdmin.collection('levels').doc(student.levelId));
+          }
+        }
+
+        // Conditional Reads for Vacances
+        let insDoc = null;
+        let insRef = null;
+        if (type === 'vacances' && sessionId) {
+          insRef = dbAdmin.collection('cours_vacances').doc(sessionId).collection('inscriptions').doc(studentId);
+          insDoc = await transaction.get(insRef);
+          if (!insDoc.exists) throw new Error("Inscription aux cours de vacances introuvable");
+        }
+
+        // 2. ALL WRITES AFTER (No more transaction.get() allowed after this point)
+
+        // Handle Summer Course (Vacances) Payments
+        if (type === 'vacances' && insDoc && insRef) {
+          const insData = insDoc.data() as any;
+          const newTotalVerse = (insData.total_verse || 0) + amount;
+          const totalDu = insData.montant_total_du || 0;
+          
+          transaction.update(insRef, {
+            total_verse: newTotalVerse,
+            reste: Math.max(0, totalDu - newTotalVerse),
+            statut: newTotalVerse >= totalDu ? 'SOLDÉ' : 'EN COURS',
+            updatedAt: createdAt
+          });
+          
+          const vRef = insRef.collection('versements').doc(transId);
+          transaction.set(vRef, {
+            id: transId,
+            montant: amount,
+            date: date || createdAt,
+            mode_paiement: paymentMethod || 'Espèces',
+            recu_numero,
+            notes: notes || `Paiement Cours Vacances: ${sessionTitle || ''}`,
+            saisi_par: req.user.email
+          });
+        } 
+        else if (scolariteRef) {
+          // Handle Regular Tuition / Vorbereitung
+          let sData: any;
+          let dueAmt: number;
+
+          if (!scolariteDoc || !scolariteDoc.exists) {
+            const lId = student.levelId;
+            let due = (req.body.totalDue !== undefined) ? Number(req.body.totalDue) : 110000;
+            
+            if (req.body.totalDue === undefined) {
+              if (student.totalTuition) {
+                due = Number(student.totalTuition);
+              } else if (lId && levelSnap && levelSnap.exists) {
+                due = levelSnap.data()?.tuition || 110000;
+              }
+            }
+
+            sData = {
+              eleve_id: studentId, 
+              matricule: student.matricule, 
+              nom_eleve: `${student.firstName} ${student.lastName}`,
+              montant_total_du: due, 
+              total_verse: 0, 
+              reste: due,
+              surplus: false, 
+              statut_paiement: 'NON PAYÉ', 
+              createdAt
+            };
+            transaction.set(scolariteRef, sData);
+            dueAmt = due;
+          } else {
+            sData = scolariteDoc.data() as any;
+            dueAmt = sData.montant_total_du || 0;
           }
 
-          // Auto-create if missing (failsafe)
-          transaction.set(scolariteRef, {
-            eleve_id: studentId, 
-            matricule: student.matricule, 
-            nom_eleve: `${student.firstName} ${student.lastName}`,
-            montant_total_du: due, 
-            total_verse: 0, 
-            reste: due,
-            surplus: false, 
-            statut_paiement: 'NON PAYÉ', 
-            createdAt
+          const newTotal = (sData.total_verse || 0) + amount;
+          transaction.update(scolariteRef, {
+            total_verse: newTotal,
+            reste: Math.max(0, dueAmt - newTotal),
+            surplus: newTotal > dueAmt,
+            statut_paiement: newTotal >= dueAmt ? 'SOLDÉ' : (newTotal > 0 ? 'EN COURS' : 'NON PAYÉ'),
+            updatedAt: createdAt
+          });
+
+          const vRefSub = scolariteRef.collection('versements').doc(transId);
+          transaction.set(vRefSub, {
+            id: transId, montant: amount, date: date || createdAt,
+            mode_paiement: paymentMethod || 'Espèces', recu_numero,
+            notes: notes || '', saisi_par: req.user.email
           });
         }
 
-        const sSnap = await transaction.get(scolariteRef);
-        const sData = sSnap.data() as any;
-        const newTotal = (sData.total_verse || 0) + amount;
-        const due = sData.montant_total_du || 0;
-
-        transaction.update(scolariteRef, {
-          total_verse: newTotal,
-          reste: Math.max(0, due - newTotal),
-          surplus: newTotal > due,
-          statut_paiement: newTotal >= due ? 'SOLDÉ' : (newTotal > 0 ? 'EN COURS' : 'NON PAYÉ'),
-          updatedAt: createdAt
-        });
-
-        const vRef = scolariteRef.collection('versements').doc(transId);
-        transaction.set(vRef, {
-          id: transId, montant: amount, date: date || createdAt, mode_paiement: paymentMethod,
-          compte: accountType, type: type || 'Scolarité', recu_numero, level_id: levelId || student.levelId,
-          saisi_par: req.user.email, timestamp: admin.firestore.FieldValue.serverTimestamp()
-        });
-
+        // Global Ledger & Balance
         const transRef = dbAdmin.collection('transactions').doc(transId);
         transaction.set(transRef, {
-          id: transId, type, eleve_id: studentId, libelle: `${type === 'vorbereitung' ? 'Vorbereitung' : 'Scolarité'} - ${student.firstName} ${student.lastName}`,
-          montant: amount, date_versement: date || createdAt, mode_paiement: paymentMethod, compte_destination: accountType,
-          saisi_par: req.user.email, timestamp_creation: admin.firestore.FieldValue.serverTimestamp(),
-          niveau_id: levelId || student.levelId, type_versement: type, recu_numero, modifié: false, supprimé: false, notes: notes || ''
-        });
-
-        await ajusterSolde(accountType, amount, transaction);
-
-        // SYNC: Update student record with this payment to reflect in StudentManagement lists
-        const paymentRecord = {
-          amount,
-          date: date || createdAt,
-          receiptId: recu_numero,
+          id: transId,
+          type: (type === 'vacances' ? 'income' : type),
           category: type || 'Scolarité',
-          method: paymentMethod
-        };
-        transaction.update(studentRef, {
-          payments: admin.firestore.FieldValue.arrayUnion(paymentRecord)
+          eleve_id: studentId,
+          matricule: student.matricule,
+          libelle: notes || `${type === 'vacances' ? 'Cours Vacances' : (type === 'vorbereitung' ? 'Vorbereitung' : 'Scolarité')} - ${student.firstName} ${student.lastName}`,
+          montant: amount,
+          date_versement: date || createdAt,
+          mode_paiement: paymentMethod || 'Espèces',
+          compte_destination: accountType,
+          recu_numero,
+          saisi_par: req.user.email,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          modifié: false, suppressed: false
         });
 
-        // UNIFIED SYNC: Also write to the 'finances' collection used by the ledger
-        const financeId = transId; 
-        transaction.set(dbAdmin.collection('finances').doc(financeId), {
-          id: financeId,
-          studentId,
-          studentMatricule: student.matricule,
+        // Update Account Balance using standard update method to avoid helper recursion/read-after-write
+        transaction.update(balanceRef, {
+          solde_actuel: admin.firestore.FieldValue.increment(amount),
+          derniere_maj: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        transaction.update(studentRef, {
+          payments: admin.firestore.FieldValue.arrayUnion({
+            amount, date: date || createdAt, receiptId: recu_numero,
+            category: type || 'Scolarité', method: paymentMethod || 'Espèces', notes: notes || ''
+          })
+        });
+
+        // Unified Finance Collection (Ledger)
+        let finalCategory = 'Scolarité';
+        if (type === 'vorbereitung') finalCategory = 'Vorbereitung';
+        if (type === 'vacances') finalCategory = 'vacances';
+
+        transaction.set(dbAdmin.collection('finances').doc(transId), {
+          id: transId, studentId, studentMatricule: student.matricule,
           studentName: `${student.firstName} ${student.lastName}`,
-          amount,
-          date: date || createdAt,
-          type: 'income',
-          category: type === 'vorbereitung' ? 'Vorbereitung' : 'Scolarité',
-          method: paymentMethod,
-          accountType,
-          notes: notes || '',
-          receiptId: recu_numero,
-          createdBy: req.user.id,
-          createdAt,
-          updatedAt: createdAt,
-          status: 'active'
+          amount, date: date || createdAt, type: 'income', category: finalCategory,
+          method: paymentMethod || 'Espèces', accountType, notes: notes || '',
+          receiptId: recu_numero, createdBy: req.user.id, createdAt, updatedAt: createdAt, status: 'active',
+          sessionId: sessionId || null, sessionTitle: sessionTitle || null
         });
       });
 
       res.json({ message: 'Paiement enregistré', recu_numero });
     } catch (err: any) {
-      console.error("Payment error:", err);
+      console.error("Payment error detail:", err);
       res.status(500).json({ message: err.message });
     }
   });
+
 
   // 2. Diverse Income
   app.post('/api/finances/diverse', authenticate, async (req: any, res) => {
@@ -2150,6 +2364,55 @@ async function startServer() {
     }
   });
 
+  app.put('/api/finances/update-due/:id', authenticate, async (req: any, res: any) => {
+    const { montant_total_du, type } = req.body;
+    const studentId = req.params.id;
+    const coll = (type === 'vorbereitung') ? 'vorbereitung' : 'scolarites';
+
+    try {
+      await dbAdmin.runTransaction(async (transaction) => {
+        const ref = dbAdmin.collection(coll).doc(studentId);
+        const snap = await transaction.get(ref);
+        
+        const newDue = Number(montant_total_du);
+        
+        if (!snap.exists) {
+           // Fetch student name and matricule for better scolarite/vorbereitung record
+           const studentRef = dbAdmin.collection('students').doc(studentId);
+           const sSnap = await transaction.get(studentRef);
+           const sData = sSnap.data() || {};
+           
+           transaction.set(ref, {
+             eleve_id: studentId,
+             matricule: sData.matricule || '',
+             nom_eleve: `${sData.firstName || ''} ${sData.lastName || ''}`,
+             montant_total_du: newDue,
+             total_verse: 0,
+             reste: newDue,
+             surplus: false,
+             statut_paiement: newDue === 0 ? 'SOLDÉ' : 'NON PAYÉ',
+             createdAt: new Date().toISOString(),
+             updatedAt: new Date().toISOString()
+           });
+        } else {
+          const data = snap.data() as any;
+          const totalVerse = data.total_verse || 0;
+
+          transaction.update(ref, {
+            montant_total_du: newDue,
+            reste: Math.max(0, newDue - totalVerse),
+            surplus: totalVerse > newDue,
+            statut_paiement: totalVerse >= newDue ? 'SOLDÉ' : (totalVerse > 0 ? 'EN COURS' : 'NON PAYÉ'),
+            updatedAt: new Date().toISOString()
+          });
+        }
+      });
+      res.json({ message: 'Objectif mis à jour' });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post('/api/finances', authenticate, async (req: any, res: any) => {
     try {
       if (req.user.role !== 'admin') return res.status(403).json({ message: "Interdit" });
@@ -2251,6 +2514,98 @@ async function startServer() {
   });
 
   // Levels API
+  app.delete('/api/finances/:id', authenticate, async (req: any, res) => {
+    try {
+      if (req.user.role !== 'admin') return res.status(403).json({ message: "Interdit" });
+      const transId = req.params.id;
+
+      await dbAdmin.runTransaction(async (transaction) => {
+        // 1. Fetch the transaction from several possible locations
+        const financeRef = dbAdmin.collection('finances').doc(transId);
+        const transRef = dbAdmin.collection('transactions').doc(transId);
+        
+        const fSnap = await transaction.get(financeRef);
+        if (!fSnap.exists) throw new Error('Transaction introuvable dans le Grand Livre');
+        
+        const fData = fSnap.data() as any;
+        const amount = Number(fData.montant || 0);
+        const studentId = fData.studentId || fData.eleve_id;
+        const account = fData.accountType || fData.compte_destination;
+        const category = fData.category || fData.type_versement || fData.type;
+
+        // READ ALL REMAINING DOCS BEFORE ANY WRITES
+        const balanceRef = dbAdmin.collection('comptes').doc(account === 'banque' ? 'banque' : 'caisse');
+        const bSnap = await transaction.get(balanceRef);
+
+        let scodaSnap = null;
+        let scodaRef = null;
+        if (studentId && (category === 'Scolarité' || category === 'vorbereitung' || category === 'Inscription')) {
+          const coll = (category === 'vorbereitung') ? 'vorbereitung' : 'scolarites';
+          scodaRef = dbAdmin.collection(coll).doc(studentId);
+          scodaSnap = await transaction.get(scodaRef);
+        }
+
+        let studentSnap = null;
+        let studentRef = null;
+        if (studentId) {
+          studentRef = dbAdmin.collection('students').doc(studentId);
+          studentSnap = await transaction.get(studentRef);
+        }
+
+        // 2. Reverse account balance
+        if (bSnap.exists) {
+          const currentBal = bSnap.data()?.solde_actuel || 0;
+          transaction.update(balanceRef, { 
+            solde_actuel: currentBal - amount, 
+            derniere_maj: new Date().toISOString() 
+          });
+        }
+
+        // 3. Update Student Schooling / Vorbereitung if applicable
+        if (scodaSnap && scodaSnap.exists && scodaRef) {
+          const scoda = scodaSnap.data() as any;
+          const newTotal = Math.max(0, (scoda.total_verse || 0) - amount);
+          const due = scoda.montant_total_du || 0;
+          
+          transaction.update(scodaRef, {
+            total_verse: newTotal,
+            reste: Math.max(0, due - newTotal),
+            statut_paiement: newTotal >= due ? 'SOLDÉ' : (newTotal > 0 ? 'EN COURS' : 'NON PAYÉ'),
+            updatedAt: new Date().toISOString()
+          });
+
+          // Also delete the individual record in the subcollection
+          const verRef = scodaRef.collection('versements').doc(transId);
+          transaction.delete(verRef);
+        }
+
+        // Also remove from student's history array
+        if (studentSnap && studentSnap.exists && studentRef) {
+           const student = studentSnap.data() as any;
+           const filteredPayments = (student.payments || []).filter((p: any) => p.receiptId !== fData.recu_numero && p.id !== transId);
+           transaction.update(studentRef, { payments: filteredPayments });
+        }
+
+        // 4. Delete logically from both locations
+        transaction.update(financeRef, { 
+          status: 'deleted', 
+          deletedAt: new Date().toISOString(), 
+          deletedBy: req.user.email 
+        });
+        transaction.update(transRef, { 
+          supprimé: true, 
+          deletedAt: new Date().toISOString(), 
+          deletedBy: req.user.email 
+        });
+      });
+
+      res.json({ message: 'Transaction annulée avec succès' });
+    } catch (err: any) {
+      console.error("Error deleting transaction:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get('/api/levels', authenticate, async (req, res) => {
     try {
       const snapshot = await dbAdmin.collection('levels').get();

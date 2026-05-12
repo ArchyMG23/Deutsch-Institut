@@ -18,6 +18,7 @@ export default function FinanceVorbereitung() {
   const [loading, setLoading] = useState(false);
   const [vorbereitung, setVorbereitung] = useState<any>(null);
   const [versements, setVersements] = useState<any[]>([]);
+  const [targetAmount, setTargetAmount] = useState('50000');
 
   const filteredStudents = useMemo(() => {
     if (!searchTerm) return [];
@@ -33,11 +34,14 @@ export default function FinanceVorbereitung() {
       const vRef = doc(db, 'vorbereitung', studentId);
       const vSnap = await getDoc(vRef);
       if (vSnap.exists()) {
-        setVorbereitung({ id: vSnap.id, ...vSnap.data() });
+        const data = { id: vSnap.id, ...vSnap.data() } as any;
+        setVorbereitung(data);
+        setTargetAmount(String(data.montant_total_du || 50000));
         const verSnap = await getDocs(query(collection(db, 'vorbereitung', studentId, 'versements'), orderBy('date', 'desc')));
         setVersements(verSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       } else {
-        setVorbereitung({ montant_total_du: 50000, total_verse: 0, reste: 50000 });
+        setVorbereitung(null);
+        setTargetAmount('');
         setVersements([]);
       }
     } catch (err) {
@@ -72,23 +76,39 @@ export default function FinanceVorbereitung() {
     try {
       let finalStudentId = selectedStudent?.id;
 
+      let finalTarget = parseFloat(targetAmount);
+      if (isNaN(finalTarget)) finalTarget = 0;
+
       // Handle Guest Registration first if in guest mode
       if (isGuestMode) {
+        const studentPayload = {
+          firstName: guestData.firstName,
+          lastName: guestData.lastName,
+          phone: guestData.phone,
+          levelId: 'none', 
+          cycle: 'Allemand',
+          totalTuition: 0,
+          fraisType: 'Réduction totale' 
+        };
+        
         const regRes = await fetchWithAuth('/api/students', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            firstName: guestData.firstName,
-            lastName: guestData.lastName,
-            phone: guestData.phone,
-            levelId: 'none', // Specialized "None" level
-            cycle: 'Allemand',
-            totalTuition: 0,
-            fraisType: 'Réduction totale' // 0 inscription fee
-          })
+          body: JSON.stringify(studentPayload)
         });
 
-        if (!regRes.ok) throw new Error("Erreur lors de l'enregistrement de l'apprenant");
+        if (regRes.status === 409) {
+           toast.error("Cet apprenant semble déjà exister. Veuillez utiliser la recherche.");
+           setIsGuestMode(false);
+           setSearchTerm(`${guestData.firstName} ${guestData.lastName}`);
+           setLoading(false);
+           return;
+        }
+
+        if (!regRes.ok) {
+          const errData = await regRes.json();
+          throw new Error(errData.message || "Erreur lors de l'enregistrement de l'apprenant");
+        }
         const newStudent = await regRes.json();
         finalStudentId = newStudent.id;
         toast.info(`Apprenant créé : ${newStudent.matricule}`);
@@ -100,6 +120,7 @@ export default function FinanceVorbereitung() {
         body: JSON.stringify({
           studentId: finalStudentId,
           amount: parseFloat(paymentData.amount),
+          totalDue: finalTarget, 
           paymentMethod: paymentData.paymentMethod,
           accountType: paymentData.accountType,
           date: paymentData.date,
@@ -321,6 +342,78 @@ export default function FinanceVorbereitung() {
 
               <form onSubmit={handlePayment} className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-6">
+                  <div className="space-y-2 p-4 bg-amber-50 dark:bg-amber-900/10 rounded-2xl border border-amber-100 dark:border-amber-800 animate-in slide-in-from-left duration-300">
+                    <label className="text-[10px] font-black uppercase text-amber-600 ml-1">Objectif Total Vorbereitung</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="number" 
+                        value={targetAmount}
+                        onChange={e => setTargetAmount(e.target.value)}
+                        className="flex-1 p-3 bg-white dark:bg-neutral-800 rounded-xl border border-amber-200 dark:border-amber-700 font-black text-amber-600"
+                        placeholder="Ex: 50000"
+                      />
+                      <button 
+                        type="button"
+                        onClick={async () => {
+                          if (!selectedStudent && !isGuestMode) return;
+                          setLoading(true);
+                          try {
+                            let studentId = selectedStudent?.id;
+                            
+                            if (isGuestMode) {
+                              const regRes = await fetchWithAuth('/api/students', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  firstName: guestData.firstName,
+                                  lastName: guestData.lastName,
+                                  phone: guestData.phone,
+                                  levelId: 'none',
+                                  cycle: 'Allemand',
+                                  totalTuition: 0,
+                                  fraisType: 'Réduction totale'
+                                })
+                              });
+                              if (!regRes.ok) {
+                                const err = await regRes.json();
+                                throw new Error(err.message || "Erreur création étudiant");
+                              }
+                              const s = await regRes.json();
+                              studentId = s.id;
+                              toast.info(`Matricule attribué: ${s.matricule}`);
+                              setIsGuestMode(false);
+                            }
+
+                            const res = await fetchWithAuth(`/api/finances/update-due/${studentId}`, {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ montant_total_du: parseFloat(targetAmount), type: 'vorbereitung' })
+                            });
+                            if (res.ok) {
+                              toast.success(!vorbereitung ? "Apprenant inscrit en Vorbereitung !" : "Objectif mis à jour !");
+                              fetchVorbereitung(studentId);
+                              refreshAll(true);
+                            } else {
+                              const err = await res.json();
+                              toast.error(err.message || "Erreur de mise à jour");
+                            }
+                          } catch (e: any) {
+                            toast.error(e.message || "Erreur");
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                        disabled={loading || (!targetAmount)}
+                        className={cn(
+                          "p-3 rounded-xl transition-all font-black uppercase text-[10px]",
+                          !vorbereitung ? "bg-amber-500 text-white px-6" : "bg-amber-100 text-amber-600 hover:bg-amber-200"
+                        )}
+                        title={!vorbereitung ? "Inscrire maintenant" : "Mise à jour"}
+                      >
+                         {!vorbereitung ? (loading ? '...' : 'Inscrire') : (loading ? '...' : <RefreshCw size={20} />)}
+                      </button>
+                    </div>
+                  </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Montant (FCFA)</label>
                     <input 
