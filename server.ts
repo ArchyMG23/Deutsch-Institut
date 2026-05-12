@@ -1076,13 +1076,39 @@ async function startServer() {
         usersMap[doc.id] = doc.data();
       });
 
+      // 3. Batch fetch financial summaries to avoid n+1 queries
+      const scolaritesSnap = await dbAdmin.collection('scolarites').get();
+      const vorbereitungSnap = await dbAdmin.collection('vorbereitung').get();
+      
+      const financialMap: Record<string, { paid: number, due: number }> = {};
+      
+      scolaritesSnap.forEach(doc => {
+        const d = doc.data();
+        financialMap[doc.id] = { 
+          paid: (financialMap[doc.id]?.paid || 0) + (d.total_verse || 0),
+          due: (financialMap[doc.id]?.due || 0) + (d.montant_total_du || 0)
+        };
+      });
+
+      vorbereitungSnap.forEach(doc => {
+        const d = doc.data();
+        financialMap[doc.id] = { 
+          paid: (financialMap[doc.id]?.paid || 0) + (d.total_verse || 0),
+          due: (financialMap[doc.id]?.due || 0) + (d.montant_total_du || 0)
+        };
+      });
+
       const students = snapshot.docs.map(doc => {
         const studentData = doc.data();
         const userData = usersMap[doc.id] || {};
+        const finances = financialMap[doc.id] || { paid: 0, due: 0 };
+
         return { 
           id: doc.id,
           uid: doc.id, 
           ...studentData,
+          totalPaid: finances.paid || studentData.totalPaid || 0,
+          totalTuition: finances.due || studentData.totalTuition || 0,
           // Merge critical profile fields
           status: userData.status || 'offline',
           lastActiveDevice: userData.lastActiveDevice || '',

@@ -830,9 +830,9 @@ export default function StudentManagement() {
               </thead>
               <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
                 {paginatedStudents.map((student) => {
-                  const totalPaid = paymentsByStudent[student.id] || 0;
                   const level = levels.find(l => l.id === student.levelId);
                   const tuition = student.totalTuition || level?.tuition || 0;
+                  const totalPaid = student.totalPaid || 0;
                   const isFullyPaid = totalPaid >= tuition && tuition > 0;
   
                   return (
@@ -864,7 +864,7 @@ export default function StudentManagement() {
                       <td className="px-6 py-4">
                         <div className="space-y-1">
                           <div className="flex justify-between text-[10px] font-bold uppercase">
-                            <span>{formatCurrency(totalPaid)}</span>
+                            <span className={cn(isFullyPaid ? "text-green-600" : "")}>{formatCurrency(totalPaid)}</span>
                             <span className="text-neutral-400">/ {formatCurrency(tuition)}</span>
                           </div>
                           <div className="w-full bg-neutral-100 rounded-full h-1.5 overflow-hidden">
@@ -873,6 +873,22 @@ export default function StudentManagement() {
                               style={{ width: `${tuition > 0 ? Math.min(100, (totalPaid / tuition) * 100) : 0}%` }}
                             />
                           </div>
+                          {(() => {
+                            const cats = (finances || [])
+                              .filter(f => (f.studentId === student.id || f.eleve_id === student.id) && f.status !== 'deleted' && f.type === 'income')
+                              .map(f => f.category)
+                              .filter((v, i, a) => v && a.indexOf(v) === i);
+                            if (cats.length === 0) return null;
+                            return (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {cats.map((cat, idx) => (
+                                  <span key={idx} className="text-[7px] font-black uppercase px-1 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 rounded-sm leading-none border border-neutral-200 dark:border-neutral-700">
+                                    {cat}
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </td>
                       <td className="px-6 py-4 text-xs font-medium text-neutral-500">
@@ -952,9 +968,9 @@ export default function StudentManagement() {
         {/* Card View (Mobile) */}
         <div className="grid grid-cols-1 gap-4 md:hidden">
           {paginatedStudents.map((student) => {
-            const totalPaid = paymentsByStudent[student.id] || 0;
             const level = levels.find(l => l.id === student.levelId);
             const tuition = student.totalTuition || level?.tuition || 0;
+            const totalPaid = student.totalPaid || 0;
             const isFullyPaid = totalPaid >= tuition && tuition > 0;
             const cls = classes.find(c => c.id === student.classId);
 
@@ -990,6 +1006,22 @@ export default function StudentManagement() {
                     style={{ width: `${tuition > 0 ? Math.min(100, (totalPaid / tuition) * 100) : 0}%` }}
                   />
                 </div>
+                {(() => {
+                  const cats = (finances || [])
+                    .filter(f => (f.studentId === student.id || f.eleve_id === student.id) && f.status !== 'deleted' && f.type === 'income')
+                    .map(f => f.category)
+                    .filter((v, i, a) => v && a.indexOf(v) === i);
+                  if (cats.length === 0) return null;
+                  return (
+                    <div className="flex flex-wrap gap-1">
+                      {cats.map((cat, idx) => (
+                        <span key={idx} className="text-[7px] font-black uppercase px-2 py-1 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 rounded-md border border-neutral-200 dark:border-neutral-700">
+                          {cat}
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })()}
 
                 <div className="grid grid-cols-2 gap-2 text-[10px] font-bold uppercase">
                   <div className="p-2 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg">
