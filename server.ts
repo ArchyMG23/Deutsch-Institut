@@ -1715,136 +1715,137 @@ async function startServer() {
     try {
       if (req.user.role !== 'admin') return res.status(403).json({ message: "Interdit" });
       
-      const studentsSnap = await dbAdmin.collection('students').get();
       const results = { scolarites: 0, vorbereitung: 0, vacances: 0 };
+      
+      // 1. Fetch EVERYTHING in bulk
+      const [studentsSnap, financesSnap, sessionsSnap, scolaritesSnap, vorbereitungSnap, inscriptionsSnap] = await Promise.all([
+        dbAdmin.collection('students').get(),
+        dbAdmin.collection('finances').where('status', '==', 'active').get(),
+        dbAdmin.collection('cours_vacances').get(),
+        dbAdmin.collection('scolarites').get(),
+        dbAdmin.collection('vorbereitung').get(),
+        dbAdmin.collectionGroup('inscriptions').get()
+      ]);
 
-      for (const studentDoc of studentsSnap.docs) {
-        const studentId = studentDoc.id;
-        
-        // 1. Sync Scolarites
-        const scolRef = dbAdmin.collection('scolarites').doc(studentId);
-        const scolSnap = await scolRef.get();
-        if (scolSnap.exists) {
-          const transSnap = await dbAdmin.collection('finances')
-            .where('studentId', '==', studentId)
-            .where('category', '==', 'Scolarité')
-            .where('status', '==', 'active')
-            .get();
-          
-          const totalPaid = transSnap.docs.reduce((sum, d) => sum + (d.data().amount || 0), 0);
-          const data = scolSnap.data() as any;
-          const due = data.montant_total_du || 0;
-          
-          await scolRef.update({
-            total_verse: totalPaid,
-            reste: Math.max(0, due - totalPaid),
-            statut_paiement: totalPaid >= due ? 'SOLDÉ' : (totalPaid > 0 ? 'EN COURS' : 'NON PAYÉ'),
+      const students = studentsSnap.docs;
+      const sessions = sessionsSnap.docs;
+      
+      // Map finances by studentId
+      const financesByStudent: Record<string, any[]> = {};
+      financesSnap.docs.forEach(d => {
+        const data = d.data();
+        const sid = data.studentId;
+        if (!financesByStudent[sid]) financesByStudent[sid] = [];
+        financesByStudent[sid].push(data);
+      });
+
+      // Map inscriptions by studentId
+      const insByStudent: Record<string, any[]> = {};
+      inscriptionsSnap.docs.forEach(d => {
+        const data = d.data();
+        const sid = data.eleve_id || d.id;
+        const pathParts = d.ref.path.split('/');
+        const sessIdFromPath = pathParts[1];
+        if (!insByStudent[sid]) insByStudent[sid] = [];
+        insByStudent[sid].push({ id: d.id, ref: d.ref, data, sessId: sessIdFromPath });
+      });
+
+      const scolaritesMap = new Map(scolaritesSnap.docs.map(d => [d.id, d.data()]));
+      const vorbereitungMap = new Map(vorbereitungSnap.docs.map(d => [d.id, d.data()]));
+
+      const batch = dbAdmin.batch();
+
+      // Process each student
+      for (const studentDoc of students) {
+        const sid = studentDoc.id;
+        const sData = studentDoc.data();
+        const studentFinances = financesByStudent[sid] || [];
+
+        // Scolarité
+        const scols = studentFinances.filter(f => f.category === 'Scolarité');
+        const totalScol = scols.reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
+        if (scolaritesMap.has(sid)) {
+          const due = Number(scolaritesMap.get(sid)?.montant_total_du) || 0;
+          batch.update(dbAdmin.collection('scolarites').doc(sid), {
+            total_verse: totalScol,
+            reste: Math.max(0, due - totalScol),
+            statut_paiement: totalScol >= due ? 'SOLDÉ' : (totalScol > 0 ? 'EN COURS' : 'NON PAYÉ'),
             updatedAt: new Date().toISOString()
           });
           results.scolarites++;
         }
 
-        // 2. Sync Vorbereitung
-        const vorbRef = dbAdmin.collection('vorbereitung').doc(studentId);
-        const vorbSnap = await vorbRef.get();
-        if (vorbSnap.exists) {
-           const transSnap = await dbAdmin.collection('finances')
-            .where('studentId', '==', studentId)
-            .where('category', '==', 'Vorbereitung')
-            .where('status', '==', 'active')
-            .get();
-          
-          const totalPaid = transSnap.docs.reduce((sum, d) => sum + (d.data().amount || 0), 0);
-          const data = vorbSnap.data() as any;
-          const due = data.montant_total_du || 0;
-          
-          await vorbRef.update({
-            total_verse: totalPaid,
-            reste: Math.max(0, due - totalPaid),
-            statut_paiement: totalPaid >= due ? 'SOLDÉ' : (totalPaid > 0 ? 'EN COURS' : 'NON PAYÉ'),
+        // Vorbereitung
+        const vorbs = studentFinances.filter(f => f.category === 'Vorbereitung' || f.category === 'vorbereitung');
+        const totalVorb = vorbs.reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
+        if (vorbereitungMap.has(sid)) {
+          const due = Number(vorbereitungMap.get(sid)?.montant_total_du) || 0;
+          batch.update(dbAdmin.collection('vorbereitung').doc(sid), {
+            total_verse: totalVorb,
+            reste: Math.max(0, due - totalVorb),
+            statut_paiement: totalVorb >= due ? 'SOLDÉ' : (totalVorb > 0 ? 'EN COURS' : 'NON PAYÉ'),
             updatedAt: new Date().toISOString()
           });
           results.vorbereitung++;
         }
 
-        // 3. Sync Cours Vacances
-        const transVacSnap = await dbAdmin.collection('finances')
-          .where('studentId', '==', studentId)
-          .where('category', '==', 'vacances')
-          .where('status', '==', 'active')
-          .get();
-        
-        if (transVacSnap.size > 0) {
-          const sessionsSnap = await dbAdmin.collection('cours_vacances').get();
-          const paymentsBySession: Record<string, number> = {};
+        // Vacances
+        const vacs = studentFinances.filter(f => ['vacances', 'vacance', 'Cours de Vacances', 'Vacances'].includes(f.category));
+        const paymentsBySession: Record<string, number> = {};
+
+        vacs.forEach(v => {
+          let sessId = v.sessionId;
+          if (!sessId && v.notes) {
+            const match = sessions.find(s => {
+              const title = (s.data().titre || '').toLowerCase().trim();
+              return title && v.notes.toLowerCase().includes(title);
+            });
+            if (match) sessId = match.id;
+          }
+          if (!sessId && sessions.length > 0) sessId = sessions[0].id;
+          if (sessId) {
+            paymentsBySession[sessId] = (paymentsBySession[sessId] || 0) + (Number(v.amount) || 0);
+          }
+        });
+
+        // Loop through all sessions for this student
+        for (const sessionDoc of sessions) {
+          const sessId = sessionDoc.id;
+          const sessData = sessionDoc.data();
+          const paidForSess = paymentsBySession[sessId] || 0;
           
-          transVacSnap.docs.forEach(d => {
-            const data = d.data();
-            // Try to find session ID: from field, or from notes/title
-            let sid = data.sessionId;
-            if (!sid && data.notes) {
-              // Try to find a session where titre is mentioned in notes
-              const sessionMatch = sessionsSnap.docs.find(s => {
-                const sTitle = s.data().titre.toLowerCase();
-                return data.notes.toLowerCase().includes(sTitle);
-              });
-              if (sessionMatch) sid = sessionMatch.id;
-            }
+          const existingIns = insByStudent[sid]?.find(i => i.sessId === sessId);
+          
+          if (existingIns || paidForSess > 0) {
+            const insRef = existingIns?.ref || sessionDoc.ref.collection('inscriptions').doc(sid);
+            const insData = existingIns?.data;
+            const due = Number(insData?.montant_total_du) || Number(sessData.prix) || 25000;
             
-            // Default to the most recent session if still no ID find
-            if (!sid && sessionsSnap.size > 0) {
-              sid = sessionsSnap.docs[0].id; // The most recent session is usually first (since they are ordered by createdAt desc)
+            const obj = {
+              eleve_id: sid,
+              nom: sData.lastName || insData?.nom || '',
+              prenom: sData.firstName || insData?.prenom || '',
+              matricule: sData.matricule || insData?.matricule || '',
+              total_verse: paidForSess,
+              reste: Math.max(0, due - paidForSess),
+              statut: paidForSess >= due ? 'SOLDÉ' : (paidForSess > 0 ? 'EN COURS' : 'EN ATTENTE'),
+              updatedAt: new Date().toISOString()
+            };
+
+            if (!existingIns) {
+              batch.set(insRef, { ...obj, montant_total_du: due, enrolledAt: new Date().toISOString() });
+            } else {
+              batch.update(insRef, obj);
             }
-
-            if (sid) {
-              paymentsBySession[sid] = (paymentsBySession[sid] || 0) + (data.amount || 0);
-            }
-          });
-
-          for (const sessionDoc of sessionsSnap.docs) {
-            const sid = sessionDoc.id;
-            const paidForThisSession = paymentsBySession[sid] || 0;
-            
-            if (paidForThisSession > 0) {
-              const insRef = sessionDoc.ref.collection('inscriptions').doc(studentId);
-              const insSnap = await insRef.get();
-              
-              const sessionData = sessionDoc.data();
-              const due = (insSnap.data() as any)?.montant_total_du || sessionData.prix || 25000;
-              
-              const studentRef = dbAdmin.collection('students').doc(studentId);
-              const sSnap = await studentRef.get();
-              const sData = sSnap.data() || {};
-
-              const updateObj = {
-                eleve_id: studentId,
-                nom: sData.lastName || '',
-                prenom: sData.firstName || '',
-                matricule: sData.matricule || '',
-                total_verse: paidForThisSession,
-                reste: Math.max(0, due - paidForThisSession),
-                statut: paidForThisSession >= due ? 'SOLDÉ' : 'EN COURS',
-                updatedAt: new Date().toISOString()
-              };
-
-              if (!insSnap.exists) {
-                // Auto enroll if student has payments but no enrollment doc
-                await insRef.set({
-                  ...updateObj,
-                  montant_total_du: due,
-                  enrolledAt: new Date().toISOString()
-                });
-              } else {
-                await insRef.update(updateObj);
-              }
-              results.vacances++;
-            }
+            results.vacances++;
           }
         }
       }
 
+      await batch.commit();
       res.json({ message: 'Synchronisation terminée', results });
     } catch (err: any) {
+      console.error("Sync error:", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1895,13 +1896,11 @@ async function startServer() {
           if (!insDoc.exists) throw new Error("Inscription aux cours de vacances introuvable");
         }
 
-        // 2. ALL WRITES AFTER (No more transaction.get() allowed after this point)
-
-        // Handle Summer Course (Vacances) Payments
+        // 2. LOGIC & WRITES
         if (type === 'vacances' && insDoc && insRef) {
           const insData = insDoc.data() as any;
-          const newTotalVerse = (insData.total_verse || 0) + amount;
-          const totalDu = insData.montant_total_du || 0;
+          const newTotalVerse = (Number(insData.total_verse) || 0) + amount;
+          const totalDu = Number(insData.montant_total_du) || 0;
           
           transaction.update(insRef, {
             total_verse: newTotalVerse,
@@ -1912,58 +1911,51 @@ async function startServer() {
           
           const vRef = insRef.collection('versements').doc(transId);
           transaction.set(vRef, {
-            id: transId,
-            montant: amount,
-            date: date || createdAt,
-            mode_paiement: paymentMethod || 'Espèces',
-            recu_numero,
+            id: transId, montant: amount, date: date || createdAt,
+            mode_paiement: paymentMethod || 'Espèces', recu_numero,
             notes: notes || `Paiement Cours Vacances: ${sessionTitle || ''}`,
             saisi_par: req.user.email
           });
         } 
         else if (scolariteRef) {
-          // Handle Regular Tuition / Vorbereitung
-          let sData: any;
           let dueAmt: number;
+          let newTotal: number;
 
           if (!scolariteDoc || !scolariteDoc.exists) {
             const lId = student.levelId;
             let due = (req.body.totalDue !== undefined) ? Number(req.body.totalDue) : 110000;
-            
             if (req.body.totalDue === undefined) {
-              if (student.totalTuition) {
-                due = Number(student.totalTuition);
-              } else if (lId && levelSnap && levelSnap.exists) {
-                due = levelSnap.data()?.tuition || 110000;
-              }
+              if (student.totalTuition) due = Number(student.totalTuition);
+              else if (lId && levelSnap && levelSnap.exists) due = levelSnap.data()?.tuition || 110000;
             }
-
-            sData = {
-              eleve_id: studentId, 
-              matricule: student.matricule, 
-              nom_eleve: `${student.firstName} ${student.lastName}`,
-              montant_total_du: due, 
-              total_verse: 0, 
-              reste: due,
-              surplus: false, 
-              statut_paiement: 'NON PAYÉ', 
-              createdAt
-            };
-            transaction.set(scolariteRef, sData);
             dueAmt = due;
-          } else {
-            sData = scolariteDoc.data() as any;
-            dueAmt = sData.montant_total_du || 0;
-          }
+            newTotal = amount;
 
-          const newTotal = (sData.total_verse || 0) + amount;
-          transaction.update(scolariteRef, {
-            total_verse: newTotal,
-            reste: Math.max(0, dueAmt - newTotal),
-            surplus: newTotal > dueAmt,
-            statut_paiement: newTotal >= dueAmt ? 'SOLDÉ' : (newTotal > 0 ? 'EN COURS' : 'NON PAYÉ'),
-            updatedAt: createdAt
-          });
+            transaction.set(scolariteRef, {
+              eleve_id: studentId, 
+              matricule: student.matricule || '', 
+              nom_eleve: `${student.firstName || ''} ${student.lastName || ''}`,
+              montant_total_du: dueAmt, 
+              total_verse: newTotal, 
+              reste: Math.max(0, dueAmt - newTotal),
+              surplus: newTotal > dueAmt,
+              statut_paiement: newTotal >= dueAmt ? 'SOLDÉ' : (newTotal > 0 ? 'EN COURS' : 'NON PAYÉ'),
+              createdAt,
+              updatedAt: createdAt
+            });
+          } else {
+            const sData = scolariteDoc.data() as any;
+            dueAmt = Number(sData.montant_total_du) || 0;
+            newTotal = (Number(sData.total_verse) || 0) + amount;
+
+            transaction.update(scolariteRef, {
+              total_verse: newTotal,
+              reste: Math.max(0, dueAmt - newTotal),
+              surplus: newTotal > dueAmt,
+              statut_paiement: newTotal >= dueAmt ? 'SOLDÉ' : (newTotal > 0 ? 'EN COURS' : 'NON PAYÉ'),
+              updatedAt: createdAt
+            });
+          }
 
           const vRefSub = scolariteRef.collection('versements').doc(transId);
           transaction.set(vRefSub, {
@@ -1977,10 +1969,11 @@ async function startServer() {
         const transRef = dbAdmin.collection('transactions').doc(transId);
         transaction.set(transRef, {
           id: transId,
-          type: (type === 'vacances' ? 'income' : type),
+          type: 'income', // Standardize to 'income' for all revenue
           category: type || 'Scolarité',
+          category_original: type, // Keep for debugging if needed
           eleve_id: studentId,
-          matricule: student.matricule,
+          matricule: student.matricule || '',
           libelle: notes || `${type === 'vacances' ? 'Cours Vacances' : (type === 'vorbereitung' ? 'Vorbereitung' : 'Scolarité')} - ${student.firstName} ${student.lastName}`,
           montant: amount,
           date_versement: date || createdAt,
@@ -1989,14 +1982,22 @@ async function startServer() {
           recu_numero,
           saisi_par: req.user.email,
           timestamp: admin.firestore.FieldValue.serverTimestamp(),
-          modifié: false, suppressed: false
+          modifié: false, supprimé: false
         });
 
-        // Update Account Balance using standard update method to avoid helper recursion/read-after-write
-        transaction.update(balanceRef, {
-          solde_actuel: admin.firestore.FieldValue.increment(amount),
-          derniere_maj: admin.firestore.FieldValue.serverTimestamp()
-        });
+        // Update Account Balance
+        if (balanceDoc.exists) {
+          transaction.update(balanceRef, {
+            solde_actuel: admin.firestore.FieldValue.increment(amount),
+            derniere_maj: admin.firestore.FieldValue.serverTimestamp()
+          });
+        } else {
+          transaction.set(balanceRef, {
+            solde_actuel: amount,
+            derniere_maj: admin.firestore.FieldValue.serverTimestamp(),
+            nom: accountType === 'banque' ? 'Compte Bancaire' : 'Caisse Principale'
+          });
+        }
 
         transaction.update(studentRef, {
           payments: admin.firestore.FieldValue.arrayUnion({
@@ -2005,7 +2006,6 @@ async function startServer() {
           })
         });
 
-        // Unified Finance Collection (Ledger)
         let finalCategory = 'Scolarité';
         if (type === 'vorbereitung') finalCategory = 'Vorbereitung';
         if (type === 'vacances') finalCategory = 'vacances';
