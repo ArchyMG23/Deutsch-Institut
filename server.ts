@@ -1079,23 +1079,45 @@ async function startServer() {
       // 3. Batch fetch financial summaries to avoid n+1 queries
       const scolaritesSnap = await dbAdmin.collection('scolarites').get();
       const vorbereitungSnap = await dbAdmin.collection('vorbereitung').get();
-      
+      // SOURCE OF TRUTH FOR PAYMENTS: The 'finances' collection (ledger)
+      const financesSnap = await dbAdmin.collection('finances').where('status', '==', 'active').where('type', '==', 'income').get();
+
       const financialMap: Record<string, { paid: number, due: number }> = {};
       
+      // Calculate due from scolarites and vorbereitung
       scolaritesSnap.forEach(doc => {
         const d = doc.data();
-        financialMap[doc.id] = { 
-          paid: (financialMap[doc.id]?.paid || 0) + (d.total_verse || 0),
-          due: (financialMap[doc.id]?.due || 0) + (d.montant_total_du || 0)
-        };
+        if (!financialMap[doc.id]) financialMap[doc.id] = { paid: 0, due: 0 };
+        financialMap[doc.id].due = (financialMap[doc.id].due || 0) + (d.montant_total_du || 0);
+        // Fallback for paid if finances collection is empty
+        financialMap[doc.id].paid = (financialMap[doc.id].paid || 0) + (d.total_verse || 0);
       });
 
       vorbereitungSnap.forEach(doc => {
         const d = doc.data();
-        financialMap[doc.id] = { 
-          paid: (financialMap[doc.id]?.paid || 0) + (d.total_verse || 0),
-          due: (financialMap[doc.id]?.due || 0) + (d.montant_total_du || 0)
-        };
+        if (!financialMap[doc.id]) financialMap[doc.id] = { paid: 0, due: 0 };
+        financialMap[doc.id].due = (financialMap[doc.id].due || 0) + (d.montant_total_du || 0);
+        financialMap[doc.id].paid = (financialMap[doc.id].paid || 0) + (d.total_verse || 0);
+      });
+
+      // Override paid amount using the ledger (transactions) - this is more robust
+      const paidMap: Record<string, number> = {};
+      financesSnap.forEach(doc => {
+        const d = doc.data();
+        const sid = d.studentId || d.eleve_id;
+        if (sid) {
+          const cat = (d.category || '').toLowerCase();
+          // Sum up relevant schooling/vacation/prep fees
+          if (cat.includes('scolarit') || cat.includes('vorbereitung') || cat.includes('vacances')) {
+            paidMap[sid] = (paidMap[sid] || 0) + (Number(d.amount) || 0);
+          }
+        }
+      });
+
+      // Merge paidMap into financialMap
+      Object.keys(paidMap).forEach(sid => {
+        if (!financialMap[sid]) financialMap[sid] = { paid: 0, due: 0 };
+        financialMap[sid].paid = paidMap[sid];
       });
 
       const students = snapshot.docs.map(doc => {
@@ -1168,6 +1190,13 @@ async function startServer() {
         createdAt
       });
 
+      // 3. Scolarité Record - Calculate first to avoid ReferenceError
+      const levelIdForTuition = studentData.levelId || (cycle === 'A' ? 'a1_de' : 'a1_en');
+      const levelDoc = await dbAdmin.collection('levels').doc(levelIdForTuition).get();
+      const tuitionTotal = (req.body.totalTuition !== undefined && req.body.totalTuition !== null) 
+        ? Number(req.body.totalTuition) 
+        : (levelDoc.exists ? (levelDoc.data()?.tuition || 0) : 0);
+
       // 2. Student Record
       const newStudent = { 
         ...studentData, 
@@ -1182,35 +1211,30 @@ async function startServer() {
       };
       batch.set(dbAdmin.collection('students').doc(studentId), newStudent);
 
-      // 3. Scolarité Record
-      const levelId = studentData.levelId || (cycle === 'A' ? 'a1_de' : 'a1_en');
-      const levelDoc = await dbAdmin.collection('levels').doc(levelId).get();
-      const tuitionTotal = Number(req.body.totalTuition) || (levelDoc.exists ? (levelDoc.data()?.tuition || 110000) : 110000);
-
       batch.set(dbAdmin.collection('scolarites').doc(studentId), {
-        eleve_id: studentId, matricule, levelId, montant_total_du: tuitionTotal,
+        eleve_id: studentId, matricule, levelId: levelIdForTuition, montant_total_du: tuitionTotal,
         total_verse: 0, reste: tuitionTotal, surplus: false, statut_paiement: 'NON PAYÉ', nom_eleve: `${studentData.firstName} ${studentData.lastName}`, createdAt
       });
 
-      // 4. Inscription Transaction (if CAS 1 or 2)
+      // 4. Inscription Transaction (Record even if 0 to track registration date)
+      const transId = dbAdmin.collection('transactions').doc().id;
+      const recu_numero = await generateReceiptNumber();
+      const transactionData = {
+        id: transId,
+        type: 'inscription',
+        eleve_id: studentId,
+        libelle: `Frais d'inscription - ${studentData.firstName} ${studentData.lastName}${montantInscription === 0 ? ' (Bourse totale / Sans frais)' : ''}`,
+        montant: montantInscription,
+        date_versement: createdAt,
+        mode_paiement: montantInscription > 0 ? modePaiement : 'N/A',
+        compte_destination: montantInscription > 0 ? compteDestination : 'caisse',
+        saisi_par: req.user.email,
+        timestamp_creation: admin.firestore.FieldValue.serverTimestamp(),
+        recu_numero
+      };
+      batch.set(dbAdmin.collection('transactions').doc(transId), transactionData);
+      
       if (montantInscription > 0) {
-        const transId = dbAdmin.collection('transactions').doc().id;
-        const recu_numero = await generateReceiptNumber();
-        const transactionData = {
-          id: transId,
-          type: 'inscription',
-          eleve_id: studentId,
-          libelle: `Frais d'inscription - ${studentData.firstName} ${studentData.lastName}`,
-          montant: montantInscription,
-          date_versement: createdAt,
-          mode_paiement: modePaiement,
-          compte_destination: compteDestination,
-          saisi_par: req.user.email,
-          timestamp_creation: admin.firestore.FieldValue.serverTimestamp(),
-          recu_numero
-        };
-        batch.set(dbAdmin.collection('transactions').doc(transId), transactionData);
-        
         // Adjust balance
         await ajusterSolde(compteDestination as 'caisse' | 'banque', montantInscription, batch);
       }

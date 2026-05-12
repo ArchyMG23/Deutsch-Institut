@@ -61,62 +61,65 @@ const BillingPanel = ({ formData, setFormData, loading, handleSubmit }: any) => 
        </div>
     </div>
 
-    {formData.fraisType !== 'Réduction totale' && (
-      <div className="mt-8 space-y-6">
-         <div className="space-y-3">
-            <label className="text-[10px] font-black uppercase text-white/40 ml-1">Date du Versement</label>
-            <input 
-              type="date" 
-              value={formData.dateVerse}
-              onChange={e => setFormData({...formData, dateVerse: e.target.value})}
-              className="w-full p-3 bg-white/5 border-2 border-white/10 rounded-xl font-black uppercase text-xs text-white focus:ring-2 focus:ring-dia-red outline-none"
-            />
-         </div>
-         <div className="space-y-3">
+    <div className="mt-8 space-y-6">
+      <div className="space-y-3">
+        <label className="text-[10px] font-black uppercase text-white/40 ml-1">Date d'Inscription / Versement</label>
+        <input 
+          type="date" 
+          value={formData.dateVerse}
+          onChange={e => setFormData({...formData, dateVerse: e.target.value})}
+          className="w-full p-3 bg-white/5 border-2 border-white/10 rounded-xl font-black uppercase text-xs text-white focus:ring-2 focus:ring-dia-red outline-none"
+        />
+      </div>
+
+      {formData.fraisType !== 'Réduction totale' && (
+        <>
+          <div className="space-y-3">
             <label className="text-[10px] font-black uppercase text-white/40 ml-1">Mode de Paiement</label>
             <div className="flex gap-2">
-               {['Espèces', 'Virement'].map(m => (
-                 <button
-                   key={m}
-                   type="button"
-                   onClick={() => setFormData({...formData, modePaiement: m})}
-                   className={cn(
-                     "flex-1 p-3 rounded-xl border-2 font-black uppercase text-[9px] sm:text-[10px] transition-all min-h-[44px]",
-                     formData.modePaiement === m ? "bg-white text-neutral-900 border-white" : "bg-transparent border-white/10 text-white/60"
-                   )}
-                 >
-                   {m}
-                 </button>
-               ))}
+              {['Espèces', 'Virement'].map(m => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setFormData({...formData, modePaiement: m})}
+                  className={cn(
+                    "flex-1 p-3 rounded-xl border-2 font-black uppercase text-[9px] sm:text-[10px] transition-all min-h-[44px]",
+                    formData.modePaiement === m ? "bg-white text-neutral-900 border-white" : "bg-transparent border-white/10 text-white/60"
+                  )}
+                >
+                  {m}
+                </button>
+              ))}
             </div>
-         </div>
-         <div className="space-y-3">
+          </div>
+          <div className="space-y-3">
             <label className="text-[10px] font-black uppercase text-white/40 ml-1">Compte de Destination</label>
             <div className="grid grid-cols-2 gap-2">
-               <button
-                 type="button"
-                 onClick={() => setFormData({...formData, compteDestination: 'caisse'})}
-                 className={cn(
-                   "flex items-center justify-center gap-2 p-3 rounded-xl border-2 font-black uppercase text-[9px] sm:text-[10px] transition-all min-h-[44px]",
-                   formData.compteDestination === 'caisse' ? "bg-dia-red border-dia-red text-white" : "bg-transparent border-white/10 text-white/60"
-                 )}
-               >
-                 <Wallet size={12} /> Caisse
-               </button>
-               <button
-                 type="button"
-                 onClick={() => setFormData({...formData, compteDestination: 'banque'})}
-                 className={cn(
-                   "flex items-center justify-center gap-2 p-3 rounded-xl border-2 font-black uppercase text-[9px] sm:text-[10px] transition-all min-h-[44px]",
-                   formData.compteDestination === 'banque' ? "bg-blue-600 border-blue-600 text-white" : "bg-transparent border-white/10 text-white/60"
-                 )}
-               >
-                 <Landmark size={12} /> Banque
-               </button>
+              <button
+                type="button"
+                onClick={() => setFormData({...formData, compteDestination: 'caisse'})}
+                className={cn(
+                  "flex items-center justify-center gap-2 p-3 rounded-xl border-2 font-black uppercase text-[9px] sm:text-[10px] transition-all min-h-[44px]",
+                  formData.compteDestination === 'caisse' ? "bg-dia-red border-dia-red text-white" : "bg-transparent border-white/10 text-white/60"
+                )}
+              >
+                <Wallet size={12} /> Caisse
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({...formData, compteDestination: 'banque'})}
+                className={cn(
+                  "flex items-center justify-center gap-2 p-3 rounded-xl border-2 font-black uppercase text-[9px] sm:text-[10px] transition-all min-h-[44px]",
+                  formData.compteDestination === 'banque' ? "bg-blue-600 border-blue-600 text-white" : "bg-transparent border-white/10 text-white/60"
+                )}
+              >
+                <Landmark size={12} /> Banque
+              </button>
             </div>
-         </div>
-      </div>
-    )}
+          </div>
+        </>
+      )}
+    </div>
 
     <button 
       type="button"
@@ -179,7 +182,9 @@ export default function FinanceInscription() {
         body: JSON.stringify({
           ...formData,
           // Support for custom tuition if selected
-          totalTuition: formData.levelId === 'vacations' ? Number(formData.customTuition) : undefined,
+          totalTuition: formData.levelId === 'vacations' 
+            ? Number(formData.customTuition) 
+            : (formData.levelId === 'none' ? 0 : undefined),
           dateVerse: formData.dateVerse
         })
       });
@@ -348,6 +353,7 @@ export default function FinanceInscription() {
                     className="w-full p-4 bg-neutral-50 dark:bg-neutral-800 rounded-2xl border-none focus:ring-2 focus:ring-dia-red transition-all font-extrabold uppercase text-sm h-[48px] sm:h-[52px]"
                   >
                     <option value="">Choisir un niveau</option>
+                    <option value="none">🚫 Sans Scolarité (Vorbereitung / Autre)</option>
                     <option value="vacations">🏖️ Cours de Vacances (Prix variable)</option>
                     {levels
                       .filter(l => {

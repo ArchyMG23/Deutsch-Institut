@@ -1487,54 +1487,63 @@ export default function StudentManagement() {
                 </div>
               </div>
 
-              {/* Situation Financière Block (Bug 2) */}
+              {/* Situation Financière Block */}
               <div className="bg-neutral-50 dark:bg-neutral-800/50 p-6 rounded-[2rem] border border-neutral-100 dark:border-neutral-800 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-black uppercase text-neutral-900 dark:text-white flex items-center gap-2">
                     <CreditCard size={18} className="text-dia-red" />
                     💳 Situation Financière
                   </h3>
-                  {financeStatus && (
-                    <div className={cn(
-                      "text-[10px] font-black px-3 py-1 rounded-full uppercase",
-                      financeStatus.reste <= 0 ? "bg-green-100 text-green-600" : "bg-dia-red/10 text-dia-red"
-                    )}>
-                      {financeStatus.reste <= 0 ? "🟢 Soldé" : "🟡 En cours"}
-                    </div>
-                  )}
+                  <div className={cn(
+                    "text-[10px] font-black px-3 py-1 rounded-full uppercase",
+                    (selectedStudent.totalPaid || 0) >= (selectedStudent.totalTuition || 1) ? "bg-green-100 text-green-600" : "bg-dia-red/10 text-dia-red"
+                  )}>
+                    {(selectedStudent.totalPaid || 0) >= (selectedStudent.totalTuition || 1) ? "🟢 Soldé" : "🟡 En cours"}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="p-3 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-100 dark:border-neutral-800">
                     <p className="text-[9px] font-bold text-neutral-400 uppercase">Total Dû</p>
-                    <p className="text-sm font-black">{formatCurrency(financeStatus?.montant_total_du || 0)}</p>
+                    <p className="text-sm font-black">{formatCurrency(selectedStudent.totalTuition || 0)}</p>
                   </div>
                   <div className="p-3 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-100 dark:border-neutral-800">
                     <p className="text-[9px] font-bold text-neutral-400 uppercase">Total Versé</p>
-                    <p className="text-sm font-black text-green-600">{formatCurrency(financeStatus?.total_verse || 0)}</p>
+                    <p className="text-sm font-black text-green-600">{formatCurrency(selectedStudent.totalPaid || 0)}</p>
                   </div>
                   <div className="p-3 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-100 dark:border-neutral-800">
                     <p className="text-[9px] font-bold text-neutral-400 uppercase">Reste à Payer</p>
-                    <p className={cn("text-sm font-black", (financeStatus?.reste || 0) > 0 ? "text-dia-red" : "text-green-600")}>
-                      {formatCurrency(financeStatus?.reste || 0)}
+                    <p className={cn("text-sm font-black", (selectedStudent.totalTuition || 0) - (selectedStudent.totalPaid || 0) > 0 ? "text-dia-red" : "text-green-600")}>
+                      {formatCurrency(Math.max(0, (selectedStudent.totalTuition || 0) - (selectedStudent.totalPaid || 0)))}
                     </p>
                   </div>
                 </div>
 
-                {scolariteVersements.length > 0 && (
-                  <div className="pt-2">
-                    <p className="text-[9px] font-bold text-neutral-400 uppercase mb-2">Derniers Versements</p>
-                    <div className="space-y-2">
-                      {scolariteVersements.slice(0, 3).map((v, i) => (
-                        <div key={v.id || i} className="flex items-center justify-between text-[10px] font-bold p-2 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-800">
-                          <span className="text-neutral-500">{formatDateAffichage(v.date)}</span>
-                          <span className="uppercase text-neutral-400 text-[8px] px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded-full">{v.cycle || '-'}</span>
-                          <span className="text-dia-red">{formatCurrency(v.montant)}</span>
-                        </div>
-                      ))}
+                {(() => {
+                  const studentFinances = (finances || [])
+                    .filter(f => (f.studentId === selectedStudent.id || f.eleve_id === selectedStudent.id) && f.status !== 'deleted' && f.type === 'income')
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                  
+                  if (studentFinances.length === 0) return null;
+                  
+                  return (
+                    <div className="pt-2">
+                      <p className="text-[9px] font-bold text-neutral-400 uppercase mb-2">Historique des Paiements</p>
+                      <div className="space-y-2">
+                        {studentFinances.slice(0, 5).map((v, i) => (
+                          <div key={v.id || i} className="flex items-center justify-between text-[10px] font-bold p-2 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-800">
+                            <span className="text-neutral-500 font-mono">{formatDateAffichage(v.date)}</span>
+                            <div className="flex flex-col items-start gap-0.5">
+                              <span className="uppercase text-dia-red text-[7px] font-black">{v.category || 'Scolarité'}</span>
+                              <span className="text-[8px] text-neutral-400">{v.notes || '-'}</span>
+                            </div>
+                            <span className="text-green-600 text-xs">{formatCurrency(v.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
               <div className="pt-6 border-t border-neutral-100 dark:border-neutral-800 flex gap-3 flex-wrap">
                 <button 

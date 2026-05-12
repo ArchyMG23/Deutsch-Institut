@@ -13,6 +13,8 @@ export default function FinanceVorbereitung() {
   const { students, refreshAll } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
+  const [isGuestMode, setIsGuestMode] = useState(false);
+  const [guestData, setGuestData] = useState({ firstName: '', lastName: '', phone: '' });
   const [loading, setLoading] = useState(false);
   const [vorbereitung, setVorbereitung] = useState<any>(null);
   const [versements, setVersements] = useState<any[]>([]);
@@ -59,15 +61,44 @@ export default function FinanceVorbereitung() {
 
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedStudent || !paymentData.amount) return;
+    if (!isGuestMode && !selectedStudent) return;
+    if (isGuestMode && (!guestData.firstName || !guestData.lastName)) {
+      toast.error("Veuillez entrer le nom et prénom de l'apprenant");
+      return;
+    }
+    if (!paymentData.amount) return;
 
     setLoading(true);
     try {
+      let finalStudentId = selectedStudent?.id;
+
+      // Handle Guest Registration first if in guest mode
+      if (isGuestMode) {
+        const regRes = await fetchWithAuth('/api/students', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            firstName: guestData.firstName,
+            lastName: guestData.lastName,
+            phone: guestData.phone,
+            levelId: 'none', // Specialized "None" level
+            cycle: 'Allemand',
+            totalTuition: 0,
+            fraisType: 'Réduction totale' // 0 inscription fee
+          })
+        });
+
+        if (!regRes.ok) throw new Error("Erreur lors de l'enregistrement de l'apprenant");
+        const newStudent = await regRes.json();
+        finalStudentId = newStudent.id;
+        toast.info(`Apprenant créé : ${newStudent.matricule}`);
+      }
+
       const res = await fetchWithAuth('/api/finances/payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          studentId: selectedStudent.id,
+          studentId: finalStudentId,
           amount: parseFloat(paymentData.amount),
           paymentMethod: paymentData.paymentMethod,
           accountType: paymentData.accountType,
@@ -78,14 +109,22 @@ export default function FinanceVorbereitung() {
       });
       if (res.ok) {
         toast.success("Paiement Vorbereitung enregistré !");
-        fetchVorbereitung(selectedStudent.id);
-        refreshAll(true);
+        
+        if (isGuestMode) {
+           setIsGuestMode(false);
+           setGuestData({ firstName: '', lastName: '', phone: '' });
+           refreshAll(true);
+        } else {
+           fetchVorbereitung(selectedStudent.id);
+           refreshAll(true);
+        }
+        
         setPaymentData({ ...paymentData, amount: '', notes: '' });
       } else {
         toast.error("Erreur lors du paiement");
       }
-    } catch (err) {
-      toast.error("Erreur réseau");
+    } catch (err: any) {
+      toast.error(err.message || "Erreur réseau");
     } finally {
       setLoading(false);
     }
@@ -107,21 +146,70 @@ export default function FinanceVorbereitung() {
         {/* Left: Search & Student Info */}
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-white dark:bg-neutral-900 p-8 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 shadow-sm space-y-6 relative">
-            <h3 className="text-sm font-black text-neutral-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-              <Search size={16} /> Rechercher Étudiant
-            </h3>
-            <div className="relative">
-              <input 
-                type="text" 
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                placeholder="Nom ou Matricule..."
-                className="w-full p-4 bg-neutral-50 dark:bg-neutral-800 rounded-2xl border-none focus:ring-2 focus:ring-amber-500 transition-all font-bold pr-12"
-              />
-              <div className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-400">
-                <User size={20} />
-              </div>
+            <div className="flex items-center justify-between gap-4 mb-4">
+              <h3 className="text-sm font-black text-neutral-400 uppercase tracking-widest flex items-center gap-2">
+                <Search size={16} /> Apprenant
+              </h3>
+              <button 
+                type="button"
+                onClick={() => {
+                  setIsGuestMode(!isGuestMode);
+                  setSelectedStudent(null);
+                }}
+                className={cn(
+                  "text-[9px] font-black uppercase px-3 py-1 rounded-full transition-all",
+                  isGuestMode ? "bg-amber-100 text-amber-600" : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"
+                )}
+              >
+                {isGuestMode ? "Annuler le mode passager" : "+ Apprenant Non Inscrit"}
+              </button>
             </div>
+
+            {!isGuestMode ? (
+              <div className="relative">
+                <input 
+                  type="text" 
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  placeholder="Rechercher par Nom ou Matricule..."
+                  className="w-full p-4 bg-neutral-50 dark:bg-neutral-800 rounded-2xl border-none focus:ring-2 focus:ring-amber-500 transition-all font-bold pr-12"
+                />
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-400">
+                  <User size={20} />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
+                <div className="grid grid-cols-2 gap-2">
+                  <input 
+                    type="text" 
+                    placeholder="Prénom"
+                    value={guestData.firstName}
+                    onChange={e => setGuestData({...guestData, firstName: e.target.value})}
+                    className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 rounded-xl border border-neutral-100 dark:border-neutral-700 font-bold text-xs"
+                  />
+                  <input 
+                    type="text" 
+                    placeholder="Nom"
+                    value={guestData.lastName}
+                    onChange={e => setGuestData({...guestData, lastName: e.target.value})}
+                    className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 rounded-xl border border-neutral-100 dark:border-neutral-700 font-bold text-xs"
+                  />
+                </div>
+                <input 
+                  type="tel" 
+                  placeholder="Téléphone"
+                  value={guestData.phone}
+                  onChange={e => setGuestData({...guestData, phone: e.target.value})}
+                  className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 rounded-xl border border-neutral-100 dark:border-neutral-700 font-bold text-xs"
+                />
+                <div className="p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-600 rounded-xl">
+                   <p className="text-[10px] font-bold leading-tight">
+                     Note: Cet apprenant sera automatiquement ajouté au système avec un compte "Vorbereitung Seul" (0 frais de scolarité).
+                   </p>
+                </div>
+              </div>
+            )}
 
             <AnimatePresence>
               {searchTerm && filteredStudents.length > 0 && (
@@ -308,10 +396,10 @@ export default function FinanceVorbereitung() {
 
                   <button 
                     type="submit"
-                    disabled={loading || !selectedStudent || !paymentData.amount}
+                    disabled={loading || (!isGuestMode && !selectedStudent) || !paymentData.amount}
                     className="w-full mt-auto p-6 bg-amber-500 hover:bg-amber-600 text-white font-black uppercase tracking-widest rounded-[1.5rem] transition-all flex items-center justify-center gap-3 shadow-xl shadow-amber-500/20 group disabled:opacity-30"
                   >
-                    {loading ? <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <>Enregistrer Vorbereitung <Receipt size={20} /></>}
+                    {loading ? <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <>{isGuestMode ? 'Inscrire & Payer Vorbereitung' : 'Enregistrer Vorbereitung'} <Receipt size={20} /></>}
                   </button>
                 </div>
               </form>
