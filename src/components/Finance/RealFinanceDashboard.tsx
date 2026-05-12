@@ -426,11 +426,12 @@ export default function RealFinanceDashboard() {
 
     setMaintenanceLoading(true);
     try {
-      const response = await fetch(`/api/finances/${id}`, {
+      const response = await fetchWithAuth(`/api/finances/${id}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${await auth.currentUser?.getIdToken()}`
-        }
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ reason: "Suppression via Maintenance Dashboard" })
       });
 
       if (!response.ok) {
@@ -458,7 +459,7 @@ export default function RealFinanceDashboard() {
       const now = new Date().toISOString();
       
       // 1. Expense from Cash
-      await fetch('/api/finances', {
+      await fetchWithAuth('/api/finances', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -474,7 +475,7 @@ export default function RealFinanceDashboard() {
       });
 
       // 2. Income to Bank
-      await fetch('/api/finances', {
+      await fetchWithAuth('/api/finances', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

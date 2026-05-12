@@ -202,11 +202,17 @@ export interface Versement {
   initiatedBy?: 'student' | 'secretary';
   recu_numero: string;
   caissier_id: string;
-  categorie?: 'scolarite' | 'inscription' | 'autre';
+  categorie?: 'scolarite' | 'inscription' | 'vorbereitung' | 'examen' | 'autre';
   notes?: string;
   recu_genere_at?: string;
   recu_genere_par?: string;
   financeId?: string;
+}
+
+export interface Compte {
+  id: 'caisse' | 'banque';
+  solde: number;
+  lastUpdated: string;
 }
 
 export interface AuditLog {

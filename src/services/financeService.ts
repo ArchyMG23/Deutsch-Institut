@@ -7,15 +7,16 @@ export class FinanceService {
   /**
    * Records a student payment (tuition or registration)
    */
-  static async recordPayment(paymentData: Partial<FinanceTransaction>) {
+  static async recordPayment(paymentData: Partial<FinanceTransaction>, token?: string) {
     const idempotencyKey = uuidv4();
+    const finalToken = token || localStorage.getItem('token');
     
     // Prepare the payload for the atomic endpoint
     const response = await fetch(`${API_BASE}/financial-event`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': `Bearer ${finalToken}`
       },
       body: JSON.stringify({
         type: 'payment',
@@ -37,14 +38,15 @@ export class FinanceService {
   /**
    * Records a general expense
    */
-  static async recordExpense(expenseData: Partial<FinanceTransaction>) {
+  static async recordExpense(expenseData: Partial<FinanceTransaction>, token?: string) {
     const idempotencyKey = uuidv4();
+    const finalToken = token || localStorage.getItem('token');
     
     const response = await fetch(`${API_BASE}/financial-event`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': `Bearer ${finalToken}`
       },
       body: JSON.stringify({
         type: 'expense',
@@ -66,14 +68,15 @@ export class FinanceService {
   /**
    * Reverses an existing transaction
    */
-  static async reverseTransaction(originalFinanceId: string, reason: string) {
+  static async reverseTransaction(originalFinanceId: string, reason: string, token?: string) {
     const idempotencyKey = uuidv4();
+    const finalToken = token || localStorage.getItem('token');
     
     const response = await fetch(`${API_BASE}/financial-event`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': `Bearer ${finalToken}`
       },
       body: JSON.stringify({
         type: 'reversal',
@@ -99,14 +102,15 @@ export class FinanceService {
   /**
    * Fetches the ledger with optional filters
    */
-  static async getLedger(filters?: { year?: string; month?: string }) {
+  static async getLedger(filters?: { year?: string; month?: string }, token?: string) {
     const params = new URLSearchParams();
     if (filters?.year) params.append('year', filters.year);
     if (filters?.month) params.append('month', filters.month);
 
+    const finalToken = token || localStorage.getItem('token');
     const response = await fetch(`${API_BASE}/finances?${params.toString()}`, {
       headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': `Bearer ${finalToken}`
       }
     });
 

@@ -23,7 +23,7 @@ import {
   orderBy,
   where
 } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { db, auth } from '../../firebase';
 import { Charge } from '../../types';
 import { formatCurrency } from '../../utils';
 import { toast } from 'sonner';
@@ -83,13 +83,14 @@ export default function ChargeManagement() {
     const notes = formData.get('notes') as string;
 
     try {
+      const token = await auth.currentUser?.getIdToken();
       await FinanceService.recordExpense({
         amount,
         category: category as any,
         description,
         date: new Date(date).toISOString(),
         metadata: { notes }
-      });
+      }, token);
 
       toast.success("Dépense enregistrée atomiquement");
       setIsModalOpen(false);

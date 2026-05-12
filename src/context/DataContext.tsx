@@ -22,6 +22,8 @@ interface DataContextType {
   refreshLibrary: () => Promise<void>;
   refreshEvaluations: () => Promise<void>;
   onlineUsers: any[];
+  caisseSolde: number;
+  banqueSolde: number;
   financeStats: {
     totalIncome: number;
     totalExpense: number;
@@ -52,7 +54,25 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
+  const [caisseSolde, setCaisseSolde] = useState(0);
+  const [banqueSolde, setBanqueSolde] = useState(0);
   const [loading, setLoading] = useState(false);
+
+  // Financial Sychronization - Phase 1
+  useEffect(() => {
+    if (!user) return;
+    const unsubscribe = onSnapshot(collection(db, 'comptes'), (snapshot) => {
+      snapshot.docs.forEach(doc => {
+        if (doc.id === 'caisse') setCaisseSolde(doc.data().solde_actuel || 0);
+        if (doc.id === 'banque') setBanqueSolde(doc.data().solde_actuel || 0);
+      });
+      // Propagate update via custom event for specialized components
+      window.dispatchEvent(new CustomEvent('finance-update'));
+    }, (error) => {
+      console.error("Firestore balance listener error:", error);
+    });
+    return () => unsubscribe();
+  }, [user]);
 
   // Unified financial stats
   const financeStats = React.useMemo(() => {
@@ -115,13 +135,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return {
       totalIncome: totalInc,
       totalExpense: totalExp,
-      caisseBalance: caisse,
-      banqueBalance: banque,
+      caisseBalance: caisseSolde, // Use real-time value
+      banqueBalance: banqueSolde, // Use real-time value
       yearIncome: yearInc,
       yearExpense: yearExp,
       monthlyHistory: months
     };
-  }, [finances]);
+  }, [finances, caisseSolde, banqueSolde]);
   const lastFetchRef = useRef<number>(0);
   const lastFetchTimesRef = useRef<Record<string, number>>({});
 
@@ -302,6 +322,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       refreshLibrary,
       refreshEvaluations,
       onlineUsers,
+      caisseSolde,
+      banqueSolde,
       financeStats
     }}>
       {children}

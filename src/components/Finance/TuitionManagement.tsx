@@ -453,6 +453,7 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
 
       // Ensure we target the SPECIFIC level selected in current dossier
       const actualLevelId = scolarite.levelId || (scolarite.id.includes('_') ? scolarite.id.split('_')[1] : targetStudent.levelId);
+      const token = await auth.currentUser?.getIdToken();
 
       await FinanceService.recordPayment({
         amount: amount,
@@ -466,7 +467,7 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
         paymentMethod: paymentMode,
         accountType: accountType,
         receiptNumber: generateReceiptNumber()
-      });
+      }, token);
 
       toast.success(`Versement pour ${scolarite.niveau} enregistré atomiquement.`);
       
@@ -577,8 +578,9 @@ const TuitionManagement: React.FC<TuitionManagementProps> = ({ students: propStu
     try {
       const versement = versements.find(v => v.id === versementId);
       const idToReverse = versement?.financeId || versementId;
+      const token = await auth.currentUser?.getIdToken();
 
-      await FinanceService.reverseTransaction(idToReverse, reason);
+      await FinanceService.reverseTransaction(idToReverse, reason, token);
 
       toast.success("Transaction annulée et solde corrigé (Atomique).");
       await selectStudent(targetStudent, scolarite.id);

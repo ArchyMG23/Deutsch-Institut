@@ -46,16 +46,60 @@
       }
     },
     "finances": {
-      "title": "Finance Record",
-      "description": "Income and expense tracking",
+      "title": "Unified Transaction Ledger",
+      "description": "Central ledger for all financial movements",
       "type": "object",
       "properties": {
-        "type": { "type": "string", "enum": ["income", "expense"] },
-        "amount": { "type": "number" },
-        "date": { "type": "string", "format": "date" },
-        "description": { "type": "string" },
-        "bankBalanceAfter": { "type": "number" },
-        "cashBalanceAfter": { "type": "number" }
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["inscription", "scolarite", "vorbereitung", "diverse", "virement_cb", "sortie"] },
+        "eleve_id": { "type": "string" },
+        "libelle": { "type": "string" },
+        "montant": { "type": "number" },
+        "date_versement": { "type": "string", "format": "date-time" },
+        "mode_paiement": { "type": "string", "enum": ["Espèces", "Mobile Money", "Virement", "Autre"] },
+        "compte_destination": { "type": "string", "enum": ["caisse", "banque"] },
+        "compte_source": { "type": "string", "enum": ["caisse", "banque"] },
+        "saisi_par": { "type": "string", "description": "User UID who recorded the transaction" },
+        "niveau_id": { "type": "string" },
+        "type_versement": { "type": "string", "enum": ["scolarite", "examen", "autre"] },
+        "recu_numero": { "type": "string" },
+        "timestamp_creation": { "type": "string", "format": "date-time" },
+        "modifie": { "type": "boolean" },
+        "supprime": { "type": "boolean" },
+        "deletion_reason": { "type": "string" }
+      }
+    },
+    "comptes": {
+      "title": "Account Balance",
+      "description": "Real-time balances for cash and bank",
+      "type": "object",
+      "properties": {
+        "solde_actuel": { "type": "number" },
+        "derniere_maj": { "type": "string", "format": "date-time" }
+      }
+    },
+    "vorbereitung": {
+      "title": "Intensive Prep Account",
+      "description": "Tracks intensive preparation fees per student",
+      "type": "object",
+      "properties": {
+        "eleve_id": { "type": "string" }
+      }
+    },
+    "sorties": {
+      "title": "Expense Record",
+      "description": "Detailed tracking of all center expenditures",
+      "type": "object",
+      "properties": {
+        "categorie": { "type": "string", "enum": ["Salaires enseignants", "Connexion Internet", "Loyer", "Eau & Électricité", "Matériel pédagogique", "Produits d'entretien", "Autre"] },
+        "libelle": { "type": "string" },
+        "montant": { "type": "number" },
+        "date": { "type": "string", "format": "date-time" },
+        "source_compte": { "type": "string", "enum": ["caisse", "banque"] },
+        "justificatif_url": { "type": "string" },
+        "enseignant_id": { "type": "string" },
+        "saisi_par": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
       }
     },
     "classes": {
@@ -156,18 +200,18 @@
     },
     "scolarites": {
       "title": "Tuition Account",
-      "description": "Master tuition balance for a student",
+      "description": "Master tuition balance for a student at a specific level",
       "type": "object",
       "properties": {
         "eleve_id": { "type": "string" },
         "matricule": { "type": "string" },
         "nom_eleve": { "type": "string" },
-        "classe_id": { "type": "string" },
+        "levelId": { "type": "string" },
         "montant_total_du": { "type": "number" },
         "total_verse": { "type": "number" },
         "reste": { "type": "number" },
-        "surplus": { "type": "number" },
-        "statut_paiement": { "type": "string", "enum": ["EN COURS", "SOLDÉ", "SURPLUS"] }
+        "surplus": { "type": "boolean" },
+        "statut_paiement": { "type": "string", "enum": ["EN COURS", "SOLDÉ", "SURPLUS", "NON PAYÉ"] }
       },
       "required": ["eleve_id", "matricule", "montant_total_du"]
     },
@@ -221,6 +265,22 @@
     "/scolarites/{eleveId}/versements/{versementId}": {
       "schema": "versement",
       "description": "Individual payments"
+    },
+    "/comptes/{accountId}": {
+      "schema": "comptes",
+      "description": "Cash and Bank account balances"
+    },
+    "/vorbereitung/{eleveId}": {
+      "schema": "vorbereitung",
+      "description": "Intensive preparation tracking"
+    },
+    "/vorbereitung/{eleveId}/versements/{versementId}": {
+      "schema": "versement",
+      "description": "Payments for intensive prep"
+    },
+    "/sorties/{sortieId}": {
+      "schema": "sorties",
+      "description": "Expense details"
     },
     "/audit_log/{logId}": {
       "schema": "audit_log",
