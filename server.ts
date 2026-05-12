@@ -1113,13 +1113,17 @@ async function startServer() {
       const passValidation = validatePassword(password || 'DIA2026.');
       if (!passValidation.isValid) return res.status(400).json({ message: passValidation.message });
 
-      // Generate Matricule using the new logic
+      // Generate Matricule first
       const matricule = await generateMatricule(studentData.firstName, studentData.lastName, cycle);
+      
+      // Handle optional email
+      const finalEmail = studentData.email || `${matricule.toLowerCase()}@dia-deutschinstitut.com`;
 
       const userRecord = await authAdmin.createUser({
-        email: studentData.email,
+        email: finalEmail,
         password: password || 'DIA2026.',
         displayName: `${studentData.firstName} ${studentData.lastName}`,
+        phoneNumber: studentData.phone || undefined
       });
 
       const studentId = userRecord.uid;
@@ -1129,13 +1133,27 @@ async function startServer() {
 
       // 1. User Record
       batch.set(dbAdmin.collection('users').doc(studentId), {
-        uid: studentId, matricule, email: studentData.email, role: 'student',
-        firstName: studentData.firstName, lastName: studentData.lastName,
-        status: 'offline', createdAt
+        uid: studentId, 
+        matricule, 
+        email: finalEmail, 
+        phone: studentData.phone || '',
+        role: 'student',
+        firstName: studentData.firstName, 
+        lastName: studentData.lastName,
+        status: 'offline', 
+        createdAt
       });
 
       // 2. Student Record
-      const newStudent = { ...studentData, id: studentId, matricule, createdAt, cycle: studentData.cycle || 'Allemand' };
+      const newStudent = { 
+        ...studentData, 
+        email: finalEmail,
+        phone: studentData.phone || '',
+        id: studentId, 
+        matricule, 
+        createdAt, 
+        cycle: studentData.cycle || 'Allemand' 
+      };
       batch.set(dbAdmin.collection('students').doc(studentId), newStudent);
 
       // 3. Scolarité Record

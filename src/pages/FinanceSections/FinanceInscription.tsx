@@ -142,9 +142,8 @@ export default function FinanceInscription() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Email</label>
+                <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Email <span className="text-neutral-300 font-normal">(Optionnel)</span></label>
                 <input 
-                  required
                   type="email" 
                   value={formData.email}
                   onChange={e => setFormData({...formData, email: e.target.value})}
@@ -153,9 +152,8 @@ export default function FinanceInscription() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Téléphone</label>
+                <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Téléphone <span className="text-neutral-300 font-normal">(Optionnel)</span></label>
                 <input 
-                  required
                   type="tel" 
                   value={formData.phone}
                   onChange={e => setFormData({...formData, phone: e.target.value})}
