@@ -12,36 +12,41 @@ import {
   ResponsiveContainer, BarChart, Bar, Cell, PieChart as RePieChart, Pie 
 } from 'recharts';
 
-const StatCard = ({ title, value, icon: Icon, color, subtitle, trend }: any) => (
-  <motion.div 
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    className="bg-white dark:bg-neutral-900 p-8 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 shadow-sm relative overflow-hidden group"
-  >
-    <div className={cn("absolute top-0 right-0 w-32 h-32 -mr-16 -mt-16 rounded-full opacity-[0.03] transition-transform duration-700 group-hover:scale-150", color)} />
-    <div className="flex items-start justify-between mb-6">
-      <div className={cn("p-4 rounded-2xl shadow-lg shadow-current/10", color.replace('bg-', 'text-').replace('-600', '-500').replace('text-', 'bg-').replace('500', '100').replace('600', '100'))}>
-        <Icon size={28} className={color.replace('bg-', 'text-')} />
-      </div>
-      {trend && (
-        <div className={cn("flex items-center gap-1 text-[10px] font-black uppercase px-3 py-1 rounded-full", trend > 0 ? "bg-emerald-50 text-emerald-600" : "bg-dia-red/10 text-dia-red")}>
-           {trend > 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-           {Math.abs(trend)}%
+const StatCard = ({ title, value, icon: Icon, color, subtitle, trend }: any) => {
+  const iconBg = `${color}/10`;
+  const iconColor = color.replace('bg-', 'text-');
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-white dark:bg-neutral-900 p-8 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 shadow-sm relative overflow-hidden group"
+    >
+      <div className={cn("absolute top-0 right-0 w-32 h-32 -mr-16 -mt-16 rounded-full opacity-[0.03] transition-transform duration-700 group-hover:scale-150", color)} />
+      <div className="flex items-start justify-between mb-6">
+        <div className={cn("p-4 rounded-2xl shadow-lg shadow-current/5", iconBg)}>
+          <Icon size={28} className={iconColor} />
         </div>
-      )}
-    </div>
-    <div className="relative z-10">
-      <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 mb-1">{title}</p>
-      <h3 className="text-3xl font-black text-neutral-900 dark:text-white tabular-nums tracking-tight">
-        {typeof value === 'number' ? formatCurrency(value) : value}
-      </h3>
-      {subtitle && <div className="text-[10px] font-bold text-neutral-500 mt-2 uppercase flex items-center gap-1.5 opacity-60">
-        <div className={cn("w-1.5 h-1.5 rounded-full", color)} />
-        {subtitle}
-      </div>}
-    </div>
-  </motion.div>
-);
+        {trend && (
+          <div className={cn("flex items-center gap-1 text-[10px] font-black uppercase px-3 py-1 rounded-full", trend > 0 ? "bg-emerald-50 text-emerald-600" : "bg-dia-red/10 text-dia-red")}>
+             {trend > 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+             {Math.abs(trend)}%
+          </div>
+        )}
+      </div>
+      <div className="relative z-10">
+        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 mb-1">{title}</p>
+        <h3 className="text-3xl font-black text-neutral-900 dark:text-white tabular-nums tracking-tight">
+          {typeof value === 'number' ? formatCurrency(value) : value}
+        </h3>
+        {subtitle && <div className="text-[10px] font-bold text-neutral-500 mt-2 uppercase flex items-center gap-1.5 opacity-60">
+          <div className={cn("w-1.5 h-1.5 rounded-full", color)} />
+          {subtitle}
+        </div>}
+      </div>
+    </motion.div>
+  );
+};
 
 export default function FinanceOverview() {
   const { financeStats, caisseSolde, banqueSolde, finances } = useData();
