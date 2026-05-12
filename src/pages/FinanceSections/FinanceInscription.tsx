@@ -111,7 +111,7 @@ export default function FinanceInscription() {
   }
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto">
+    <div className="space-y-8 max-w-7xl mx-auto px-4">
       <div className="flex items-center gap-4 mb-8">
         <div className="p-4 bg-dia-red text-white rounded-[1.5rem] shadow-xl shadow-dia-red/20">
           <UserPlus size={32} />
@@ -122,16 +122,16 @@ export default function FinanceInscription() {
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-8 items-start">
+      <div className="flex flex-col xl:flex-row gap-8 items-start">
         <form onSubmit={handleSubmit} className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Left Column: Personal Info */}
-          <div className="lg:col-span-1 space-y-6">
+          <div className="space-y-6">
             <div className="bg-white dark:bg-neutral-900 p-8 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 shadow-sm space-y-6">
             <h3 className="text-lg font-black text-neutral-900 dark:text-white uppercase flex items-center gap-2 mb-2">
               <User size={20} className="text-dia-red" />
               État Civil
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Prénom</label>
                 <input 
@@ -139,7 +139,7 @@ export default function FinanceInscription() {
                   type="text" 
                   value={formData.firstName}
                   onChange={e => setFormData({...formData, firstName: e.target.value})}
-                  className="w-full p-4 bg-neutral-50 dark:bg-neutral-800 rounded-2xl border-none focus:ring-2 focus:ring-dia-red transition-all font-bold"
+                  className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 rounded-2xl border-none focus:ring-2 focus:ring-dia-red transition-all font-bold text-sm"
                   placeholder="Jean"
                 />
               </div>
@@ -150,19 +150,19 @@ export default function FinanceInscription() {
                   type="text" 
                   value={formData.lastName}
                   onChange={e => setFormData({...formData, lastName: e.target.value})}
-                  className="w-full p-4 bg-neutral-50 dark:bg-neutral-800 rounded-2xl border-none focus:ring-2 focus:ring-dia-red transition-all font-bold"
+                  className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 rounded-2xl border-none focus:ring-2 focus:ring-dia-red transition-all font-bold text-sm"
                   placeholder="DUPONT"
                 />
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Email <span className="text-neutral-300 font-normal">(Optionnel)</span></label>
                 <input 
                   type="email" 
                   value={formData.email}
                   onChange={e => setFormData({...formData, email: e.target.value})}
-                  className="w-full p-4 bg-neutral-50 dark:bg-neutral-800 rounded-2xl border-none focus:ring-2 focus:ring-dia-red transition-all font-bold"
+                  className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 rounded-2xl border-none focus:ring-2 focus:ring-dia-red transition-all font-bold text-sm"
                   placeholder="jean.dupont@email.com"
                 />
               </div>
@@ -172,7 +172,7 @@ export default function FinanceInscription() {
                   type="tel" 
                   value={formData.phone}
                   onChange={e => setFormData({...formData, phone: e.target.value})}
-                  className="w-full p-4 bg-neutral-50 dark:bg-neutral-800 rounded-2xl border-none focus:ring-2 focus:ring-dia-red transition-all font-bold"
+                  className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 rounded-2xl border-none focus:ring-2 focus:ring-dia-red transition-all font-bold text-sm"
                   placeholder="+237 6XX XXX XXX"
                 />
               </div>
@@ -184,7 +184,7 @@ export default function FinanceInscription() {
               <Calendar size={20} className="text-dia-red" />
               Programme & Inscription
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Cycle d'étude</label>
                 <div className="flex gap-2">
@@ -194,7 +194,7 @@ export default function FinanceInscription() {
                       type="button"
                       onClick={() => setFormData({...formData, cycle: c, levelId: ''})}
                       className={cn(
-                        "flex-1 p-4 rounded-2xl font-black uppercase text-xs border-2 transition-all",
+                        "flex-1 p-3 rounded-2xl font-black uppercase text-xs border-2 transition-all",
                         formData.cycle === c 
                           ? "bg-dia-red text-white border-dia-red shadow-lg shadow-dia-red/20" 
                           : "bg-white dark:bg-neutral-800 border-neutral-100 dark:border-neutral-700 text-neutral-400"
@@ -211,7 +211,7 @@ export default function FinanceInscription() {
                   required
                   value={formData.levelId}
                   onChange={e => setFormData({...formData, levelId: e.target.value})}
-                  className="w-full p-4 bg-neutral-50 dark:bg-neutral-800 rounded-2xl border-none focus:ring-2 focus:ring-dia-red transition-all font-extrabold uppercase text-sm"
+                  className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 rounded-2xl border-none focus:ring-2 focus:ring-dia-red transition-all font-extrabold uppercase text-sm"
                 >
                   <option value="">Choisir un niveau</option>
                   {levels.filter(l => l.cycle === formData.cycle || (formData.cycle === 'Allemand' && !l.cycle)).map((level) => (
@@ -223,9 +223,8 @@ export default function FinanceInscription() {
           </div>
         </div>
 
-        {/* Right Column: Billing */}
         <div className="space-y-6">
-          <div className="bg-neutral-900 dark:bg-neutral-950 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden">
+          <div className="bg-neutral-900 dark:bg-neutral-950 p-6 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-dia-red/20 blur-3xl -mr-16 -mt-16" />
             <h3 className="text-lg font-black uppercase flex items-center gap-2 mb-6">
               <CreditCard size={20} className="text-dia-red" />
@@ -346,7 +345,7 @@ export default function FinanceInscription() {
       </form>
 
         {/* Right Panel: Existing Students */}
-        <div className="w-full lg:w-72 space-y-6">
+        <div className="w-full xl:w-80 shrink-0 space-y-6">
           <div className="bg-white dark:bg-neutral-900 p-6 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 shadow-sm">
             <div className="flex items-center gap-2 mb-4">
               <Search size={14} className="text-dia-red" />
