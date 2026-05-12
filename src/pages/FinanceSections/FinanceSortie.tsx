@@ -207,17 +207,13 @@ export default function FinanceSortie() {
            <div className="bg-neutral-900 p-8 rounded-[2.5rem] text-white space-y-6">
               <h3 className="text-sm font-black uppercase text-white/40 tracking-widest">Rappel des Directives</h3>
               <ul className="space-y-4">
-                 <li className="flex gap-3 text-xs font-bold leading-relaxed">
+                 <li className="flex gap-3 text-xs font-bold leading-relaxed shadow-sm">
                     <div className="w-1.5 h-1.5 bg-dia-red rounded-full mt-1 shrink-0" />
-                    Toute sortie de plus de 50 000 FCFA doit être justifiée par une pièce jointe (physique).
-                 </li>
-                 <li className="flex gap-3 text-xs font-bold leading-relaxed">
-                    <div className="w-1.5 h-1.5 bg-dia-red rounded-full mt-1 shrink-0" />
-                    Les salaires doivent être payés via le compte Banque prioritairement.
+                    L'utilisation de la Caisse et de la Banque doit être justifiée par un libellé précis.
                  </li>
                  <li className="flex gap-3 text-xs font-bold leading-relaxed shadow-sm">
                     <div className="w-1.5 h-1.5 bg-dia-red rounded-full mt-1 shrink-0" />
-                    L'utilisation de la Caisse est limitée aux petites charges courantes.
+                    Vérifiez toujours le solde disponible avant de valider une sortie importante.
                  </li>
               </ul>
            </div>

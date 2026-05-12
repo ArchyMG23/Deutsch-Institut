@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { 
   TrendingUp, TrendingDown, Wallet, Landmark, LayoutDashboard, 
   ArrowUpRight, ArrowDownRight, Package, Users, Receipt, Calendar,
@@ -35,10 +35,10 @@ const StatCard = ({ title, value, icon: Icon, color, subtitle, trend }: any) => 
       <h3 className="text-3xl font-black text-neutral-900 dark:text-white tabular-nums tracking-tight">
         {typeof value === 'number' ? formatCurrency(value) : value}
       </h3>
-      {subtitle && <p className="text-[10px] font-bold text-neutral-500 mt-2 uppercase flex items-center gap-1.5 opacity-60">
+      {subtitle && <div className="text-[10px] font-bold text-neutral-500 mt-2 uppercase flex items-center gap-1.5 opacity-60">
         <div className={cn("w-1.5 h-1.5 rounded-full", color)} />
         {subtitle}
-      </p>}
+      </div>}
     </div>
   </motion.div>
 );
@@ -219,5 +219,3 @@ export default function FinanceOverview() {
     </div>
   );
 }
-
-import { useMemo } from 'react';
