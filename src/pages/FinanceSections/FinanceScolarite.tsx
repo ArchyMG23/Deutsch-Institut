@@ -53,6 +53,7 @@ export default function FinanceScolarite() {
     amount: '',
     paymentMethod: 'Espèces',
     accountType: 'caisse',
+    date: new Date().toISOString().split('T')[0],
     notes: ''
   });
 
@@ -70,6 +71,7 @@ export default function FinanceScolarite() {
           amount: parseFloat(paymentData.amount),
           paymentMethod: paymentData.paymentMethod,
           accountType: paymentData.accountType,
+          date: paymentData.date,
           type: 'scolarite',
           notes: paymentData.notes
         })
@@ -123,7 +125,7 @@ export default function FinanceScolarite() {
             </div>
 
             <AnimatePresence>
-              {filteredStudents.length > 0 && (
+              {searchTerm && filteredStudents.length > 0 && (
                 <motion.div 
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -152,13 +154,19 @@ export default function FinanceScolarite() {
               )}
             </AnimatePresence>
 
-            {selectedStudent && (
+            {selectedStudent ? (
               <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 className="pt-6 border-t border-neutral-100 dark:border-neutral-800 space-y-4"
               >
-                <div className="p-4 bg-neutral-50 dark:bg-neutral-800 rounded-2xl">
+                <div className="p-4 bg-neutral-50 dark:bg-neutral-800 rounded-2xl relative group">
+                  <button 
+                    onClick={() => setSelectedStudent(null)}
+                    className="absolute top-2 right-2 p-1 text-neutral-300 hover:text-dia-red opacity-0 group-hover:opacity-100 transition-all"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                   <p className="text-[10px] font-black text-neutral-400 uppercase mb-1">Étudiant Sélectionné</p>
                   <p className="text-sm font-black text-neutral-900 dark:text-white uppercase">{selectedStudent.firstName} {selectedStudent.lastName}</p>
                   <p className="text-[10px] font-bold text-dia-red uppercase">{selectedStudent.matricule}</p>
@@ -192,6 +200,30 @@ export default function FinanceScolarite() {
                   </div>
                 )}
               </motion.div>
+            ) : (
+              <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800">
+                <p className="text-[10px] font-black text-neutral-400 uppercase mb-4 text-center">Cliquez sur un étudiant dans la liste pour gérer sa scolarité</p>
+                <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                  {students.slice(0, 10).map(s => (
+                    <button
+                      key={s.id}
+                      onClick={() => handleSelectStudent(s)}
+                      className="w-full p-3 rounded-xl hover:bg-neutral-50 dark:hover:bg-neutral-800 border border-transparent hover:border-neutral-100 dark:hover:border-neutral-700 transition-all flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center font-black text-neutral-400 text-[10px]">
+                          {s.firstName[0]}{s.lastName[0]}
+                        </div>
+                        <div className="text-left">
+                          <p className="text-[10px] font-black text-neutral-900 dark:text-white uppercase truncate w-32">{s.firstName} {s.lastName}</p>
+                          <p className="text-[8px] font-bold text-neutral-400 uppercase">{s.matricule}</p>
+                        </div>
+                      </div>
+                      <ChevronRight size={14} className="text-neutral-300" />
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -232,6 +264,15 @@ export default function FinanceScolarite() {
                 </div>
 
                 <div className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Date du Versement</label>
+                    <input 
+                      type="date" 
+                      value={paymentData.date}
+                      onChange={e => setPaymentData({...paymentData, date: e.target.value})}
+                      className="w-full p-4 bg-neutral-50 dark:bg-neutral-800 rounded-[1.5rem] border-none focus:ring-2 focus:ring-dia-red transition-all font-bold"
+                    />
+                  </div>
                   <div className="space-y-3">
                     <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Mode de Paiement</label>
                     <div className="flex gap-2">

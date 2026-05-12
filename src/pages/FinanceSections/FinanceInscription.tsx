@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { UserPlus, Wallet, ArrowRight, CheckCircle2, User, Search, Fingerprint, Calendar, CreditCard, Landmark } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { UserPlus, Wallet, ArrowRight, CheckCircle2, User, Search, Fingerprint, Calendar, CreditCard, Landmark, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -14,9 +14,19 @@ const INVOICE_TYPES = [
 
 export default function FinanceInscription() {
   const { fetchWithAuth } = useAuth();
-  const { levels, refreshAll } = useData();
+  const { levels, refreshAll, students } = useData();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<any>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredStudents = useMemo(() => {
+    if (!searchTerm) return students.slice(0, 10);
+    return students.filter(s => 
+      s.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.matricule?.toLowerCase().includes(searchTerm.toLowerCase())
+    ).slice(0, 10);
+  }, [searchTerm, students]);
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -28,6 +38,7 @@ export default function FinanceInscription() {
     fraisType: 'Normale',
     modePaiement: 'Espèces',
     compteDestination: 'caisse',
+    dateVerse: new Date().toISOString().split('T')[0],
     password: 'DIA' + Math.floor(Math.random() * 9000 + 1000)
   });
 
@@ -40,7 +51,10 @@ export default function FinanceInscription() {
       const res = await fetchWithAuth('/api/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          ...formData,
+          dateVerse: formData.dateVerse
+        })
       });
       const data = await res.json();
       if (res.ok) {
@@ -108,10 +122,11 @@ export default function FinanceInscription() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left Column: Personal Info */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white dark:bg-neutral-900 p-8 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 shadow-sm space-y-6">
+      <div className="flex flex-col lg:flex-row gap-8 items-start">
+        <form onSubmit={handleSubmit} className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Left Column: Personal Info */}
+          <div className="lg:col-span-1 space-y-6">
+            <div className="bg-white dark:bg-neutral-900 p-8 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 shadow-sm space-y-6">
             <h3 className="text-lg font-black text-neutral-900 dark:text-white uppercase flex items-center gap-2 mb-2">
               <User size={20} className="text-dia-red" />
               État Civil
@@ -255,6 +270,15 @@ export default function FinanceInscription() {
             {formData.fraisType !== 'Réduction totale' && (
               <div className="mt-8 space-y-6">
                  <div className="space-y-3">
+                    <label className="text-[10px] font-black uppercase text-white/40 ml-1">Date du Versement</label>
+                    <input 
+                      type="date" 
+                      value={formData.dateVerse}
+                      onChange={e => setFormData({...formData, dateVerse: e.target.value})}
+                      className="w-full p-3 bg-white/5 border-2 border-white/10 rounded-xl font-black uppercase text-xs text-white focus:ring-2 focus:ring-dia-red outline-none"
+                    />
+                 </div>
+                 <div className="space-y-3">
                     <label className="text-[10px] font-black uppercase text-white/40 ml-1">Mode de Paiement</label>
                     <div className="flex gap-2">
                        {['Espèces', 'Virement'].map(m => (
@@ -320,6 +344,44 @@ export default function FinanceInscription() {
           </div>
         </div>
       </form>
+
+        {/* Right Panel: Existing Students */}
+        <div className="w-full lg:w-72 space-y-6">
+          <div className="bg-white dark:bg-neutral-900 p-6 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 shadow-sm">
+            <div className="flex items-center gap-2 mb-4">
+              <Search size={14} className="text-dia-red" />
+              <h3 className="text-[10px] font-black uppercase text-neutral-400 tracking-widest">Vérifier Doublons</h3>
+            </div>
+            <input 
+              type="text" 
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              placeholder="Rechercher..."
+              className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 rounded-xl border-none focus:ring-2 focus:ring-dia-red transition-all font-bold text-xs mb-4"
+            />
+            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+              {filteredStudents.map(s => (
+                <div key={s.id} className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 border border-transparent hover:border-neutral-100 dark:hover:border-neutral-700 transition-all group">
+                   <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center font-black text-neutral-400 text-[10px]">
+                        {s.firstName[0]}{s.lastName[0]}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-black text-neutral-900 dark:text-white uppercase truncate">{s.firstName} {s.lastName}</p>
+                        <p className="text-[8px] font-bold text-neutral-400 uppercase">{s.matricule}</p>
+                      </div>
+                   </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="p-6 bg-dia-red/5 rounded-[2rem] border border-dia-red/10">
+             <p className="text-[9px] font-bold text-dia-red leading-relaxed uppercase">
+                Consultez cette liste pour éviter d'inscrire deux fois le même étudiant.
+             </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

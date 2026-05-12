@@ -1125,7 +1125,7 @@ async function startServer() {
       });
 
       const studentId = userRecord.uid;
-      const createdAt = new Date().toISOString();
+      const createdAt = req.body.dateVerse ? new Date(req.body.dateVerse).toISOString() : new Date().toISOString();
 
       const batch = dbAdmin.batch();
 
