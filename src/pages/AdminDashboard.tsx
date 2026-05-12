@@ -29,7 +29,7 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import { cn, formatCurrency } from '../utils';
+import { cn, formatCurrency, toDateSafe, formatDateAffichage } from '../utils';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
@@ -144,7 +144,11 @@ export default function AdminDashboard() {
   }), [financeStats]);
   
   const recentTransactions = React.useMemo(() => [...finances]
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .sort((a, b) => {
+      const dateA = toDateSafe(a.date)?.getTime() || 0;
+      const dateB = toDateSafe(b.date)?.getTime() || 0;
+      return dateB - dateA;
+    })
     .slice(0, 8), [finances]);
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-dia-red"></div></div>;
@@ -504,14 +508,14 @@ export default function AdminDashboard() {
                     </div>
                     <div>
                       <p className="font-medium text-sm">{item.description}</p>
-                      <p className="text-xs text-neutral-500">{new Date(item.date).toLocaleDateString()}</p>
+                      <p className="text-xs text-neutral-500">{formatDateAffichage(item.date)}</p>
                     </div>
                   </div>
                   <p className={cn(
                     "font-bold",
                     item.type === 'income' ? "text-green-600" : "text-red-600"
                   )}>
-                    {item.type === 'income' ? '+' : '-'}{formatCurrency(item.amount)}
+                    {item.type === 'income' ? '+' : '-'}{formatCurrency(Number(item.amount) || 0)}
                   </p>
                 </div>
               ))

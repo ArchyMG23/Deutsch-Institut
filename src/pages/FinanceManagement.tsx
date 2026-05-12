@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   LayoutDashboard, UserPlus, Landmark, Target, History, Settings, PlusCircle, ArrowUpRight, 
-  Wallet, ShieldCheck, Database, ArrowLeft, ArrowRightLeft
+  Wallet, ShieldCheck, Database, ArrowLeft, ArrowRightLeft, Sun
 } from 'lucide-react';
 import { cn } from '../utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -13,6 +13,7 @@ import FinanceOverview from './FinanceSections/FinanceOverview';
 import FinanceInscription from './FinanceSections/FinanceInscription';
 import FinanceScolarite from './FinanceSections/FinanceScolarite';
 import FinanceVorbereitung from './FinanceSections/FinanceVorbereitung';
+import FinanceVacances from './FinanceSections/FinanceVacances';
 import FinanceDiverse from './FinanceSections/FinanceDiverse';
 import FinanceSortie from './FinanceSections/FinanceSortie';
 import FinanceArchives from './FinanceSections/FinanceArchives';
@@ -23,6 +24,7 @@ const SECTIONS = [
   { id: 'inscription', label: 'Inscription', icon: UserPlus, color: 'text-purple-600', role: 'admin' },
   { id: 'scolarite', label: 'Scolarité', icon: Landmark, color: 'text-emerald-600', role: 'admin' },
   { id: 'vorbereitung', label: 'Vorbereitung', icon: Target, color: 'text-amber-600', role: 'admin' },
+  { id: 'vacances', label: 'Cours de Vacances', icon: Sun, color: 'text-amber-400', role: 'admin' },
   { id: 'diverse', label: 'Entrées Diverses', icon: PlusCircle, color: 'text-blue-500', role: 'admin' },
   { id: 'sortie', label: 'Sorties / Charges', icon: ArrowUpRight, color: 'text-orange-600', role: 'admin' },
   { id: 'archives', label: 'Archives', icon: History, color: 'text-neutral-500', role: 'admin' },
@@ -44,6 +46,7 @@ export default function FinanceManagement() {
       case 'inscription': return <FinanceInscription />;
       case 'scolarite': return <FinanceScolarite />;
       case 'vorbereitung': return <FinanceVorbereitung />;
+      case 'vacances': return <FinanceVacances />;
       case 'diverse': return <FinanceDiverse />;
       case 'sortie': return <FinanceSortie />;
       case 'archives': return <FinanceArchives />;

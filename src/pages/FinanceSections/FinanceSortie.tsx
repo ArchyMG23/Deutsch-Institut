@@ -213,7 +213,7 @@ export default function FinanceSortie() {
                  </li>
                  <li className="flex gap-3 text-xs font-bold leading-relaxed shadow-sm">
                     <div className="w-1.5 h-1.5 bg-dia-red rounded-full mt-1 shrink-0" />
-                    Vérifiez toujours le solde disponible avant de valider une sortie importante.
+                    Veuillez enregistrer chaque dépense au moment de sa réalisation.
                  </li>
               </ul>
            </div>

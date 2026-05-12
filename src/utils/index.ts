@@ -9,7 +9,31 @@ export function formatCurrency(amount: number) {
   return new Intl.NumberFormat('fr-FR', {
     style: 'currency',
     currency: 'XAF',
+    minimumFractionDigits: 0
   }).format(amount);
+}
+
+export function toDateSafe(valeur: any): Date | null {
+  if (!valeur) return null;
+  // Case Firestore Timestamp (object with .toDate())
+  if (typeof valeur?.toDate === 'function') {
+    return valeur.toDate();
+  }
+  // Case Firestore Timestamp serialized (object with .seconds)
+  if (valeur?.seconds !== undefined) {
+    return new Date(valeur.seconds * 1000);
+  }
+  // Case string ISO or number
+  const d = new Date(valeur);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+export function formatDateAffichage(valeur: any): string {
+  const d = toDateSafe(valeur);
+  if (!d) return '—';
+  return d.toLocaleDateString('fr-FR', {
+    day: '2-digit', month: '2-digit', year: 'numeric'
+  });
 }
 
 export function generateMatricule(role: 'admin' | 'teacher' | 'student') {

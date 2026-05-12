@@ -1150,7 +1150,9 @@ async function startServer() {
         id: studentId, 
         matricule, 
         createdAt, 
-        cycle: studentData.cycle || 'Allemand' 
+        totalTuition: tuitionTotal,
+        cycle: studentData.cycle || 'Allemand',
+        payments: [] // Initialize empty payments array
       };
       batch.set(dbAdmin.collection('students').doc(studentId), newStudent);
 
@@ -1666,11 +1668,28 @@ async function startServer() {
         const scolariteDoc = await transaction.get(scolariteRef);
         
         if (!scolariteDoc.exists) {
+          // Determine the correct total due based on student's level or custom tuition
+          const levelId = student.levelId;
+          let due = 110000; // Default fallback
+          
+          if (student.totalTuition) {
+            due = Number(student.totalTuition);
+          } else if (levelId) {
+            const levelSnap = await transaction.get(dbAdmin.collection('levels').doc(levelId));
+            if (levelSnap.exists) due = levelSnap.data()?.tuition || 110000;
+          }
+
           // Auto-create if missing (failsafe)
           transaction.set(scolariteRef, {
-            eleve_id: studentId, matricule: student.matricule, nom_eleve: `${student.firstName} ${student.lastName}`,
-            montant_total_du: type === 'vorbereitung' ? 50000 : 110000, total_verse: 0, reste: type === 'vorbereitung' ? 50000 : 110000,
-            surplus: false, statut_paiement: 'NON PAYÉ', createdAt
+            eleve_id: studentId, 
+            matricule: student.matricule, 
+            nom_eleve: `${student.firstName} ${student.lastName}`,
+            montant_total_du: due, 
+            total_verse: 0, 
+            reste: due,
+            surplus: false, 
+            statut_paiement: 'NON PAYÉ', 
+            createdAt
           });
         }
 
@@ -1703,6 +1722,39 @@ async function startServer() {
         });
 
         await ajusterSolde(accountType, amount, transaction);
+
+        // SYNC: Update student record with this payment to reflect in StudentManagement lists
+        const paymentRecord = {
+          amount,
+          date: date || createdAt,
+          receiptId: recu_numero,
+          category: type || 'Scolarité',
+          method: paymentMethod
+        };
+        transaction.update(studentRef, {
+          payments: admin.firestore.FieldValue.arrayUnion(paymentRecord)
+        });
+
+        // UNIFIED SYNC: Also write to the 'finances' collection used by the ledger
+        const financeId = transId; 
+        transaction.set(dbAdmin.collection('finances').doc(financeId), {
+          id: financeId,
+          studentId,
+          studentMatricule: student.matricule,
+          studentName: `${student.firstName} ${student.lastName}`,
+          amount,
+          date: date || createdAt,
+          type: 'income',
+          category: type === 'vorbereitung' ? 'Vorbereitung' : 'Scolarité',
+          method: paymentMethod,
+          accountType,
+          notes: notes || '',
+          receiptId: recu_numero,
+          createdBy: req.user.id,
+          createdAt,
+          updatedAt: createdAt,
+          status: 'active'
+        });
       });
 
       res.json({ message: 'Paiement enregistré', recu_numero });

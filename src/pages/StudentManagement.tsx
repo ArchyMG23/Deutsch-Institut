@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { db, auth } from '../firebase';
-import { collection, doc, setDoc, addDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, addDoc, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import { 
   Search, 
   Plus, 
@@ -32,7 +32,7 @@ import { useReactToPrint } from 'react-to-print';
 import { useTranslation } from 'react-i18next';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { cn, formatCurrency, generateMatricule } from '../utils';
+import { cn, formatCurrency, generateMatricule, formatDateAffichage } from '../utils';
 import { Student, ClassRoom, Level, TuitionPayment } from '../types';
 import { NotificationService } from '../services/NotificationService';
 import { useAuth } from '../context/AuthContext';
@@ -44,7 +44,7 @@ export default function StudentManagement() {
   const { t } = useTranslation();
   const { fetchWithAuth, user, profile } = useAuth();
   const { 
-    students, classes, levels, loading, 
+    students, classes, levels, finances, loading, 
     refreshStudents, refreshClasses, refreshLevels, refreshFinances, refreshAll 
   } = useData();
 
@@ -66,6 +66,25 @@ export default function StudentManagement() {
   const [selectedTuition, setSelectedTuition] = useState<number | ''>('');
   const [selectedStream, setSelectedStream] = useState<string>('');
   const itemsPerPage = 20;
+
+  // Sync with Global Finances: calculate accurate totals from the 'finances' collection
+  const paymentsByStudent = useMemo(() => {
+    const map: Record<string, number> = {};
+    (finances || []).forEach(f => {
+      // Only count active income transactions related to tuition/schooling
+      if (f.status !== 'deleted' && f.type === 'income') {
+        const studentId = f.studentId || f.eleve_id;
+        if (studentId) {
+          const cat = (f.category || '').toLowerCase();
+          // We count Scolarité and Vorbereitung for the progress bar
+          if (cat.includes('scolarit') || cat.includes('vorbereitung') || cat.includes('vacances')) {
+            map[studentId] = (map[studentId] || 0) + (Number(f.amount) || 0);
+          }
+        }
+      }
+    });
+    return map;
+  }, [finances]);
   
   const printRef = useRef<HTMLDivElement>(null);
   const receiptRef = useRef<HTMLDivElement>(null);
@@ -154,6 +173,56 @@ export default function StudentManagement() {
   const [includeInscription, setIncludeInscription] = useState(false);
   const [selectedLevelId, setSelectedLevelId] = useState<string>('');
   
+  const [financeStatus, setFinanceStatus] = useState<any>(null);
+  const [scolariteVersements, setScolariteVersements] = useState<any[]>([]);
+  const [vorbereitungVersements, setVorbereitungVersements] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!selectedStudent || !isDetailModalOpen) {
+      setFinanceStatus(null);
+      setScolariteVersements([]);
+      setVorbereitungVersements([]);
+      return;
+    }
+
+    const eleve_id = selectedStudent.id;
+
+    // Listen to main scolarite doc
+    const unsubScolarite = onSnapshot(doc(db, 'scolarites', eleve_id), (doc) => {
+      if (doc.exists()) {
+        setFinanceStatus(doc.data());
+      } else {
+        setFinanceStatus(null);
+      }
+    });
+
+    // Listen to scolarite versements
+    const qScol = query(
+      collection(db, 'scolarites', eleve_id, 'versements'),
+      orderBy('date', 'desc'),
+      limit(10)
+    );
+    const unsubScolVersements = onSnapshot(qScol, (snap) => {
+      setScolariteVersements(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    // Listen to vorbereitung versements
+    const qVorb = query(
+      collection(db, 'vorbereitung', eleve_id, 'versements'),
+      orderBy('date', 'desc'),
+      limit(10)
+    );
+    const unsubVorbVersements = onSnapshot(qVorb, (snap) => {
+      setVorbereitungVersements(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => {
+      unsubScolarite();
+      unsubScolVersements();
+      unsubVorbVersements();
+    };
+  }, [selectedStudent?.id, isDetailModalOpen]);
+
   useEffect(() => {
     const level = levels.find(l => l.id === selectedLevelId);
     if (level) {
@@ -761,10 +830,10 @@ export default function StudentManagement() {
               </thead>
               <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
                 {paginatedStudents.map((student) => {
-                  const totalPaid = (student.payments || []).reduce((acc, p) => acc + (p.amount || 0), 0);
+                  const totalPaid = paymentsByStudent[student.id] || 0;
                   const level = levels.find(l => l.id === student.levelId);
-                  const tuition = level?.tuition || 0;
-                  const isFullyPaid = totalPaid >= tuition;
+                  const tuition = student.totalTuition || level?.tuition || 0;
+                  const isFullyPaid = totalPaid >= tuition && tuition > 0;
   
                   return (
                     <tr key={student.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer" onClick={() => {
@@ -801,7 +870,7 @@ export default function StudentManagement() {
                           <div className="w-full bg-neutral-100 rounded-full h-1.5 overflow-hidden">
                             <div 
                               className={cn("h-full transition-all", isFullyPaid ? "bg-green-500" : "bg-dia-red")}
-                              style={{ width: `${Math.min(100, (totalPaid / tuition) * 100)}%` }}
+                              style={{ width: `${tuition > 0 ? Math.min(100, (totalPaid / tuition) * 100) : 0}%` }}
                             />
                           </div>
                         </div>
@@ -814,14 +883,21 @@ export default function StudentManagement() {
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              const msg = `Bonjour ${student.firstName}, c'est l'Institut ${APP_NAME_FOR_LINKS}. Comment pouvons-nous vous aider ?`;
+                              const msg = `🔐 *VOS ACCÈS - ${APP_NAME_FOR_LINKS}*\n\n` +
+                                `Bonjour ${student.firstName},\n\n` +
+                                `Voici vos identifiants pour accéder à votre espace :\n\n` +
+                                `📧 *Email :* ${student.email}\n` +
+                                `🔑 *Mot de passe :* DIA2026.\n\n` +
+                                `Lien : ${window.location.origin}\n\n` +
+                                `Note: Veuillez changer votre mot de passe dès votre première connexion.\n_L'Administration._`;
+                              
                               const a = document.createElement('a');
                               a.href = generateWhatsAppLink(student.phone || student.parentPhone || '', msg);
                               a.target = '_blank';
                               a.click();
                             }}
                             className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors text-green-600"
-                            title="WhatsApp"
+                            title="Envoyer Identifiants"
                           >
                             <Smartphone size={18} />
                           </button>
@@ -876,10 +952,10 @@ export default function StudentManagement() {
         {/* Card View (Mobile) */}
         <div className="grid grid-cols-1 gap-4 md:hidden">
           {paginatedStudents.map((student) => {
-            const totalPaid = (student.payments || []).reduce((acc, p) => acc + (p.amount || 0), 0);
+            const totalPaid = paymentsByStudent[student.id] || 0;
             const level = levels.find(l => l.id === student.levelId);
-            const tuition = level?.tuition || 0;
-            const isFullyPaid = totalPaid >= tuition;
+            const tuition = student.totalTuition || level?.tuition || 0;
+            const isFullyPaid = totalPaid >= tuition && tuition > 0;
             const cls = classes.find(c => c.id === student.classId);
 
             return (
@@ -908,6 +984,13 @@ export default function StudentManagement() {
                   </div>
                 </div>
 
+                <div className="w-full bg-neutral-100 dark:bg-neutral-800 rounded-full h-2 overflow-hidden">
+                  <div 
+                    className={cn("h-full transition-all", isFullyPaid ? "bg-green-500" : "bg-dia-red")}
+                    style={{ width: `${tuition > 0 ? Math.min(100, (totalPaid / tuition) * 100) : 0}%` }}
+                  />
+                </div>
+
                 <div className="grid grid-cols-2 gap-2 text-[10px] font-bold uppercase">
                   <div className="p-2 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg">
                     <p className="text-neutral-400 mb-0.5">Classe</p>
@@ -924,11 +1007,19 @@ export default function StudentManagement() {
                 <div className="flex items-center justify-between pt-2 border-t border-neutral-100 dark:border-neutral-800" onClick={(e) => e.stopPropagation()}>
                   <div className="flex gap-2">
                     <button 
-                      onClick={() => {
-                        const msg = `Bonjour ${student.firstName}, c'est l'Institut ${APP_NAME_FOR_LINKS}. Comment pouvons-nous vous aider ?`;
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const msg = `🔐 *VOS ACCÈS - ${APP_NAME_FOR_LINKS}*\n\n` +
+                          `Bonjour ${student.firstName},\n\n` +
+                          `Voici vos identifiants pour accéder à votre espace :\n\n` +
+                          `📧 *Email :* ${student.email}\n` +
+                          `🔑 *Mot de passe :* DIA2026.\n\n` +
+                          `Lien : ${window.location.origin}\n\n` +
+                          `Note: Veuillez changer votre mot de passe dès votre première connexion.\n_L'Administration._`;
                         window.open(generateWhatsAppLink(student.phone || student.parentPhone || '', msg), '_blank');
                       }}
                       className="p-2 bg-green-50 text-green-600 rounded-lg active:bg-green-100 shadow-sm"
+                      title="Envoyer Identifiants"
                     >
                       <Smartphone size={18} />
                     </button>
@@ -1358,27 +1449,60 @@ export default function StudentManagement() {
                   <p className="text-sm text-neutral-500">{classes.find(c => c.id === selectedStudent.classId)?.name || t('students.not_assigned')}</p>
                 </div>
                 <div>
-                  <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">{t('students.parent_info')}</p>
+                  <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">{t('students.guardianName')}</p>
                   <p className="text-sm font-bold">{selectedStudent.parentName}</p>
                   <p className="text-sm">{selectedStudent.parentPhone}</p>
                 </div>
-                <div>
-                  <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">{t('students.tuition_status') || 'Statut Scolarité'}</p>
-                  <p className="text-sm font-bold">
-                    {formatCurrency((selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0))} / {formatCurrency(levels.find(l => l.id === selectedStudent.levelId)?.tuition || 0)}
-                  </p>
-                  <button 
-                    onClick={() => {
-                        setIsDetailModalOpen(false);
-                        // Redirect to Finance with student selected
-                        window.location.hash = `#/finance?studentId=${selectedStudent.uid}`;
-                    }}
-                    className="mt-2 text-[10px] font-black uppercase text-dia-red hover:underline flex items-center gap-1"
-                  >
-                    <HistoryIcon size={12} />
-                    {t('students.view_history') || 'Voir Historique'}
-                  </button>
+              </div>
+
+              {/* Situation Financière Block (Bug 2) */}
+              <div className="bg-neutral-50 dark:bg-neutral-800/50 p-6 rounded-[2rem] border border-neutral-100 dark:border-neutral-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-black uppercase text-neutral-900 dark:text-white flex items-center gap-2">
+                    <CreditCard size={18} className="text-dia-red" />
+                    💳 Situation Financière
+                  </h3>
+                  {financeStatus && (
+                    <div className={cn(
+                      "text-[10px] font-black px-3 py-1 rounded-full uppercase",
+                      financeStatus.reste <= 0 ? "bg-green-100 text-green-600" : "bg-dia-red/10 text-dia-red"
+                    )}>
+                      {financeStatus.reste <= 0 ? "🟢 Soldé" : "🟡 En cours"}
+                    </div>
+                  )}
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-3 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-100 dark:border-neutral-800">
+                    <p className="text-[9px] font-bold text-neutral-400 uppercase">Total Dû</p>
+                    <p className="text-sm font-black">{formatCurrency(financeStatus?.montant_total_du || 0)}</p>
+                  </div>
+                  <div className="p-3 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-100 dark:border-neutral-800">
+                    <p className="text-[9px] font-bold text-neutral-400 uppercase">Total Versé</p>
+                    <p className="text-sm font-black text-green-600">{formatCurrency(financeStatus?.total_verse || 0)}</p>
+                  </div>
+                  <div className="p-3 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-100 dark:border-neutral-800">
+                    <p className="text-[9px] font-bold text-neutral-400 uppercase">Reste à Payer</p>
+                    <p className={cn("text-sm font-black", (financeStatus?.reste || 0) > 0 ? "text-dia-red" : "text-green-600")}>
+                      {formatCurrency(financeStatus?.reste || 0)}
+                    </p>
+                  </div>
+                </div>
+
+                {scolariteVersements.length > 0 && (
+                  <div className="pt-2">
+                    <p className="text-[9px] font-bold text-neutral-400 uppercase mb-2">Derniers Versements</p>
+                    <div className="space-y-2">
+                      {scolariteVersements.slice(0, 3).map((v, i) => (
+                        <div key={v.id || i} className="flex items-center justify-between text-[10px] font-bold p-2 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-800">
+                          <span className="text-neutral-500">{formatDateAffichage(v.date)}</span>
+                          <span className="uppercase text-neutral-400 text-[8px] px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded-full">{v.cycle || '-'}</span>
+                          <span className="text-dia-red">{formatCurrency(v.montant)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="pt-6 border-t border-neutral-100 dark:border-neutral-800 flex gap-3 flex-wrap">
                 <button 
@@ -1403,15 +1527,36 @@ export default function StudentManagement() {
                 </button>
                 <button 
                   onClick={() => {
+                    const msg = `🔐 *VOS ACCÈS - ${APP_NAME_FOR_LINKS}*\n\n` +
+                      `Bonjour ${selectedStudent.firstName},\n\n` +
+                      `Voici vos identifiants pour accéder à votre espace :\n\n` +
+                      `📧 *Email :* ${selectedStudent.email}\n` +
+                      `🔑 *Mot de passe :* DIA2026.\n\n` +
+                      `Lien : ${window.location.origin}\n\n` +
+                      `Note: Veuillez changer votre mot de passe dès votre première connexion.\n_L'Administration._`;
+
+                    const a = document.createElement('a');
+                    a.href = generateWhatsAppLink(selectedStudent.phone || selectedStudent.parentPhone || '', msg);
+                    a.target = '_blank';
+                    a.click();
+                  }}
+                  className="flex-1 min-w-[120px] bg-green-100 text-green-600 py-3 rounded-2xl font-bold hover:bg-green-200 transition-all flex items-center justify-center gap-2 text-sm"
+                  title="Partager les identifiants"
+                >
+                  <Smartphone size={16} />
+                  Accès
+                </button>
+                <button 
+                  onClick={() => {
                     const level = levels.find(l => l.id === selectedStudent.levelId) || 
                                   levels.find(l => l.name.toLowerCase() === selectedStudent.levelId?.toLowerCase());
                     const tuition = level?.tuition || 0;
-                    const totalPaid = (selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+                    const totalPaid = paymentsByStudent[selectedStudent.id] || 0;
                     const balance = tuition - totalPaid;
 
                     const msg = `🔔 *RAPPEL DE PAIEMENT - ${APP_NAME_FOR_LINKS}*\n\n` +
                       `Bonjour ${selectedStudent.firstName},\n\n` +
-                      `Nous vous rappelons qu'il reste un solde de *${formatCurrency(balance)}* à régler pour votre formation.\n\n` +
+                      `Nous vous rappelons qu'il reste un solde de *${formatCurrency(balance)}* à régler pour votre scolarité.\n\n` +
                       `Merci de votre diligence.\n_L'Administration._`;
 
                     const a = document.createElement('a');
@@ -1419,11 +1564,12 @@ export default function StudentManagement() {
                     a.target = '_blank';
                     a.click();
                   }}
-                  disabled={((selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0) >= (levels.find(l => l.id === selectedStudent.levelId)?.tuition || 0))}
-                  className="flex-1 min-w-[120px] bg-green-100 text-green-600 py-3 rounded-2xl font-bold hover:bg-green-200 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+                  disabled={(paymentsByStudent[selectedStudent.id] || 0) >= (selectedStudent.totalTuition || levels.find(l => l.id === selectedStudent.levelId)?.tuition || 0)}
+                  className="flex-1 min-w-[120px] bg-amber-100 text-amber-600 py-3 rounded-2xl font-bold hover:bg-amber-200 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+                  title="Rappel de paiement"
                 >
                   <Smartphone size={16} />
-                  WhatsApp
+                  Rappel
                 </button>
               </div>
             </div>

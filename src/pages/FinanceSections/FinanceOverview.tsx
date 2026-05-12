@@ -13,8 +13,9 @@ import {
 } from 'recharts';
 
 const StatCard = ({ title, value, icon: Icon, color, subtitle, trend }: any) => {
-  const iconBg = `${color}/10`;
-  const iconColor = color.replace('bg-', 'text-');
+  const isHex = color.startsWith('#');
+  const iconBg = isHex ? `${color}15` : `${color}/10`;
+  const iconColor = isHex ? color : color.replace('bg-', 'text-');
 
   return (
     <motion.div 
@@ -22,10 +23,16 @@ const StatCard = ({ title, value, icon: Icon, color, subtitle, trend }: any) => 
       animate={{ opacity: 1, y: 0 }}
       className="bg-white dark:bg-neutral-900 p-8 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 shadow-sm relative overflow-hidden group"
     >
-      <div className={cn("absolute top-0 right-0 w-32 h-32 -mr-16 -mt-16 rounded-full opacity-[0.03] transition-transform duration-700 group-hover:scale-150", color)} />
+      <div 
+        className={cn("absolute top-0 right-0 w-32 h-32 -mr-16 -mt-16 rounded-full opacity-[0.03] transition-transform duration-700 group-hover:scale-150")} 
+        style={isHex ? { backgroundColor: color } : {}}
+      />
       <div className="flex items-start justify-between mb-6">
-        <div className={cn("p-4 rounded-2xl shadow-lg shadow-current/5", iconBg)}>
-          <Icon size={28} className={iconColor} />
+        <div 
+          className={cn("p-4 rounded-2xl shadow-lg shadow-current/5")}
+          style={isHex ? { backgroundColor: iconBg } : {}}
+        >
+          <Icon size={28} className={!isHex ? iconColor : ''} style={isHex ? { color: iconColor } : {}} />
         </div>
         {trend && (
           <div className={cn("flex items-center gap-1 text-[10px] font-black uppercase px-3 py-1 rounded-full", trend > 0 ? "bg-emerald-50 text-emerald-600" : "bg-dia-red/10 text-dia-red")}>
@@ -86,7 +93,7 @@ export default function FinanceOverview() {
           title="Solde Caisse" 
           value={caisseSolde} 
           icon={Wallet} 
-          color="bg-dia-red" 
+          color="#FF0000"
           subtitle="Argent disponible sur place"
           trend={+12}
         />
@@ -94,7 +101,7 @@ export default function FinanceOverview() {
           title="Solde Banque" 
           value={banqueSolde} 
           icon={Landmark} 
-          color="bg-blue-600" 
+          color="#2563eb"
           subtitle="Fonds sécurisés"
           trend={+5}
         />
