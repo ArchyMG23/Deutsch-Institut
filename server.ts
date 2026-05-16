@@ -225,9 +225,7 @@ async function startServer() {
     try {
       const admins = [
         { email: 'yombivictor@gmail.com', firstName: 'Victor', lastName: 'Yombi', matricule: 'SUPERADMIN', isSuperAdmin: true },
-        { email: 'gabrielyombi311@gmail.com', firstName: 'Gabriel', lastName: 'Yombi', matricule: 'ADMIN_GABRIEL', isSuperAdmin: true },
-        { email: 'victoryombi@gmail.com', firstName: 'Victor', lastName: 'Yombi (Audit)', matricule: 'ADMIN_V', isSuperAdmin: true },
-        { email: 'gabrielyombi@gmail.com', firstName: 'Gabriel', lastName: 'Yombi (Audit)', matricule: 'ADMIN_G', isSuperAdmin: true }
+        { email: 'gabrielyombi311@gmail.com', firstName: 'Gabriel', lastName: 'Yombi', matricule: 'ADMIN_GABRIEL', isSuperAdmin: true }
       ];
 
       for (const adminData of admins) {
@@ -301,7 +299,7 @@ async function startServer() {
         
         // Comprehensive user identification
         const userEmail = decodedToken.email || '';
-        const isSuperAdminEmail = ['yombivictor@gmail.com', 'gabrielyombi311@gmail.com', 'victoryombi@gmail.com', 'gabrielyombi@gmail.com'].includes(userEmail);
+        const isSuperAdminEmail = ['yombivictor@gmail.com', 'gabrielyombi311@gmail.com'].includes(userEmail);
 
         req.user = {
           id: decodedToken.uid,
@@ -428,10 +426,13 @@ async function startServer() {
     });
   });
 
-  // Self-repair: Ensure Super Admins exist in DB
+  // Self-repair: Ensure Super Admins exist in DB and remove deprecated ones
   const ensureSuperAdmins = async () => {
     if (!isFirebaseAdminInitialized) return;
-    const admins = ['gabrielyombi311@gmail.com', 'yombivictor@gmail.com', 'victoryombi@gmail.com', 'gabrielyombi@gmail.com'];
+    const admins = ['gabrielyombi311@gmail.com', 'yombivictor@gmail.com'];
+    const deprecated = ['victoryombi@gmail.com', 'gabrielyombi@gmail.com'];
+
+    // 1. Ensure current ones are correct
     for (const email of admins) {
       try {
         const snap = await dbAdmin.collection('users').where('email', '==', email).get();
@@ -446,6 +447,21 @@ async function startServer() {
         }
       } catch (err) {
         console.error(`Failed to ensure super admin for ${email}:`, err);
+      }
+    }
+
+    // 2. Remove deprecated duplicates from the users collection
+    for (const email of deprecated) {
+      try {
+        const snap = await dbAdmin.collection('users').where('email', '==', email).get();
+        if (!snap.empty) {
+          for (const doc of snap.docs) {
+            await doc.ref.delete();
+            console.log(`🗑️ Deleted deprecated duplicate admin: ${email}`);
+          }
+        }
+      } catch (err) {
+        console.error(`Failed to remove deprecated admin ${email}:`, err);
       }
     }
   };

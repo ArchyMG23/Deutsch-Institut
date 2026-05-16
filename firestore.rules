@@ -4,14 +4,14 @@ service cloud.firestore {
 
     // 0. Global Safety Net
     match /{document=**} {
-      allow read, write: if isAuth() && request.auth.token.email in ['yombivictor@gmail.com', 'gabrielyombi311@gmail.com', 'victoryombi@gmail.com', 'gabrielyombi@gmail.com'];
+      allow read, write: if isAuth() && request.auth.token.email in ['yombivictor@gmail.com', 'gabrielyombi311@gmail.com'];
     }
 
     function isAuth()       { return request.auth != null; }
     
     function isAdmin()      {
       return isAuth() && (
-        request.auth.token.email in ['yombivictor@gmail.com', 'gabrielyombi311@gmail.com', 'victoryombi@gmail.com'] ||
+        request.auth.token.email in ['yombivictor@gmail.com', 'gabrielyombi311@gmail.com'] ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'super_admin'])
       );
@@ -19,7 +19,7 @@ service cloud.firestore {
     
     function isSuperAdmin() {
       return isAuth() && (
-        request.auth.token.email in ['yombivictor@gmail.com', 'gabrielyombi311@gmail.com', 'victoryombi@gmail.com'] ||
+        request.auth.token.email in ['yombivictor@gmail.com', 'gabrielyombi311@gmail.com'] ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin')
       );

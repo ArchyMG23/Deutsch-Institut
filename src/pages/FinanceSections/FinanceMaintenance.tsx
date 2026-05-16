@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldAlert, RefreshCw, Trash2, Database, CheckCircle2, AlertCircle, BookOpen } from 'lucide-react';
+import { ShieldAlert, RefreshCw, Trash2, Database, CheckCircle2, AlertCircle, BookOpen, Users } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { toast } from 'sonner';
@@ -89,6 +89,35 @@ export default function FinanceMaintenance() {
       setRunning(null);
     }
   };
+
+  const cleanupDeprecatedAdmins = async () => {
+    if (!window.confirm("Voulez-vous supprimer les comptes SuperAdmin de test/audit dupliqués (victoryombi@gmail.com et gabrielyombi@gmail.com) ?")) return;
+    setRunning('CleanupAdmins');
+    try {
+      const emailsToDelete = ['victoryombi@gmail.com', 'gabrielyombi@gmail.com'];
+      let count = 0;
+      
+      for (const email of emailsToDelete) {
+        const q = query(collection(db, 'users'), where('email', '==', email));
+        const snap = await getDocs(q);
+        const batch = writeBatch(db);
+        snap.forEach(d => {
+          batch.delete(d.ref);
+          count++;
+        });
+        await batch.commit();
+      }
+      
+      toast.success(`${count} compte(s) dédoublonné(s) !`);
+      refreshAll(true);
+    } catch (e) {
+      console.error(e);
+      toast.error("Erreur lors du nettoyage des admins");
+    } finally {
+      setRunning(null);
+    }
+  };
+
   const [resetConfirm, setResetConfirm] = useState('');
   const [showResetModal, setShowResetModal] = useState(false);
 
@@ -323,6 +352,26 @@ export default function FinanceMaintenance() {
           <h3 className="text-xl font-black text-amber-600 uppercase mb-1">Correction Bug 50k</h3>
           <p className="text-sm font-bold text-amber-600/60 uppercase leading-relaxed">
             Corrige les objectifs Vorbereitung bloqués sur l'ancienne valeur fixe par défaut.
+          </p>
+        </motion.div>
+
+        {/* Tool: Cleanup Duplicate Admins */}
+        <motion.div whileHover={{ y: -5 }} className="bg-dia-red/5 p-8 rounded-[2.5rem] border-2 border-dia-red/20 shadow-sm">
+          <div className="flex items-start justify-between mb-6">
+            <div className="p-3 bg-dia-red text-white rounded-2xl">
+              <Users size={24} className={running === 'CleanupAdmins' ? 'animate-spin' : ''} />
+            </div>
+            <button 
+              onClick={cleanupDeprecatedAdmins}
+              disabled={!!running}
+              className="btn-primary py-2 px-6 rounded-xl hover:scale-105 active:scale-95 transition-all bg-dia-red hover:bg-dia-red/90 disabled:opacity-50"
+            >
+              NETTOYER
+            </button>
+          </div>
+          <h3 className="text-xl font-black text-dia-red uppercase mb-1">Dédoublonner Admins</h3>
+          <p className="text-sm font-bold text-dia-red/60 uppercase leading-relaxed">
+            Supprime définitivement les comptes SuperAdmin d'audit (victoryombi@gmail.com, etc.) de la base de données.
           </p>
         </motion.div>
       </div>
