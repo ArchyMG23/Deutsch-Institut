@@ -5,6 +5,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { toast } from 'sonner';
 import { cn, formatCurrency } from '../../utils';
+import { showToast, handleError } from '../../lib/errorHandler';
+import { EventBus, EVENTS } from '../../lib/eventBus';
 
 const CATEGORIES = [
   'Salaires enseignants',
@@ -47,7 +49,14 @@ export default function FinanceSortie() {
         })
       });
       if (res.ok) {
-        toast.success("Dépense enregistrée !");
+        showToast("Dépense enregistrée !", 'success');
+        
+        // Emission des événements
+        EventBus.emit(EVENTS.TRANSACTION_AJOUTEE, { 
+          amount: -parseFloat(formData.amount), 
+          category: formData.categorie 
+        });
+        
         setFormData({
           categorie: 'Divers', libelle: '', amount: '',
           date: new Date().toISOString().split('T')[0],
@@ -55,10 +64,11 @@ export default function FinanceSortie() {
         });
         refreshAll(true);
       } else {
-        toast.error("Erreur lors de l'enregistrement");
+        const errorData = await res.json();
+        showToast(errorData.message || "Erreur lors de l'enregistrement", 'error');
       }
     } catch (err) {
-      toast.error("Erreur réseau");
+      handleError("PaymentSortie", err);
     } finally {
       setLoading(false);
     }

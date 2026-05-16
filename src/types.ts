@@ -32,6 +32,10 @@ export interface Student extends UserProfile {
   levelId?: string;
   payments: TuitionPayment[];
   isFormer?: boolean;
+  // Financial status fields
+  totalTuition?: number;
+  totalPaid?: number;
+  reste?: number;
 }
 
 export interface TuitionPayment {
@@ -46,11 +50,56 @@ export interface TuitionPayment {
 
 export interface Level {
   id: string;
-  name: string;
-  tuition: number;
-  hours: number; // Total hours for the level
-  stream?: 'Allemand' | 'Anglais';
-  type?: 'allemand' | 'anglais';
+  nom: string;
+  name?: string; // sync alias
+  cycle: 'allemand' | 'anglais' | 'Allemand' | 'Anglais';
+  stream?: string; // sync alias
+  ordre: number;
+  actif: boolean;
+
+  // FINANCES
+  frais_scolarite: number;
+  tuition?: number; // sync alias
+  frais_examen: number;
+  frais_inscription?: number; 
+  paiement_fractionnable: boolean;
+  nb_fractions_max: number | null;
+
+  // ENSEIGNANTS
+  taux_horaire_salle: number;
+  duree_seance_standard: number;
+  nb_seances_par_semaine: number;
+  hours?: number; // sync alias
+
+  // PÉDAGOGIE
+  description?: string;
+  objectifs?: string;
+  prerequis?: string;
+  duree_totale_semaines?: number;
+  nb_heures_total?: number;
+  supports_cours?: string[];
+  examens?: string[];
+
+  // CAPACITÉ
+  capacite_max: number;
+  seuil_ouverture: number;
+
+  // VORBEREITUNG
+  vorbereitung_disponible: boolean;
+  vorbereitung_examens?: string[];
+  frais_vorbereitung_defaut?: number | null;
+  type?: 'standard' | 'vorbereitung';
+  tarif_variable?: boolean;
+  quota_variable?: boolean;
+
+  // VACANCES
+  vacances_disponible: boolean;
+  frais_vacances_defaut?: number | null;
+
+  // METADATA
+  createdAt?: string;
+  updatedAt?: string;
+  updatedBy?: string;
 }
 
 export interface ClassRoom {

@@ -1,8 +1,12 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Student, Teacher, ClassRoom, Level, FinanceRecord, LibraryItem, Evaluation } from '../types';
 import { useAuth } from './AuthContext';
+
+import { initListenerSoldesGlobal } from '../lib/school-engine';
+import { listenSoldes } from '../lib/sync-listeners';
+import { verifierCoherenceSoldes } from '../lib/sync-integrity';
 
 interface DataContextType {
   students: Student[];
@@ -58,21 +62,98 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [banqueSolde, setBanqueSolde] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  // Financial Sychronization - Phase 1
-  useEffect(() => {
-    if (!user) return;
-    const unsubscribe = onSnapshot(collection(db, 'comptes'), (snapshot) => {
-      snapshot.docs.forEach(doc => {
-        if (doc.id === 'caisse') setCaisseSolde(doc.data().solde_actuel || 0);
-        if (doc.id === 'banque') setBanqueSolde(doc.data().solde_actuel || 0);
-      });
-      // Propagate update via custom event for specialized components
-      window.dispatchEvent(new CustomEvent('finance-update'));
-    }, (error) => {
-      console.error("Firestore balance listener error:", error);
-    });
-    return () => unsubscribe();
-  }, [user]);
+    // Financial Sychronization - Phase 1
+    useEffect(() => {
+      if (!user) return;
+      
+      const isAdminUser = user.role === 'admin' || (user as any).isSuperAdmin;
+      let unsubscribeComptes = () => {};
+      let unsubStudents = () => {};
+      let unsubTeachers = () => {};
+      let unsubFinances = () => {};
+
+      if (isAdminUser) {
+        // Initialize the new global listeners 
+        listenSoldes();
+        
+        // Integrity check for admins
+        verifierCoherenceSoldes().then(({ anomalies, healed }: any) => {
+          if (healed) console.log(`[SYNC] Healed ${anomalies} balance anomalies to match ledger.`);
+        });
+
+        unsubscribeComptes = onSnapshot(collection(db, 'comptes'), (snapshot) => {
+          snapshot.docs.forEach(doc => {
+            if (doc.id === 'caisse') {
+              const val = doc.data().solde_actuel || 0;
+              setCaisseSolde(val);
+              if ((window as any).APP_SOLDES) (window as any).APP_SOLDES.caisse = val;
+            }
+            if (doc.id === 'banque') {
+              const val = doc.data().solde_actuel || 0;
+              setBanqueSolde(val);
+              if ((window as any).APP_SOLDES) (window as any).APP_SOLDES.banque = val;
+            }
+          });
+          // Propagate update via custom event for specialized components
+          window.dispatchEvent(new CustomEvent('finance-update'));
+          window.dispatchEvent(new CustomEvent('soldes:updated', { 
+            detail: { caisse: (window as any).APP_SOLDES?.caisse || 0, banque: (window as any).APP_SOLDES?.banque || 0 } 
+          }));
+        }, (error) => {
+          console.error("Firestore balance listener error:", error);
+        });
+
+        unsubStudents = onSnapshot(collection(db, 'students'), (snap) => {
+          const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as any as Student));
+          const unique = list.filter((v, i, a) => a.findIndex(t => (t as any).id === (v as any).id) === i);
+          setStudents(unique);
+        }, (err) => console.error("Students sync error:", err));
+
+        unsubTeachers = onSnapshot(collection(db, 'teachers'), (snap) => {
+          const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as any as Teacher));
+          setTeachers(list);
+        }, (err) => console.error("Teachers sync error:", err));
+
+        // For finances, use 'finances' collection which holds flattened searchable records
+        const financesQuery = query(collection(db, 'finances'), orderBy('date', 'desc'), limit(500));
+        unsubFinances = onSnapshot(financesQuery, (snap) => {
+          const list = snap.docs.map(d => {
+            const data = d.data();
+            const rawAmount = Number(data.amount || data.montant || 0);
+            const isExpense = data.type === 'expense' || data.type === 'sortie' || (data.libelle && data.libelle.startsWith('SORTIE:'));
+            
+            return { 
+              id: d.id, 
+              ...data,
+              amount: isExpense ? -Math.abs(rawAmount) : Math.abs(rawAmount),
+              montant: rawAmount,
+              date: data.date || data.date_versement || data.createdAt || data.timestamp_creation,
+              description: data.description || data.libelle || data.notes || data.category || 'Transaction'
+            } as any as FinanceRecord;
+          });
+          setFinances(list);
+        }, (err) => console.error("Finances sync error:", err));
+      }
+
+      const unsubClasses = onSnapshot(collection(db, 'classes'), (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as ClassRoom));
+      setClasses(list);
+    }, (err) => console.error("Classes sync error:", err));
+
+    const unsubLevels = onSnapshot(collection(db, 'levels'), (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Level));
+      setLevels(list);
+    }, (err) => console.error("Levels sync error:", err));
+
+      return () => {
+        unsubscribeComptes();
+        unsubStudents();
+        unsubTeachers();
+        unsubClasses();
+        unsubLevels();
+        unsubFinances();
+      };
+    }, [user]);
 
   // Unified financial stats
   const financeStats = React.useMemo(() => {
@@ -97,28 +178,32 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // Sort finances by date for balance tracking if needed, 
     // but for simple monthly variation we can just sum.
     activeFinances.forEach(f => {
-      const amount = Number(f.amount) || 0;
-      const date = new Date(f.date || f.createdAt);
-      const isIncome = f.type === 'income';
+      const montant = Number(f.montant || f.amount || 0);
+      const date = new Date(f.date_versement || f.date || f.createdAt);
+      const isIncome = f.type === 'income' || (f.type !== 'sortie' && montant > 0);
       const year = date.getFullYear();
       const monthIdx = date.getMonth();
       
+      // We use absolute value for income/expense counters but signed value for balance
+      const absAmount = Math.abs(montant);
+
       if (isIncome) {
-        totalInc += amount;
+        totalInc += absAmount;
         if (year === currentYear) {
-          yearInc += amount;
-          months[monthIdx].income += amount;
+          yearInc += absAmount;
+          months[monthIdx].income += absAmount;
         }
       } else {
-        totalExp += amount;
+        totalExp += absAmount;
         if (year === currentYear) {
-          yearExp += amount;
-          months[monthIdx].expense += amount;
+          yearExp += absAmount;
+          months[monthIdx].expense += absAmount;
         }
       }
 
-      const effect = isIncome ? amount : -amount;
-      if (f.accountType === 'banque') {
+      const effect = montant; // Use the signed value directly for balance calculation
+      const acc = f.compte_destination || f.accountType || 'caisse';
+      if (acc === 'banque') {
         banque += effect;
         if (year === currentYear) months[monthIdx].banque += effect;
       } else {
@@ -152,12 +237,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     
-    // Presence listener handled by top-level imports
-    const q = query(collection(db, 'users'), where('status', '==', 'online'));
-    const unsubscribe = onSnapshot(q, (snapshot: any) => {
-      const list = snapshot.docs.map((doc: any) => ({ uid: doc.id, ...doc.data() }));
-      setOnlineUsers(list);
-    });
+    // Presence listener - Admin only
+    let unsubscribe = () => {};
+    if (user.role === 'admin' || (user as any).isSuperAdmin) {
+      const q = query(collection(db, 'users'), where('status', '==', 'online'));
+      unsubscribe = onSnapshot(q, (snapshot: any) => {
+        const list = snapshot.docs.map((doc: any) => ({ uid: doc.id, ...doc.data() }));
+        setOnlineUsers(list);
+      }, (err) => console.error("Presence sync error:", err));
+    }
 
     return () => unsubscribe();
   }, [user]);
@@ -168,70 +256,25 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return now - last > 5000; // 5 second throttle
   }, []);
 
-  const refreshStudents = useCallback(async (force: boolean = false) => {
-    if (!force && !shouldFetch('students')) return;
-    try {
-      const res = await fetchWithAuth('/api/students');
-      if (res.ok) {
-        setStudents(await res.json());
-        lastFetchTimesRef.current['students'] = Date.now();
-      }
-    } catch (err) {
-      console.error("Error fetching students:", err);
-    }
-  }, [fetchWithAuth, shouldFetch]);
+  const refreshStudents = useCallback(async (_force: boolean = false) => {
+    // onSnapshot handles this now
+  }, []);
 
-  const refreshTeachers = useCallback(async (force: boolean = false) => {
-    if (!force && !shouldFetch('teachers')) return;
-    try {
-      const res = await fetchWithAuth('/api/teachers');
-      if (res.ok) {
-        setTeachers(await res.json());
-        lastFetchTimesRef.current['teachers'] = Date.now();
-      }
-    } catch (err) {
-      console.error("Error fetching teachers:", err);
-    }
-  }, [fetchWithAuth, shouldFetch]);
+  const refreshTeachers = useCallback(async (_force: boolean = false) => {
+    // onSnapshot handles this now
+  }, []);
 
-  const refreshClasses = useCallback(async (force: boolean = false) => {
-    if (!force && !shouldFetch('classes')) return;
-    try {
-      const res = await fetchWithAuth('/api/classes');
-      if (res.ok) {
-        setClasses(await res.json());
-        lastFetchTimesRef.current['classes'] = Date.now();
-      }
-    } catch (err) {
-      console.error("Error fetching classes:", err);
-    }
-  }, [fetchWithAuth, shouldFetch]);
+  const refreshClasses = useCallback(async (_force: boolean = false) => {
+    // onSnapshot handles this now
+  }, []);
 
-  const refreshLevels = useCallback(async (force: boolean = false) => {
-    if (!force && !shouldFetch('levels')) return;
-    try {
-      const res = await fetchWithAuth('/api/levels');
-      if (res.ok) {
-        setLevels(await res.json());
-        lastFetchTimesRef.current['levels'] = Date.now();
-      }
-    } catch (err) {
-      console.error("Error fetching levels:", err);
-    }
-  }, [fetchWithAuth, shouldFetch]);
+  const refreshLevels = useCallback(async (_force: boolean = false) => {
+    // onSnapshot handles this now
+  }, []);
 
-  const refreshFinances = useCallback(async (force: boolean = false) => {
-    if (!force && !shouldFetch('finances')) return;
-    try {
-      const res = await fetchWithAuth('/api/finances');
-      if (res.ok) {
-        setFinances(await res.json());
-        lastFetchTimesRef.current['finances'] = Date.now();
-      }
-    } catch (err) {
-      console.error("Error fetching finances:", err);
-    }
-  }, [fetchWithAuth, shouldFetch]);
+  const refreshFinances = useCallback(async (_force: boolean = false) => {
+    // onSnapshot handles this now
+  }, []);
 
   const refreshLibrary = useCallback(async () => {
     if (!shouldFetch('library')) return;

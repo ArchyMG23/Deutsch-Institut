@@ -1,19 +1,101 @@
 import React, { useState } from 'react';
-import { ShieldAlert, RefreshCw, Trash2, Database, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ShieldAlert, RefreshCw, Trash2, Database, CheckCircle2, AlertCircle, BookOpen } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
 import { cn } from '../../utils';
+import { db } from '../../firebase';
+import { collection, query, where, getDocs, getDoc, doc, setDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { corrigerMontantsDu } from '../../utils/finance';
 
 export default function FinanceMaintenance() {
-  const { fetchWithAuth, user } = useAuth();
-  const { refreshAll } = useData();
+  const { fetchWithAuth, user, profile } = useAuth();
+  const { refreshAll, levels } = useData();
   const [running, setRunning] = useState<string | null>(null);
+
+  const cleanupVorbereitung = async () => {
+    if (!window.confirm("Voulez-vous réinitialiser les tarifs fixes Vorbereitung dans la liste des niveaux ?")) return;
+    setRunning('VorbCleanup');
+    try {
+      // Trouver tous les documents Vorbereitung dans /niveaux
+      const q1 = query(collection(db, 'niveaux'), where('nom', '==', 'Vorbereitung'));
+      const q2 = query(collection(db, 'niveaux'), where('name', '==', 'Vorbereitung'));
+      const q3 = query(collection(db, 'niveaux'), where('type', '==', 'vorbereitung'));
+      
+      const [s1, s2, s3] = await Promise.all([getDocs(q1), getDocs(q2), getDocs(q3)]);
+      
+      const batch = writeBatch(db);
+      const traites = new Set();
+
+      const addUpdate = (d: any) => {
+        if (traites.has(d.id)) return;
+        traites.add(d.id);
+        batch.update(d.ref, {
+          frais_scolarite: null,
+          tuition: null,
+          nb_heures_total: null,
+          hours: null,
+          type: 'vorbereitung',
+          tarif_variable: true,
+          quota_variable: true,
+          description: 'Préparation intensive aux examens — montant et durée variables selon la session',
+          updated_at: serverTimestamp()
+        });
+      };
+
+      s1.docs.forEach(addUpdate);
+      s2.docs.forEach(addUpdate);
+      s3.docs.forEach(addUpdate);
+
+      if (traites.size > 0) {
+        await batch.commit();
+        toast.success(`${traites.size} document(s) Vorbereitung réinitialisés !`);
+        refreshAll(true);
+      } else {
+        toast.error("Aucun document Vorbereitung trouvé.");
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("Erreur nettoyage");
+    } finally {
+      setRunning(null);
+    }
+  };
+
+  const migrerVorbereitung = async () => {
+    if (!window.confirm("Voulez-vous corriger tous les frais Vorbereitung bloqués à 50.000 FCFA ?")) return;
+    setRunning('VorbMigration');
+    try {
+      const q = query(collection(db, 'vorbereitung'), where('montant_total_du', '==', 50000));
+      const snap = await getDocs(q);
+      let count = 0;
+      for (const d of snap.docs) {
+        const studentDoc = await getDoc(doc(db, 'students', d.id));
+        if (studentDoc.exists()) {
+          const lId = studentDoc.data().levelId;
+          const level = (levels || []).find(l => l.id === lId);
+          const realDue = level?.frais_vorbereitung_defaut || 0;
+          await setDoc(doc(db, 'vorbereitung', d.id), { montant_total_du: realDue }, { merge: true });
+          count++;
+        }
+      }
+      toast.success(`${count} fiches Vorbereitung corrigées !`);
+      refreshAll(true);
+    } catch (e) {
+      console.error(e);
+      toast.error("Erreur lors de la migration");
+    } finally {
+      setRunning(null);
+    }
+  };
   const [resetConfirm, setResetConfirm] = useState('');
   const [showResetModal, setShowResetModal] = useState(false);
 
-  const isSuperAdmin = user?.email === 'yombivictor@gmail.com' || user?.email === 'gabrielyombi311@gmail.com';
+  const isSuperAdmin = (profile as any)?.isSuperAdmin || 
+                       (user as any)?.isSuperAdmin || 
+                       user?.email === 'yombivictor@gmail.com' || 
+                       user?.email === 'gabrielyombi311@gmail.com';
 
   const runTool = async (endpoint: string, toolName: string, body: any = {}) => {
     setRunning(toolName);
@@ -45,6 +127,20 @@ export default function FinanceMaintenance() {
     await runTool('/api/maintenance/heavy-reset', 'Reset Complet', { confirmation: 'CONFIRMER' });
     setShowResetModal(false);
     setResetConfirm('');
+  };
+
+  const handleCorrigerMontants = async () => {
+    if (!window.confirm("🔧 Voulez-vous recalculer et corriger les montants dus de TOUS les étudiants d'après les tarifs de leurs niveaux ?")) return;
+    setRunning('CorrigerMontants');
+    try {
+      await corrigerMontantsDu();
+      toast.success("Correction des montants effectuée !");
+      refreshAll(true);
+    } catch (e) {
+      toast.error("Erreur lors de la correction");
+    } finally {
+      setRunning(null);
+    }
   };
 
   if (!isSuperAdmin) {
@@ -167,6 +263,66 @@ export default function FinanceMaintenance() {
           <h3 className="text-xl font-black text-dia-red uppercase mb-1">Reset Complet Phase 0</h3>
           <p className="text-sm font-bold text-dia-red/60 uppercase leading-relaxed">
             ATTENTION: Efface TOUTES les données financières. Action irréversible.
+          </p>
+        </motion.div>
+
+        {/* Tool: Correction Montants Dus Globale */}
+        <motion.div whileHover={{ y: -5 }} className="bg-indigo-500/5 p-8 rounded-[2.5rem] border-2 border-indigo-500/20 border-dashed shadow-sm">
+          <div className="flex items-start justify-between mb-6">
+            <div className="p-3 bg-indigo-600 text-white rounded-2xl">
+              <RefreshCw size={24} className={running === 'CorrigerMontants' ? 'animate-spin' : ''} />
+            </div>
+            <button 
+              onClick={handleCorrigerMontants}
+              disabled={!!running}
+              className="btn-primary py-2 px-6 rounded-xl hover:scale-105 active:scale-95 transition-all bg-indigo-700 hover:bg-indigo-800 disabled:opacity-50"
+            >
+              CORRIGER DUS
+            </button>
+          </div>
+          <h3 className="text-xl font-black text-indigo-700 uppercase mb-1">Recalculer Dûs</h3>
+          <p className="text-sm font-bold text-indigo-700/60 uppercase leading-relaxed">
+            Force le recalcul de tous les restes à payer d'après la scolarité réelle paramétrée par niveau.
+          </p>
+        </motion.div>
+
+        {/* Tool: Nettoyage Vorbereitung (Cycles) */}
+        <motion.div whileHover={{ y: -5 }} className="bg-orange-500/5 p-8 rounded-[2.5rem] border-2 border-orange-500/20 shadow-sm">
+          <div className="flex items-start justify-between mb-6">
+            <div className="p-3 bg-orange-600 text-white rounded-2xl">
+              <BookOpen size={24} className={running === 'VorbCleanup' ? 'animate-spin' : ''} />
+            </div>
+            <button 
+              onClick={cleanupVorbereitung}
+              disabled={!!running}
+              className="btn-primary py-2 px-6 rounded-xl hover:scale-105 active:scale-95 transition-all bg-orange-700 hover:bg-orange-800 disabled:opacity-50"
+            >
+              NETTOYER VORB
+            </button>
+          </div>
+          <h3 className="text-xl font-black text-orange-700 uppercase mb-1">Nettoyage Cycles</h3>
+          <p className="text-sm font-bold text-orange-700/60 uppercase leading-relaxed">
+            Supprime les tarifs fixes du niveau Vorbereitung pour le passer en mode montant variable.
+          </p>
+        </motion.div>
+
+        {/* Tool: Correction 50k Vorbereitung */}
+        <motion.div whileHover={{ y: -5 }} className="bg-amber-500/5 p-8 rounded-[2.5rem] border-2 border-amber-500/20 border-dashed shadow-sm">
+          <div className="flex items-start justify-between mb-6">
+            <div className="p-3 bg-amber-500 text-white rounded-2xl">
+              <RefreshCw size={24} className={running === 'VorbMigration' ? 'animate-spin' : ''} />
+            </div>
+            <button 
+              onClick={migrerVorbereitung}
+              disabled={!!running}
+              className="btn-primary py-2 px-6 rounded-xl hover:scale-105 active:scale-95 transition-all bg-amber-600 hover:bg-amber-700 disabled:opacity-50"
+            >
+              MIGRER VORB
+            </button>
+          </div>
+          <h3 className="text-xl font-black text-amber-600 uppercase mb-1">Correction Bug 50k</h3>
+          <p className="text-sm font-bold text-amber-600/60 uppercase leading-relaxed">
+            Corrige les objectifs Vorbereitung bloqués sur l'ancienne valeur fixe par défaut.
           </p>
         </motion.div>
       </div>

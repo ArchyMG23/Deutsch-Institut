@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../firebase';
 import { collection, query, where, getDocs, addDoc, updateDoc, doc, serverTimestamp, orderBy, onSnapshot } from 'firebase/firestore';
-import { DailyReport, ClassRoom } from '../types';
+import { useData } from '../context/DataContext';
+import { DailyReport, ClassRoom, Level } from '../types';
 import { useTranslation } from 'react-i18next';
 import { Calendar, FileText, Plus, Search, Filter, Printer, CheckCircle, Clock } from 'lucide-react';
 import { toast } from 'sonner';
@@ -16,8 +17,8 @@ import { cn } from '../utils';
 const ReportManagement: React.FC = () => {
   const { user } = useAuth();
   const { t } = useTranslation();
+  const { classes, levels } = useData();
   const [reports, setReports] = useState<DailyReport[]>([]);
-  const [classes, setClasses] = useState<ClassRoom[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedReport, setSelectedReport] = useState<DailyReport | null>(null);
@@ -36,45 +37,26 @@ const ReportManagement: React.FC = () => {
     user?.email?.toLowerCase() === 'yombivictor@gmail.com';
 
   useEffect(() => {
-    if (filterClass && classes.length > 0) {
+    if (filterClass && classes.length > 0 && levels.length > 0) {
       const cls = classes.find(c => c.id === filterClass);
-      const level = cls ? (cls as any).levelId : null; // In case levelId is not on ClassRoom type directly
+      const level = levels.find(n => n.id === cls?.levelId);
       
-      // We need to fetch the level hours. Assuming classes have level info or we fetch levels.
-      // For now, let's look at the class's level quota if available.
       const classReports = reports.filter(r => r.classe_id === filterClass && r.statut === 'soumis');
       const totalHours = classReports.reduce((acc, r) => acc + (r.duree_heures || 0), 0);
       
-      // Find level quota (hardcoded fallback if not found)
-      // Ideally levels context should be used but let's assume a standard quota per level for now or fetch it
-      const quota = 100; // Placeholder, should be from level
+      const quota = (level as any)?.hours || 60; 
       const diff = totalHours - quota;
       
       let status: 'ok' | 'low' | 'high' = 'ok';
-      if (diff < -10) status = 'low';
-      else if (diff > 10) status = 'high';
+      if (diff < -5) status = 'low';
+      else if (diff > 5) status = 'high';
       
       setQuotaStats({ total: totalHours, quota, diff, status });
       setShowQuotaStatus(true);
     } else {
       setShowQuotaStatus(false);
     }
-  }, [filterClass, reports, classes]);
-
-  useEffect(() => {
-    const fetchClasses = async () => {
-      try {
-        const q = query(collection(db, 'classes'));
-        const querySnapshot = await getDocs(q);
-        const fetchedClasses = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ClassRoom));
-        setClasses(fetchedClasses);
-      } catch (error) {
-        console.error("Error fetching classes:", error);
-      }
-    };
-
-    fetchClasses();
-  }, []);
+  }, [filterClass, reports, classes, levels]);
 
   useEffect(() => {
     let q = query(collection(db, 'rapports_journaliers'), orderBy('date', 'desc'));
@@ -367,6 +349,7 @@ const ReportManagement: React.FC = () => {
             report={selectedReport}
             user={user}
             classes={classes}
+            levels={levels}
           />
         )}
       </AnimatePresence>
@@ -380,7 +363,8 @@ const ReportModal: React.FC<{
   report: DailyReport | null;
   user: any;
   classes: ClassRoom[];
-}> = ({ onClose, report, user, classes }) => {
+  levels: Level[];
+}> = ({ onClose, report, user, classes, levels }) => {
   const [formData, setFormData] = useState({
     classe_id: report?.classe_id || '',
     matiere: report?.matiere || '',
@@ -395,11 +379,24 @@ const ReportModal: React.FC<{
     devoirs: report?.devoirs || '',
     statut: report?.statut || 'brouillon',
     justifie: report?.justifie || false,
-    valide_par_admin: report?.valide_par_admin || false
+    valide_par_admin: report?.valide_par_admin || false,
+    taux_horaire_applique: (report as any)?.taux_horaire_applique || 0
   });
 
   const selectedClass = classes.find(c => c.id === formData.classe_id);
   const totalStudentsInClass = selectedClass?.studentIds.length || 0;
+
+  // Pre-load hourly rate when class changes
+  useEffect(() => {
+    if (formData.classe_id && !report) {
+      const cls = classes.find(c => c.id === formData.classe_id);
+      const lvl = levels.find(n => n.id === cls?.levelId);
+      const rate = (lvl as any)?.taux_horaire_salle || (lvl as any)?.hourlyRate || 0;
+      if (rate) {
+        setFormData(prev => ({ ...prev, taux_horaire_applique: rate }));
+      }
+    }
+  }, [formData.classe_id, report, classes, levels]);
 
   useEffect(() => {
     // If presents is changed, auto-calculate absents
@@ -542,7 +539,7 @@ const ReportModal: React.FC<{
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">
                 Présents {formData.classe_id && `(sur ${totalStudentsInClass})`}
@@ -565,15 +562,22 @@ const ReportModal: React.FC<{
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1 inline-flex items-center gap-1">
-                Durée (H) *
-              </label>
+              <label className="block text-sm font-medium mb-1">Durée (H)</label>
               <input 
                 type="number"
                 step="0.01"
                 readOnly
                 value={formData.duree_heures}
                 className="w-full p-2 border border-neutral-100 dark:border-neutral-800 rounded-lg bg-neutral-50 dark:bg-neutral-800/50 font-bold cursor-not-allowed"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1 truncate text-dia-red">Taux Horaire</label>
+              <input 
+                type="number"
+                value={formData.taux_horaire_applique}
+                onChange={(e) => setFormData({...formData, taux_horaire_applique: parseInt(e.target.value) || 0})}
+                className="w-full p-2 border border-neutral-200 dark:border-neutral-800 rounded-lg bg-transparent font-bold"
               />
             </div>
           </div>

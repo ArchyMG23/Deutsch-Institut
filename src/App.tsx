@@ -64,6 +64,13 @@ function AnimatedRoutes() {
           </DashboardLayout>
         </RoleGuard>
       } />
+      <Route path="/admin/levels" element={
+        <RoleGuard allowedRoles={['admin']}>
+          <DashboardLayout>
+            <PageWrapper><LevelManagement /></PageWrapper>
+          </DashboardLayout>
+        </RoleGuard>
+      } />
       <Route path="/admin/students" element={
         <RoleGuard allowedRoles={['admin']}>
           <DashboardLayout>
@@ -96,13 +103,6 @@ function AnimatedRoutes() {
         <RoleGuard allowedRoles={['admin']}>
           <DashboardLayout>
             <PageWrapper><LibraryManagement /></PageWrapper>
-          </DashboardLayout>
-        </RoleGuard>
-      } />
-      <Route path="/admin/levels" element={
-        <RoleGuard allowedRoles={['admin']}>
-          <DashboardLayout>
-            <PageWrapper><LevelManagement /></PageWrapper>
           </DashboardLayout>
         </RoleGuard>
       } />

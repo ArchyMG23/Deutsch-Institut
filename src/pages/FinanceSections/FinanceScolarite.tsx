@@ -4,18 +4,28 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { toast } from 'sonner';
-import { cn, formatCurrency } from '../../utils';
-import { collection, query, where, getDocs, orderBy, doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { cn } from '../../utils';
+import { formatMontant, TYPES_TX, STATUTS } from '../../lib/school-engine';
+import { showToast, handleError } from '../../lib/errorHandler';
+import { EventBus, EVENTS } from '../../lib/eventBus';
+import { collection, query, where, getDocs, orderBy, doc, getDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { useEffect } from 'react';
 
 export default function FinanceScolarite() {
   const { fetchWithAuth } = useAuth();
-  const { students, refreshAll } = useData();
+  const { students, refreshAll, levels } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [scolarite, setScolarite] = useState<any>(null);
   const [versements, setVersements] = useState<any[]>([]);
+
+  // Configuration du niveau
+  const levelConfig = useMemo(() => {
+    if (!selectedStudent?.levelId || !levels) return null;
+    return levels.find(n => n.id === selectedStudent.levelId);
+  }, [selectedStudent, levels]);
 
   const filteredStudents = useMemo(() => {
     if (!searchTerm) return [];
@@ -26,27 +36,39 @@ export default function FinanceScolarite() {
     ).slice(0, 5);
   }, [searchTerm, students]);
 
-  const fetchScolarite = async (studentId: string) => {
-    try {
-      const sRef = doc(db, 'scolarites', studentId);
-      const sSnap = await getDoc(sRef);
-      if (sSnap.exists()) {
-        setScolarite({ id: sSnap.id, ...sSnap.data() });
-        const vSnap = await getDocs(query(collection(db, 'scolarites', studentId, 'versements'), orderBy('date', 'desc')));
-        setVersements(vSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } else {
-        setScolarite({ montant_total_du: 110000, total_verse: 0, reste: 110000 });
-        setVersements([]);
-      }
-    } catch (err) {
-      toast.error("Erreur lors de la récupération de la scolarité");
+  useEffect(() => {
+    if (!selectedStudent) {
+      setScolarite(null);
+      setVersements([]);
+      return;
     }
-  };
+
+    const scolaRef = doc(db, 'scolarites', selectedStudent.id);
+    const versRef = collection(db, 'scolarites', selectedStudent.id, 'versements');
+
+    const unsubScola = onSnapshot(scolaRef, (snap) => {
+      if (snap.exists()) {
+        setScolarite({ id: snap.id, ...snap.data() });
+      } else {
+        // Use suggesting fee from level or fallback
+        const suggestedFee = levelConfig?.frais_scolarite || 110000;
+        setScolarite({ montant_total_du: suggestedFee, total_verse: 0, reste: suggestedFee });
+      }
+    });
+
+    const unsubVers = onSnapshot(query(versRef, orderBy('date', 'desc')), (snap) => {
+      setVersements(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => {
+      unsubScola();
+      unsubVers();
+    };
+  }, [selectedStudent, levelConfig]);
 
   const handleSelectStudent = (student: any) => {
     setSelectedStudent(student);
     setSearchTerm('');
-    fetchScolarite(student.id);
   };
 
   const [paymentData, setPaymentData] = useState({
@@ -60,6 +82,24 @@ export default function FinanceScolarite() {
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedStudent || !paymentData.amount) return;
+
+    const amount = parseFloat(paymentData.amount);
+    
+    // VALIDATION PAR NIVEAU
+    if (levelConfig) {
+      if (!levelConfig.paiement_fractionnable && amount < scolarite.reste) {
+        toast.error(`Paiement partiel non autorisé pour le niveau ${levelConfig.nom}. Le montant doit être de ${formatMontant(scolarite.reste)}.`);
+        return;
+      }
+      
+      if (levelConfig.nb_fractions_max !== null) {
+        const currentFractions = versements.length;
+        if (currentFractions >= levelConfig.nb_fractions_max && amount < scolarite.reste) {
+          toast.error(`Nombre maximum de fractions atteint (${levelConfig.nb_fractions_max}). Veuillez solder la scolarité.`);
+          return;
+        }
+      }
+    }
 
     setLoading(true);
     try {
@@ -77,16 +117,20 @@ export default function FinanceScolarite() {
         })
       });
       if (res.ok) {
-        toast.success("Paiement enregistré avec succès !");
-        fetchScolarite(selectedStudent.id);
+        showToast("Paiement enregistré avec succès !", 'success');
+        // No need to fetchScolarite manually, onSnapshot handles it
         refreshAll(true);
         setPaymentData({ ...paymentData, amount: '', notes: '' });
+        
+        // Emission des événements
+        EventBus.emit(EVENTS.TRANSACTION_AJOUTEE, { type: TYPES_TX.SCOLARITE, amount: parseFloat(paymentData.amount) });
+        EventBus.emit(EVENTS.SCOLARITE_UPDATED, { eleve_id: selectedStudent.id });
       } else {
         const data = await res.json();
-        toast.error(data.message || "Erreur lors du paiement");
+        showToast(data.message || "Erreur lors du paiement", 'error');
       }
     } catch (err) {
-      toast.error("Erreur réseau");
+      handleError("PaymentScolarite", err);
     } finally {
       setLoading(false);
     }
@@ -175,11 +219,11 @@ export default function FinanceScolarite() {
                   <div className="space-y-3">
                     <div className="flex justify-between items-center text-[10px] font-black uppercase text-neutral-400">
                       <span>Total Scolarité</span>
-                      <span className="text-neutral-900 dark:text-white tabular-nums">{formatCurrency(scolarite.montant_total_du)}</span>
+                      <span className="text-neutral-900 dark:text-white tabular-nums">{formatMontant(scolarite.montant_total_du)}</span>
                     </div>
                     <div className="flex justify-between items-center text-[10px] font-black uppercase text-neutral-400">
                       <span>Déjà Versé</span>
-                      <span className="text-emerald-600 tabular-nums">{formatCurrency(scolarite.total_verse)}</span>
+                      <span className="text-emerald-600 tabular-nums">{formatMontant(scolarite.total_verse)}</span>
                     </div>
                     <div className="pt-3 border-t border-dashed border-neutral-200 dark:border-neutral-700 mt-3 flex justify-between items-center">
                       <span className="text-xs font-black uppercase text-neutral-900 dark:text-white">Reste à payer</span>
@@ -187,13 +231,14 @@ export default function FinanceScolarite() {
                         "text-xl font-black tabular-nums",
                         (scolarite.reste || 0) <= 0 ? "text-emerald-600" : "text-dia-red"
                       )}>
-                        {formatCurrency(scolarite.reste)}
+                        {formatMontant(scolarite.reste)}
                       </span>
                     </div>
                     <div className={cn(
                       "mt-4 p-2 rounded-xl text-center text-[10px] font-black uppercase tracking-tighter",
-                      scolarite.statut_paiement === 'SOLDÉ' ? "bg-emerald-50 text-emerald-600" : 
-                      scolarite.statut_paiement === 'EN COURS' ? "bg-amber-50 text-amber-600" : "bg-neutral-100 text-neutral-400"
+                      scolarite.statut_paiement === STATUTS.SOLDE ? "bg-emerald-50 text-emerald-600" : 
+                      scolarite.statut_paiement === STATUTS.EN_COURS ? "bg-amber-50 text-amber-600" : 
+                      scolarite.statut_paiement === STATUTS.SURPLUS ? "bg-purple-50 text-purple-600" : "bg-neutral-100 text-neutral-400"
                     )}>
                       {scolarite.statut_paiement}
                     </div>
@@ -365,7 +410,7 @@ export default function FinanceScolarite() {
                                {new Date(v.date || v.timestamp?.toDate()).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
                             </td>
                             <td className="px-8 py-4 whitespace-nowrap text-xs font-black text-dia-red tabular-nums">{v.recu_numero}</td>
-                            <td className="px-8 py-4 whitespace-nowrap text-xs font-black text-neutral-900 dark:text-white tabular-nums">{formatCurrency(v.montant)}</td>
+                            <td className="px-8 py-4 whitespace-nowrap text-xs font-black text-neutral-900 dark:text-white tabular-nums">{formatMontant(v.montant)}</td>
                             <td className="px-8 py-4 whitespace-nowrap">
                                <span className="px-3 py-1 bg-neutral-100 dark:bg-neutral-800 rounded-full text-[10px] font-bold text-neutral-500 uppercase">{v.mode_paiement}</span>
                             </td>

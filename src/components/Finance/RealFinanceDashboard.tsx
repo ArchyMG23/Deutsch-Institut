@@ -546,40 +546,43 @@ export default function RealFinanceDashboard() {
       const financesByDossier: Record<string, number> = {};
 
       allFinances.forEach(f => {
-        // We trust the status filter from DataContext/API
-        const amount = Number(f.amount) || 0;
-        const date = new Date(f.date || f.createdAt);
+        // Standardize fields based on API output
+        const montant = Number(f.montant || f.amount || 0);
+        const date = new Date(f.date_versement || f.date || f.createdAt);
         if (isNaN(date.getTime())) return;
 
-        const isIncome = f.type === 'income';
-        const effect = isIncome ? amount : -amount;
+        // isIncome logic prioritized: income type OR positive amount if not explicitly 'sortie'
+        const isIncome = f.type === 'income' || (f.type !== 'sortie' && montant > 0);
+        const effect = montant; // Use signed value directly
+        const acc = f.compte_destination || f.accountType || f.account || 'caisse';
 
-        if (f.accountType === 'banque') {
+        if (acc === 'banque') {
           banqueBalance += effect;
         } else {
           caisseBalance += effect;
         }
 
-        if (isIncome && (f.studentId || f.studentMatricule)) {
-          const studentId = f.studentId || f.studentMatricule;
+        if (isIncome && (f.studentId || f.studentMatricule || f.eleve_id)) {
+          const studentId = f.studentId || f.studentMatricule || f.eleve_id;
           const scolaKey = f.levelId ? `${studentId}_${f.levelId}` : studentId;
-          financesByDossier[scolaKey] = (financesByDossier[scolaKey] || 0) + amount;
+          financesByDossier[scolaKey] = (financesByDossier[scolaKey] || 0) + Math.abs(montant);
         }
 
         // Year filter for history and totals
         if (date.getFullYear() === selectedYear) {
           const month = date.getMonth();
+          const absAmount = Math.abs(montant);
           if (isIncome) {
-            totalRevenu += amount;
-            monthlyRevenu[month] = (monthlyRevenu[month] || 0) + amount;
+            totalRevenu += absAmount;
+            monthlyRevenu[month] = (monthlyRevenu[month] || 0) + absAmount;
             
-            const cat = String(f.category || '').toLowerCase();
-            if (cat.includes('tuition') || cat.includes('scolarite')) revenusDetails.scolarite += amount;
-            else if (cat.includes('registration') || cat.includes('inscription')) revenusDetails.inscription += amount;
-            else revenusDetails.autre += amount;
+            const cat = String(f.category || f.notes || f.libelle || '').toLowerCase();
+            if (cat.includes('tuition') || cat.includes('scolarite')) revenusDetails.scolarite += absAmount;
+            else if (cat.includes('registration') || cat.includes('inscription')) revenusDetails.inscription += absAmount;
+            else revenusDetails.autre += absAmount;
           }
 
-          if (f.accountType === 'banque') {
+          if (acc === 'banque') {
             monthlyBanque[month] = (monthlyBanque[month] || 0) + effect;
           } else {
             monthlyCaisse[month] = (monthlyCaisse[month] || 0) + effect;
@@ -779,6 +782,16 @@ export default function RealFinanceDashboard() {
 
   useEffect(() => {
     fetchFinanceStats();
+    
+    // Listen for global finance updates
+    const handleRefresh = () => fetchFinanceStats();
+    window.addEventListener('finance-update', handleRefresh);
+    window.addEventListener('soldes:updated', handleRefresh);
+    
+    return () => {
+      window.removeEventListener('finance-update', handleRefresh);
+      window.removeEventListener('soldes:updated', handleRefresh);
+    };
   }, [selectedYear]);
 
   const handleFormatApp = async () => {

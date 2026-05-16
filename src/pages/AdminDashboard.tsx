@@ -35,7 +35,7 @@ import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 
 export default function AdminDashboard() {
-  const { students, teachers, finances, evaluations, loading, refreshAll, onlineUsers, financeStats } = useData();
+  const { students, teachers, finances, evaluations, loading, refreshAll, onlineUsers, financeStats, levels } = useData();
   const { user, profile, fetchWithAuth } = useAuth();
   const { t } = useTranslation();
   const [configStatus, setConfigStatus] = useState<any>(null);
@@ -145,8 +145,8 @@ export default function AdminDashboard() {
   
   const recentTransactions = React.useMemo(() => [...finances]
     .sort((a, b) => {
-      const dateA = toDateSafe(a.date)?.getTime() || 0;
-      const dateB = toDateSafe(b.date)?.getTime() || 0;
+      const dateA = toDateSafe(a.date || a.date_versement || a.createdAt)?.getTime() || 0;
+      const dateB = toDateSafe(b.date || b.date_versement || b.createdAt)?.getTime() || 0;
       return dateB - dateA;
     })
     .slice(0, 8), [finances]);
@@ -193,6 +193,7 @@ export default function AdminDashboard() {
           trendType="up"
         />
       </div>
+
 
       {/* Online Members & Devices */}
       <div className="card p-6">
@@ -507,15 +508,15 @@ export default function AdminDashboard() {
                       {item.type === 'income' ? <ArrowUpRight size={20} /> : <ArrowDownRight size={20} />}
                     </div>
                     <div>
-                      <p className="font-medium text-sm">{item.description}</p>
-                      <p className="text-xs text-neutral-500">{formatDateAffichage(item.date)}</p>
+                      <p className="font-medium text-sm">{item.description || item.libelle || item.notes || 'Transaction'}</p>
+                      <p className="text-xs text-neutral-500">{formatDateAffichage(item.date || item.date_versement || item.createdAt)}</p>
                     </div>
                   </div>
                   <p className={cn(
                     "font-bold",
                     item.type === 'income' ? "text-green-600" : "text-red-600"
                   )}>
-                    {item.type === 'income' ? '+' : '-'}{formatCurrency(Number(item.amount) || 0)}
+                    {item.type === 'income' ? '+' : '-'}{formatCurrency(Math.abs(Number(item.amount || item.montant || 0)))}
                   </p>
                 </div>
               ))

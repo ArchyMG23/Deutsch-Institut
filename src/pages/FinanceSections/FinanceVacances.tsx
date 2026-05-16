@@ -5,6 +5,9 @@ import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { toast } from 'sonner';
 import { cn, formatCurrency } from '../../utils';
+import { formatMontant } from '../../lib/school-engine';
+import { showToast, handleError } from '../../lib/errorHandler';
+import { EventBus, EVENTS } from '../../lib/eventBus';
 import { collection, query, where, getDocs, orderBy, doc, getDoc, setDoc, addDoc, onSnapshot, deleteDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 
@@ -19,6 +22,11 @@ export default function FinanceVacances() {
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [isGuestMode, setIsGuestMode] = useState(false);
   const [guestData, setGuestData] = useState({ firstName: '', lastName: '', phone: '' });
+
+  // Configuration du niveau d'un étudiant recherché
+  const getLevelOfStudent = (_studentId: string) => {
+    return null;
+  };
   
   const isSuperAdmin = user?.email === 'yombivictor@gmail.com' || user?.email === 'gabrielyombi311@gmail.com';
 
@@ -195,13 +203,21 @@ export default function FinanceVacances() {
       });
 
       if (res.ok) {
-        toast.success("Paiement enregistré !");
+        showToast("Paiement enregistré !", 'success');
         setPaymentData({ ...paymentData, amount: '' });
+        
+        // Emission des événements
+        EventBus.emit(EVENTS.TRANSACTION_AJOUTEE, { 
+          amount: amount, 
+          type: 'vacances',
+          studentId: selectedInscription.eleve_id 
+        });
       } else {
-        toast.error("Erreur lors du paiement");
+        const errorData = await res.json();
+        showToast(errorData.message || "Erreur lors du paiement", 'error');
       }
     } catch (err) {
-      toast.error("Erreur réseau");
+      handleError("PaymentVacances", err);
     } finally {
       setLoading(false);
     }
@@ -308,7 +324,7 @@ export default function FinanceVacances() {
                 </div>
                 <p className="text-[10px] font-bold text-neutral-400 uppercase">{s.dateDescription}</p>
                 <div className="mt-4 flex justify-between items-center">
-                  <span className="text-[10px] font-black text-amber-500">{formatCurrency(s.prix)}</span>
+                  <span className="text-[10px] font-black text-amber-500">{formatMontant(s.prix)}</span>
                   <ChevronRight size={16} className={cn("transition-transform", selectedSession?.id === s.id ? "rotate-90 text-amber-400" : "text-neutral-300")} />
                 </div>
               </div>
@@ -362,7 +378,9 @@ export default function FinanceVacances() {
                               {searchStudents.map(s => (
                                 <button
                                   key={s.id}
-                                  onClick={() => handleEnrollStudent(s)}
+                                  onClick={() => {
+                                    handleEnrollStudent(s);
+                                  }}
                                   className="w-full p-3 text-left hover:bg-amber-50 dark:hover:bg-amber-900/10 transition-colors border-b border-neutral-50 dark:border-neutral-800 last:border-none"
                                 >
                                   <p className="text-[10px] font-black uppercase">{s.firstName} {s.lastName}</p>
@@ -432,7 +450,7 @@ export default function FinanceVacances() {
                       </div>
                       <div className="text-right">
                         <p className={cn("text-xs font-black tabular-nums", (ins.reste || 0) > 0 ? "text-dia-red" : "text-emerald-600")}>
-                          {formatCurrency(ins.reste)}
+                          {formatMontant(ins.reste)}
                         </p>
                         <p className="text-[8px] font-black uppercase text-neutral-400">Reste</p>
                       </div>
@@ -459,11 +477,11 @@ export default function FinanceVacances() {
                     <div className="grid grid-cols-2 gap-4">
                        <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
                           <p className="text-[10px] font-black text-white/40 uppercase mb-1">Total Versé</p>
-                          <p className="text-xl font-black text-emerald-400">{formatCurrency(selectedInscription.total_verse || 0)}</p>
+                          <p className="text-xl font-black text-emerald-400">{formatMontant(selectedInscription.total_verse || 0)}</p>
                        </div>
                        <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
                           <p className="text-[10px] font-black text-white/40 uppercase mb-1">Reste à Payer</p>
-                          <p className="text-xl font-black text-dia-red">{formatCurrency(selectedInscription.reste || 0)}</p>
+                          <p className="text-xl font-black text-dia-red">{formatMontant(selectedInscription.reste || 0)}</p>
                        </div>
                     </div>
 
@@ -524,7 +542,7 @@ export default function FinanceVacances() {
                             {versements.map(v => (
                               <div key={v.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 text-[10px] font-black uppercase">
                                  <span className="text-white/40">{new Date(v.date).toLocaleDateString()}</span>
-                                 <span className="text-amber-400">{formatCurrency(v.montant)}</span>
+                                 <span className="text-amber-400">{formatMontant(v.montant)}</span>
                               </div>
                             ))}
                          </div>

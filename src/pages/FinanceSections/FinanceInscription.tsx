@@ -4,7 +4,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { toast } from 'sonner';
-import { cn, formatCurrency } from '../../utils';
+import { cn } from '../../utils';
+import { formatMontant, TYPES_TX } from '../../lib/school-engine';
+import { EventBus, EVENTS } from '../../lib/eventBus';
+import { showToast, handleError } from '../../lib/errorHandler';
 
 const INVOICE_TYPES = [
   { id: 'Normale', label: 'Inscription Normale', price: 10000, desc: 'Frais standard (10 000 FCFA)' },
@@ -38,7 +41,7 @@ const BillingPanel = ({ formData, setFormData, loading, handleSubmit }: any) => 
               <p className="font-black uppercase text-xs">{type.label}</p>
               <p className={cn("text-[10px] font-bold uppercase", formData.fraisType === type.id ? "text-white/60" : "text-white/40")}>{type.desc}</p>
             </div>
-            <p className="font-black text-sm tabular-nums">{type.price === 0 ? "GRATUIT" : formatCurrency(type.price)}</p>
+            <p className="font-black text-sm tabular-nums">{type.price === 0 ? "GRATUIT" : formatMontant(type.price)}</p>
           </div>
         </button>
       ))}
@@ -47,17 +50,17 @@ const BillingPanel = ({ formData, setFormData, loading, handleSubmit }: any) => 
     <div className="mt-8 pt-8 border-t border-white/10 space-y-4">
        <div className="flex justify-between items-center text-[10px] font-black uppercase text-white/40">
           <span>Sous-total Inscription</span>
-          <span className="tabular-nums">{formatCurrency(INVOICE_TYPES.find(t => t.id === formData.fraisType)?.price || 0)}</span>
+          <span className="tabular-nums">{formatMontant(INVOICE_TYPES.find(t => t.id === formData.fraisType)?.price || 0)}</span>
        </div>
        {formData.levelId === 'vacations' && formData.customTuition && (
          <div className="flex justify-between items-center text-[10px] font-black uppercase text-emerald-400/60">
             <span>Scolarité Vacances (Dû)</span>
-            <span className="tabular-nums">+{formatCurrency(Number(formData.customTuition))}</span>
+            <span className="tabular-nums">+{formatMontant(Number(formData.customTuition))}</span>
          </div>
        )}
        <div className="flex justify-between items-center text-2xl font-black uppercase">
           <span>Total Inscription</span>
-          <span className="text-dia-red tabular-nums">{formatCurrency(INVOICE_TYPES.find(t => t.id === formData.fraisType)?.price || 0)}</span>
+          <span className="text-dia-red tabular-nums">{formatMontant(INVOICE_TYPES.find(t => t.id === formData.fraisType)?.price || 0)}</span>
        </div>
     </div>
 
@@ -190,14 +193,18 @@ export default function FinanceInscription() {
       });
       const data = await res.json();
       if (res.ok) {
-        toast.success("Étudiant inscrit avec succès !");
+        showToast("Étudiant inscrit avec succès !", 'success');
         setSuccess(data);
         refreshAll(true);
+        
+        // Emission des événements pour synchronisation
+        EventBus.emit(EVENTS.ELEVE_AJOUTE, { eleve: data });
+        EventBus.emit(EVENTS.TRANSACTION_AJOUTEE, { type: TYPES_TX.INSCRIPTION, amount: data.amount });
       } else {
-        toast.error(data.message || "Erreur lors de l'inscription");
+        showToast(data.message || "Erreur lors de l'inscription", 'error');
       }
     } catch (err) {
-      toast.error("Erreur réseau");
+      handleError("Inscription", err, { messageUtilisateur: "Erreur réseau lors de l'inscription" });
     } finally {
       setLoading(false);
     }
@@ -225,12 +232,12 @@ export default function FinanceInscription() {
           </div>
           <div className="flex justify-between items-center border-b border-neutral-200 dark:border-neutral-700 pb-4">
             <span className="text-neutral-500 font-bold uppercase text-xs">Paiement Inscription</span>
-            <span className="text-emerald-600 font-black uppercase text-sm">{formData.fraisType === 'Réduction totale' ? 'GRATUIT' : formatCurrency(INVOICE_TYPES.find(t => t.id === formData.fraisType)?.price || 0)}</span>
+            <span className="text-emerald-600 font-black uppercase text-sm">{formData.fraisType === 'Réduction totale' ? 'GRATUIT' : formatMontant(INVOICE_TYPES.find(t => t.id === formData.fraisType)?.price || 0)}</span>
           </div>
           {formData.levelId === 'vacations' && (
             <div className="flex justify-between items-center border-b border-neutral-200 dark:border-neutral-700 pb-4">
               <span className="text-neutral-500 font-bold uppercase text-xs">Scolarité Vacances</span>
-              <span className="text-amber-600 font-black uppercase text-sm">{formatCurrency(Number(formData.customTuition))}</span>
+            <span className="text-amber-600 font-black uppercase text-sm">{formatMontant(Number(formData.customTuition))}</span>
             </div>
           )}
           <div className="flex justify-between items-center">
@@ -362,7 +369,7 @@ export default function FinanceInscription() {
                         return levelCycle === targetCycle;
                       })
                       .map((level) => (
-                        <option key={level.id} value={level.id}>{level.name} - {formatCurrency(level.tuition)}</option>
+                        <option key={level.id} value={level.id}>{level.name} - {formatMontant(level.tuition)}</option>
                       ))
                     }
                   </select>

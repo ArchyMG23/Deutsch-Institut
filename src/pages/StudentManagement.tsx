@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { db, auth } from '../firebase';
-import { collection, doc, setDoc, addDoc, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import { collection, doc, setDoc, addDoc, onSnapshot, query, orderBy, limit, getDoc, getDocs, where, serverTimestamp } from 'firebase/firestore';
 import { 
   Search, 
   Plus, 
@@ -32,13 +32,132 @@ import { useReactToPrint } from 'react-to-print';
 import { useTranslation } from 'react-i18next';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { cn, formatCurrency, generateMatricule, formatDateAffichage } from '../utils';
+import { cn, generateMatricule, formatDateAffichage } from '../utils';
+import { formatMontant } from '../lib/school-engine';
+import { showToast, handleError } from '../lib/errorHandler';
+import { EventBus, EVENTS } from '../lib/eventBus';
 import { Student, ClassRoom, Level, TuitionPayment } from '../types';
 import { NotificationService } from '../services/NotificationService';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { toast } from 'sonner';
 import { generateWhatsAppLink, generateSMSLink, APP_NAME_FOR_LINKS } from '../utils/contactLinks';
+import { getTotalVerseReel, getMontantDuParNiveau } from '../utils/finance';
+
+interface FinanceBarProps {
+  eleve_id: string;
+  niveau_nom: string;
+}
+
+const FinanceBar: React.FC<FinanceBarProps> = ({ eleve_id, niveau_nom }) => {
+  const [data, setData] = useState<{
+    verse: number;
+    du: number;
+    statut: string;
+    pct: number;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function charger() {
+      // Charger en parallèle pour performance
+      const [verse, du] = await Promise.all([
+        getTotalVerseReel(eleve_id),
+        getMontantDuParNiveau(niveau_nom, eleve_id)
+      ]);
+
+      if (cancelled) return;
+
+      const pct = du > 0
+        ? Math.min(100, Math.round((verse / du) * 100))
+        : verse > 0 ? 100 : 0;
+
+      let statut = 'en_attente';
+      if (du > 0) {
+        if (verse > du) statut = 'surplus';
+        else if (verse >= du) statut = 'solde';
+        else if (verse > 0) statut = 'en_cours';
+      } else if (verse > 0) {
+        statut = 'solde';
+      }
+
+      setData({ verse, du, statut, pct });
+
+      // Mettre à jour /scolarites avec les vraies valeurs
+      try {
+        await setDoc(
+          doc(db, 'scolarites', eleve_id),
+          {
+            total_verse:       verse,
+            montant_total_du:  du,
+            reste:             Math.max(0, du - verse),
+            surplus:           verse > du && du > 0,
+            montant_surplus:   verse > du ? verse - du : 0,
+            statut,
+            derniere_maj:      serverTimestamp()
+          },
+          { merge: true }
+        );
+      } catch {}
+    }
+
+    charger();
+    return () => { cancelled = true; };
+  }, [eleve_id, niveau_nom]);
+
+  if (!data) return (
+    <span className="text-[10px] text-neutral-400 font-bold animate-pulse">
+      ⏳...
+    </span>
+  );
+
+  const couleurs: any = {
+    solde:      '#22c55e',
+    en_cours:   '#3b82f6',
+    surplus:    '#f59e0b',
+    en_attente: '#94a3b8'
+  };
+  const labels: any = {
+    solde:      '✅ Soldé',
+    en_cours:   '🟡 En cours',
+    surplus:    '⚠️ Surplus',
+    en_attente: '⏳ En attente'
+  };
+  const couleur = couleurs[data.statut] || '#94a3b8';
+
+  return (
+    <div className="min-w-[140px] max-w-[180px]">
+      <div className="flex justify-between text-[11px] font-black mb-1 tabular-nums">
+        <span style={{ color: couleur }}>
+          {formatMontant(data.verse)}
+        </span>
+        {data.du > 0 && (
+          <span className="text-neutral-400 opacity-60">
+            / {formatMontant(data.du)}
+          </span>
+        )}
+      </div>
+
+      {data.du > 0 && (
+        <div className="w-full h-1.5 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
+          <div 
+            className="h-full transition-all duration-700 ease-out"
+            style={{
+              width: `${data.pct}%`,
+              backgroundColor: couleur,
+              minWidth: data.pct > 0 ? '4px' : '0'
+            }} 
+          />
+        </div>
+      )}
+
+      <span className="text-[9px] font-black uppercase tracking-wider mt-1 block" style={{ color: couleur }}>
+        {labels[data.statut]}
+      </span>
+    </div>
+  );
+};
 
 export default function StudentManagement() {
   const { t } = useTranslation();
@@ -58,6 +177,101 @@ export default function StudentManagement() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+
+  const chargerEtAfficherStatutFinancier = async (eleve_id: string) => {
+    if (!eleve_id) return;
+    
+    // Eléments DOM
+    const block = document.getElementById('financial-status-block');
+    const badge = document.getElementById('fin-statut-badge');
+    const verse = document.getElementById('fin-verse');
+    const resteEl = document.getElementById('fin-reste');
+    const totalDu = document.getElementById('fin-total-du');
+    const bar = document.getElementById('fin-progress-bar');
+    const pct = document.getElementById('fin-pct');
+    const waRow = document.getElementById('fin-whatsapp-row');
+
+    if (!block) return;
+
+    try {
+      // Utiliser les utilitaires robustes (Livre journal + sous-collection + niveaux)
+      const eSnap = await getDoc(doc(db, 'students', eleve_id));
+      const studentData = eSnap.data();
+      const niveau_nom = studentData?.levelId || studentData?.niveau_actuel || '';
+
+      const [total_verse_scol, montant_du] = await Promise.all([
+        getTotalVerseReel(eleve_id),
+        getMontantDuParNiveau(niveau_nom, eleve_id)
+      ]);
+
+      // Calculs
+      const reste = Math.round(Math.max(0, montant_du - total_verse_scol));
+      const surplus = total_verse_scol > montant_du ? (total_verse_scol - montant_du) : 0;
+      const progress = montant_du > 0 ? Math.min(100, (total_verse_scol / montant_du) * 100) : (total_verse_scol > 0 ? 100 : 0);
+
+      let statut = "EN COURS";
+      let couleur = "bg-amber-100 text-amber-600";
+      let emoji = "🟡";
+
+      if (total_verse_scol === 0) {
+        statut = "NON PAYÉ";
+        couleur = "bg-red-100 text-red-600";
+        emoji = "🔴";
+      } else if (montant_du > 0 && total_verse_scol >= montant_du) {
+        statut = "SOLDÉ";
+        couleur = "bg-green-100 text-green-600";
+        emoji = "🟢";
+      } else if (montant_du === 0 && total_verse_scol > 0) {
+        // Cas particulier (Vorbereitung ou niveau non défini)
+        statut = "SOLDÉ";
+        couleur = "bg-green-100 text-green-600";
+        emoji = "🟢";
+      }
+
+      // 4. Mise à jour UI direct (ID-based comme demandé)
+      if (badge) {
+        badge.innerText = `STATUS: ${emoji} ${statut}`;
+        badge.className = `text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-tighter ${couleur}`;
+      }
+      if (verse) verse.innerText = formatMontant(total_verse_scol);
+      if (resteEl) resteEl.innerText = formatMontant(reste);
+      if (totalDu) totalDu.innerText = `TOTAL DÛ: ${formatMontant(montant_du)}`;
+      if (pct) pct.innerText = `${Math.round(progress)}%`;
+      if (bar) {
+        bar.style.height = '100%';
+        bar.style.width = `${progress}%`;
+      }
+      
+      if (waRow) {
+        if (reste > 0) waRow.classList.remove('hidden');
+        else waRow.classList.add('hidden');
+      }
+
+      // 5. Synchro Firestore discrète
+      const scolariteRef = doc(db, 'scolarites', eleve_id);
+      await setDoc(scolariteRef, {
+        total_verse: total_verse_scol,
+        montant_total_du: montant_du,
+        reste,
+        surplus: surplus > 0,
+        montant_surplus: surplus,
+        statut: statut.toLowerCase().replace(' ', '_'),
+        derniere_maj: serverTimestamp()
+      }, { merge: true });
+
+    } catch (err) {
+      console.error("Erreur statut financier:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (isDetailModalOpen && selectedStudent) {
+      const timer = setTimeout(() => {
+        chargerEtAfficherStatutFinancier(selectedStudent.id);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isDetailModalOpen, selectedStudent]);
   const [searchQuery, setSearchQuery] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<'active' | 'former'>('active');
@@ -72,13 +286,23 @@ export default function StudentManagement() {
     const map: Record<string, number> = {};
     (finances || []).forEach(f => {
       // Only count active income transactions related to tuition/schooling
-      if (f.status !== 'deleted' && f.type === 'income') {
+      if (f.status !== 'deleted' && f.supprime !== true && f.type === 'income') {
         const studentId = f.studentId || f.eleve_id;
         if (studentId) {
-          const cat = (f.category || '').toLowerCase();
+          const cat = (f.category || f.type || f.type_versement || '').toLowerCase();
           // We count Scolarité and Vorbereitung for the progress bar
-          if (cat.includes('scolarit') || cat.includes('vorbereitung') || cat.includes('vacances')) {
-            map[studentId] = (map[studentId] || 0) + (Number(f.amount) || 0);
+          // Be very inclusive with categories
+          if (
+            cat.includes('scolarit') || 
+            cat.includes('scola') || 
+            cat.includes('vorbereitung') || 
+            cat.includes('vacances') || 
+            cat.includes('inscription') ||
+            cat.includes('tranche') ||
+            cat.includes('versement') ||
+            cat.includes('paiement')
+          ) {
+            map[studentId] = (map[studentId] || 0) + (Number(f.montant) || Number(f.amount) || 0);
           }
         }
       }
@@ -133,7 +357,7 @@ export default function StudentManagement() {
         body: paidPayments.map(p => [
           `Scolarité - Tranche ${p.tranche}`, 
           p.date ? new Date(p.date).toLocaleDateString() : 'N/A', 
-          formatCurrency(p.amount)
+          formatMontant(p.amount)
         ]),
         theme: 'striped',
         headStyles: { fillColor: [227, 30, 36] }
@@ -144,7 +368,7 @@ export default function StudentManagement() {
       
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
-      doc.text(`${t('students.total_paid').toUpperCase()} : ${formatCurrency(totalPaid)}`, 140, finalY);
+      doc.text(`${t('students.total_paid').toUpperCase()} : ${formatMontant(totalPaid)}`, 140, finalY);
 
       // Signatures
       doc.setFontSize(9);
@@ -177,11 +401,14 @@ export default function StudentManagement() {
   const [scolariteVersements, setScolariteVersements] = useState<any[]>([]);
   const [vorbereitungVersements, setVorbereitungVersements] = useState<any[]>([]);
 
+  const [vacancesInscriptions, setVacancesInscriptions] = useState<any[]>([]);
+
   useEffect(() => {
     if (!selectedStudent || !isDetailModalOpen) {
       setFinanceStatus(null);
       setScolariteVersements([]);
       setVorbereitungVersements([]);
+      setVacancesInscriptions([]);
       return;
     }
 
@@ -216,10 +443,38 @@ export default function StudentManagement() {
       setVorbereitungVersements(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
+    // Listen to Vacances across all sessions
+    const unsubVacances = onSnapshot(collection(db, 'cours_vacances'), (sessionsSnap) => {
+      const allVers: any[] = [];
+      sessionsSnap.docs.forEach(async (sessionDoc) => {
+        const insRef = doc(db, 'cours_vacances', sessionDoc.id, 'inscriptions', eleve_id);
+        const insSnap = await getDoc(insRef);
+        if (insSnap.exists()) {
+          const insData = insSnap.data();
+          const versementsSnap = await getDocs(collection(insRef, 'versements'));
+          const versements = versementsSnap.docs.map(v => ({
+            ...v.data(),
+            sessionTitle: sessionDoc.data().title,
+            studentData: insData
+          }));
+          setVacancesInscriptions(prev => {
+            const otherSessions = prev.filter(p => p.sessionId !== sessionDoc.id);
+            return [...otherSessions, { 
+              sessionId: sessionDoc.id, 
+              sessionTitle: sessionDoc.data().title,
+              ...insData,
+              versements 
+            }];
+          });
+        }
+      });
+    });
+
     return () => {
       unsubScolarite();
       unsubScolVersements();
       unsubVorbVersements();
+      unsubVacances();
     };
   }, [selectedStudent?.id, isDetailModalOpen]);
 
@@ -333,6 +588,9 @@ export default function StudentManagement() {
       if (res.ok) {
         const student = await res.json();
         
+        // Emission des événements
+        EventBus.emit(EVENTS.ELEVE_AJOUTE, { eleve: student });
+        
         // Credentials notification
         const cls = classes.find(c => c.id === classId);
         const scheduleStr = cls?.schedule?.map(s => `${s.day} (${s.startTime}-${s.endTime})`).join(', ');
@@ -431,16 +689,19 @@ export default function StudentManagement() {
       });
       
       if (res.ok) {
-        toast.success("Suppression réussie", { id: 'delete-student' });
+        showToast("Suppression réussie", 'success');
         await refreshAll(true);
+        
+        // Emission des événements
+        EventBus.emit(EVENTS.ELEVE_SUPPRIME, { eleve_id: student.id });
+        
         setTimeout(() => refreshAll(true), 2000);
       } else {
         const errorData = await res.json();
-        toast.error(errorData.message || "Erreur lors de la suppression", { id: 'delete-student' });
+        showToast(errorData.message || "Erreur lors de la suppression", 'error');
       }
     } catch (err) {
-      console.error("Delete error:", err);
-      toast.error("Erreur réseau lors de la suppression", { id: 'delete-student' });
+      handleError("DeleteStudent", err);
     } finally {
       setSubmitting(false);
     }
@@ -484,15 +745,15 @@ export default function StudentManagement() {
     
     const paidTranches = selectedStudent.payments
       .filter(p => p.amount > 0)
-      .map(p => `✅ Tranche ${p.tranche}: ${formatCurrency(p.amount)}`)
+      .map(p => `✅ Tranche ${p.tranche}: ${formatMontant(p.amount)}`)
       .join('\n');
       
     const message = `*REÇU DE PAIEMENT - ${APP_NAME_FOR_LINKS}*\n\n` +
       `Bonjour ${selectedStudent.firstName},\n\n` +
       `Voici le point sur vos paiements :\n` +
       `${paidTranches}\n\n` +
-      `💰 *Total payé : ${formatCurrency(totalPaid)}*\n` +
-      `📉 *Reste à payer : ${formatCurrency(balance)}*\n\n` +
+      `💰 *Total payé : ${formatMontant(totalPaid)}*\n` +
+      `📉 *Reste à payer : ${formatMontant(balance)}*\n\n` +
       `Merci de votre confiance.\n_L'administration_`;
       
     const a = document.createElement('a');
@@ -829,68 +1090,41 @@ export default function StudentManagement() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-                {paginatedStudents.map((student) => {
-                  const level = levels.find(l => l.id === student.levelId);
-                  const tuition = student.totalTuition || level?.tuition || 0;
-                  const totalPaid = student.totalPaid || 0;
-                  const isFullyPaid = totalPaid >= tuition && tuition > 0;
-  
-                  return (
-                    <tr key={student.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer" onClick={() => {
-                      setSelectedStudent(student);
-                      setIsDetailModalOpen(true);
-                    }}>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-dia-red/10 text-dia-red flex items-center justify-center font-bold">
-                            {student.lastName[0]}{student.firstName[0]}
-                          </div>
-                          <div>
-                            <p className="font-bold text-sm">{student.lastName} {student.firstName}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="font-mono text-xs font-bold bg-neutral-100 dark:bg-neutral-800 px-2 py-1 rounded">
-                          {student.matricule}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm">
-                        <p className="font-medium">{level?.name || 'N/A'}</p>
-                      </td>
-                      <td className="px-6 py-4 text-sm">
-                        <p className="font-medium text-neutral-500">{classes.find(c => c.id === student.classId)?.name || t('students.not_assigned') }</p>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-[10px] font-bold uppercase">
-                            <span className={cn(isFullyPaid ? "text-green-600" : "")}>{formatCurrency(totalPaid)}</span>
-                            <span className="text-neutral-400">/ {formatCurrency(tuition)}</span>
-                          </div>
-                          <div className="w-full bg-neutral-100 rounded-full h-1.5 overflow-hidden">
-                            <div 
-                              className={cn("h-full transition-all", isFullyPaid ? "bg-green-500" : "bg-dia-red")}
-                              style={{ width: `${tuition > 0 ? Math.min(100, (totalPaid / tuition) * 100) : 0}%` }}
-                            />
-                          </div>
-                          {(() => {
-                            const cats = (finances || [])
-                              .filter(f => (f.studentId === student.id || f.eleve_id === student.id) && f.status !== 'deleted' && f.type === 'income')
-                              .map(f => f.category)
-                              .filter((v, i, a) => v && a.indexOf(v) === i);
-                            if (cats.length === 0) return null;
-                            return (
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {cats.map((cat, idx) => (
-                                  <span key={idx} className="text-[7px] font-black uppercase px-1 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 rounded-sm leading-none border border-neutral-200 dark:border-neutral-700">
-                                    {cat}
-                                  </span>
-                                ))}
+                    {paginatedStudents.map((student) => {
+                      const level = levels.find(l => l.id === student.levelId);
+                      
+                      return (
+                        <tr key={student.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer" onClick={() => {
+                          setSelectedStudent(student);
+                          setIsDetailModalOpen(true);
+                        }}>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-dia-red/10 text-dia-red flex items-center justify-center font-bold">
+                                {student.lastName[0]}{student.firstName[0]}
                               </div>
-                            );
-                          })()}
-                        </div>
-                      </td>
+                              <div>
+                                <p className="font-bold text-sm">{student.lastName} {student.firstName}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="font-mono text-xs font-bold bg-neutral-100 dark:bg-neutral-800 px-2 py-1 rounded">
+                              {student.matricule}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm">
+                            <p className="font-medium">{level?.name || level?.nom || 'N/A'}</p>
+                          </td>
+                          <td className="px-6 py-4 text-sm">
+                            <p className="font-medium text-neutral-500">{classes.find(c => c.id === student.classId)?.name || t('students.not_assigned') }</p>
+                          </td>
+                          <td className="px-6 py-4">
+                            <FinanceBar
+                              eleve_id={student.id}
+                              niveau_nom={level?.nom || level?.name || ''}
+                            />
+                          </td>
                       <td className="px-6 py-4 text-xs font-medium text-neutral-500">
                         {student.createdAt ? new Date(student.createdAt).toLocaleDateString() : 'N/A'}
                       </td>
@@ -967,72 +1201,45 @@ export default function StudentManagement() {
 
         {/* Card View (Mobile) */}
         <div className="grid grid-cols-1 gap-4 md:hidden">
-          {paginatedStudents.map((student) => {
-            const level = levels.find(l => l.id === student.levelId);
-            const tuition = student.totalTuition || level?.tuition || 0;
-            const totalPaid = student.totalPaid || 0;
-            const isFullyPaid = totalPaid >= tuition && tuition > 0;
-            const cls = classes.find(c => c.id === student.classId);
+            {paginatedStudents.map((student) => {
+              const level = levels.find(l => l.id === student.levelId);
+              const cls = classes.find(c => c.id === student.classId);
 
-            return (
-              <div 
-                key={student.id} 
-                className="card p-4 space-y-4 active:scale-95 transition-transform"
-                onClick={() => {
-                  setSelectedStudent(student);
-                  setIsDetailModalOpen(true);
-                }}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-dia-red/10 text-dia-red flex items-center justify-center font-bold">
-                      {student.lastName[0]}{student.firstName[0]}
+              return (
+                <div 
+                  key={student.id} 
+                  className="card p-4 space-y-4 active:scale-95 transition-transform"
+                  onClick={() => {
+                    setSelectedStudent(student);
+                    setIsDetailModalOpen(true);
+                  }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-dia-red/10 text-dia-red flex items-center justify-center font-bold">
+                        {student.lastName[0]}{student.firstName[0]}
+                      </div>
+                      <div>
+                        <p className="font-bold text-sm tracking-tight">{student.lastName} {student.firstName}</p>
+                        <p className="text-[10px] font-mono text-neutral-400">{student.matricule}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-bold text-sm tracking-tight">{student.lastName} {student.firstName}</p>
-                      <p className="text-[10px] font-mono text-neutral-400">{student.matricule}</p>
+                    <div className="text-right">
+                      <p className="text-xs font-bold text-neutral-900 bg-neutral-100 dark:bg-neutral-800 px-2 py-1 rounded inline-block">
+                        {level?.name || level?.nom || 'N/A'}
+                      </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs font-bold text-neutral-900 bg-neutral-100 dark:bg-neutral-800 px-2 py-1 rounded inline-block">
-                      {level?.name || 'N/A'}
-                    </p>
-                  </div>
-                </div>
 
-                <div className="w-full bg-neutral-100 dark:bg-neutral-800 rounded-full h-2 overflow-hidden">
-                  <div 
-                    className={cn("h-full transition-all", isFullyPaid ? "bg-green-500" : "bg-dia-red")}
-                    style={{ width: `${tuition > 0 ? Math.min(100, (totalPaid / tuition) * 100) : 0}%` }}
+                  <FinanceBar
+                    eleve_id={student.id}
+                    niveau_nom={level?.nom || level?.name || ''}
                   />
-                </div>
-                {(() => {
-                  const cats = (finances || [])
-                    .filter(f => (f.studentId === student.id || f.eleve_id === student.id) && f.status !== 'deleted' && f.type === 'income')
-                    .map(f => f.category)
-                    .filter((v, i, a) => v && a.indexOf(v) === i);
-                  if (cats.length === 0) return null;
-                  return (
-                    <div className="flex flex-wrap gap-1">
-                      {cats.map((cat, idx) => (
-                        <span key={idx} className="text-[7px] font-black uppercase px-2 py-1 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 rounded-md border border-neutral-200 dark:border-neutral-700">
-                          {cat}
-                        </span>
-                      ))}
-                    </div>
-                  );
-                })()}
 
-                <div className="grid grid-cols-2 gap-2 text-[10px] font-bold uppercase">
-                  <div className="p-2 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg">
-                    <p className="text-neutral-400 mb-0.5">Classe</p>
-                    <p className="text-neutral-900 truncate">{cls?.name || 'Non assigné'}</p>
-                  </div>
-                  <div className="p-2 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg">
-                    <p className="text-neutral-400 mb-0.5">Scolarité</p>
-                    <p className={cn("truncate", isFullyPaid ? "text-green-500" : "text-dia-red")}>
-                      {totalPaid} / {tuition}
-                    </p>
+                <div className="grid grid-cols-1 gap-2 text-[10px] font-bold uppercase">
+                  <div className="p-2 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg flex items-center justify-between">
+                    <span className="text-neutral-400">Classe</span>
+                    <span className="text-neutral-900 dark:text-white truncate">{cls?.name || 'Non assigné'}</span>
                   </div>
                 </div>
 
@@ -1166,7 +1373,7 @@ export default function StudentManagement() {
                       const id = e.target.value;
                       setSelectedLevelId(id);
                       const level = levels.find(l => l.id === id);
-                      if (level) setSelectedTuition(level.tuition);
+                      if (level) setSelectedTuition(level.tuition || level.frais_scolarite || 0);
                     }}
                     className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all"
                   >
@@ -1174,9 +1381,10 @@ export default function StudentManagement() {
                     {levels.filter(l => 
                       !selectedStream || 
                       l.stream === selectedStream || 
-                      l.type?.toLowerCase() === selectedStream.toLowerCase()
+                      l.type?.toLowerCase() === selectedStream.toLowerCase() ||
+                      l.cycle?.toLowerCase() === selectedStream.toLowerCase()
                     ).map(l => (
-                      <option key={l.id} value={l.id}>{l.name} ({l.stream || l.type})</option>
+                      <option key={l.id} value={l.id}>{l.name || l.nom} ({l.stream || l.cycle})</option>
                     ))}
                   </select>
                 </div>
@@ -1228,7 +1436,7 @@ export default function StudentManagement() {
                       <input name="payVorbereitung" type="checkbox" className="w-6 h-6 accent-blue-600 rounded cursor-pointer" />
                       <p className="text-xs font-black uppercase text-blue-600 tracking-wider">Vorbereitung</p>
                     </div>
-                    <input name="vorbereitungAmount" type="number" className="w-full text-xs bg-transparent border-b border-blue-200 outline-none font-bold text-blue-700" placeholder="Montant variable (ex: 50000)" />
+                    <input name="vorbereitungAmount" type="number" className="w-full text-xs bg-transparent border-b border-blue-200 outline-none font-bold text-blue-700" placeholder="Montant variable" />
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -1331,7 +1539,7 @@ export default function StudentManagement() {
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('students.level')}</label>
                   <select name="levelId" defaultValue={selectedStudent.levelId} required className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
-                    {levels.map(l => <option key={l.id} value={l.id}>{l.name} ({formatCurrency(l.tuition)})</option>)}
+                    {levels.map(l => <option key={l.id} value={l.id}>{l.name || l.nom} ({formatMontant(l.tuition || l.frais_scolarite || 0)})</option>)}
                   </select>
                 </div>
                 <div className="space-y-2">
@@ -1487,64 +1695,102 @@ export default function StudentManagement() {
                 </div>
               </div>
 
-              {/* Situation Financière Block */}
-              <div className="bg-neutral-50 dark:bg-neutral-800/50 p-6 rounded-[2rem] border border-neutral-100 dark:border-neutral-800 space-y-4">
+              {/* Situation Financière Block - Dynamique */}
+              <div id="financial-status-block" className="grid grid-cols-1 gap-4 p-6 bg-white dark:bg-neutral-900 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 shadow-sm animate-in fade-in duration-700">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-black uppercase text-neutral-900 dark:text-white flex items-center gap-2">
-                    <CreditCard size={18} className="text-dia-red" />
-                    💳 Situation Financière
-                  </h3>
-                  <div className={cn(
-                    "text-[10px] font-black px-3 py-1 rounded-full uppercase",
-                    (selectedStudent.totalPaid || 0) >= (selectedStudent.totalTuition || 1) ? "bg-green-100 text-green-600" : "bg-dia-red/10 text-dia-red"
-                  )}>
-                    {(selectedStudent.totalPaid || 0) >= (selectedStudent.totalTuition || 1) ? "🟢 Soldé" : "🟡 En cours"}
+                  <h3 className="text-[10px] font-black uppercase text-neutral-400 tracking-[0.2em]">Situation Financière</h3>
+                  <span id="fin-statut-badge" className="text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-tighter bg-neutral-100 text-neutral-400">CHARGEMENT...</span>
+                </div>
+
+                <div className="flex items-end justify-between gap-4">
+                  <div className="space-y-1">
+                      <p className="text-[10px] font-bold text-neutral-400 uppercase">Scolarité Versée</p>
+                      <p id="fin-verse" className="text-2xl font-black text-neutral-900 dark:text-white tabular-nums">0 FCFA</p>
+                  </div>
+                  <div className="text-right space-y-1">
+                      <p className="text-[10px] font-bold text-neutral-400 uppercase">Reste à payer</p>
+                      <p id="fin-reste" className="text-xl font-black text-dia-red tabular-nums">0 FCFA</p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="p-3 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-100 dark:border-neutral-800">
-                    <p className="text-[9px] font-bold text-neutral-400 uppercase">Total Dû</p>
-                    <p className="text-sm font-black">{formatCurrency(selectedStudent.totalTuition || 0)}</p>
+                {/* Barre de progression */}
+                <div className="space-y-2">
+                  <div className="h-3 w-full bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden p-0.5 border border-neutral-200/50 dark:border-neutral-700/50">
+                      <div id="fin-progress-bar" className="h-full bg-emerald-500 rounded-full transition-all duration-1000 shadow-[0_0_10px_rgba(16,185,129,0.3)]" style={{ width: '0%' }}></div>
                   </div>
-                  <div className="p-3 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-100 dark:border-neutral-800">
-                    <p className="text-[9px] font-bold text-neutral-400 uppercase">Total Versé</p>
-                    <p className="text-sm font-black text-green-600">{formatCurrency(selectedStudent.totalPaid || 0)}</p>
-                  </div>
-                  <div className="p-3 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-100 dark:border-neutral-800">
-                    <p className="text-[9px] font-bold text-neutral-400 uppercase">Reste à Payer</p>
-                    <p className={cn("text-sm font-black", (selectedStudent.totalTuition || 0) - (selectedStudent.totalPaid || 0) > 0 ? "text-dia-red" : "text-green-600")}>
-                      {formatCurrency(Math.max(0, (selectedStudent.totalTuition || 0) - (selectedStudent.totalPaid || 0)))}
-                    </p>
+                  <div className="flex justify-between items-center text-[9px] font-black uppercase">
+                      <span id="fin-pct" className="text-emerald-600">0%</span>
+                      <span id="fin-total-du" className="text-neutral-400 font-bold tracking-widest text-[8px]">TOTAL DÛ: 0 FCFA</span>
                   </div>
                 </div>
 
-                {(() => {
-                  const studentFinances = (finances || [])
-                    .filter(f => (f.studentId === selectedStudent.id || f.eleve_id === selectedStudent.id) && f.status !== 'deleted' && f.type === 'income')
-                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-                  
-                  if (studentFinances.length === 0) return null;
-                  
-                  return (
-                    <div className="pt-2">
-                      <p className="text-[9px] font-bold text-neutral-400 uppercase mb-2">Historique des Paiements</p>
-                      <div className="space-y-2">
-                        {studentFinances.slice(0, 5).map((v, i) => (
-                          <div key={v.id || i} className="flex items-center justify-between text-[10px] font-bold p-2 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-800">
-                            <span className="text-neutral-500 font-mono">{formatDateAffichage(v.date)}</span>
-                            <div className="flex flex-col items-start gap-0.5">
-                              <span className="uppercase text-dia-red text-[7px] font-black">{v.category || 'Scolarité'}</span>
-                              <span className="text-[8px] text-neutral-400">{v.notes || '-'}</span>
-                            </div>
-                            <span className="text-green-600 text-xs">{formatCurrency(v.amount)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
+                {/* Bouton WhatsApp Relance */}
+                <div id="fin-whatsapp-row" className="hidden pt-2">
+                  <button 
+                    onClick={() => {
+                      if (!selectedStudent) return;
+                      const resteText = document.getElementById('fin-reste')?.innerText || '0 FCFA';
+                      const msg = `🔔 *RAPPEL DE PAIEMENT - ${APP_NAME_FOR_LINKS}*\n\n` +
+                        `Bonjour ${selectedStudent.firstName},\n\n` +
+                        `Nous vous rappelons qu'il reste un solde de *${resteText}* à régler pour votre scolarité.\n\n` +
+                        `Merci de votre diligence.\n_L'Administration._`;
+                      const a = document.createElement('a');
+                      a.href = generateWhatsAppLink(selectedStudent.phone || selectedStudent.parentPhone || '', msg);
+                      a.target = '_blank';
+                      a.click();
+                    }}
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-green-50 text-green-600 rounded-2xl text-[10px] font-black uppercase hover:bg-green-100 transition-all border border-green-100 dark:border-green-900/20"
+                  >
+                    Relancer par WhatsApp <Smartphone size={14} />
+                  </button>
+                </div>
               </div>
+
+              {/* Cours de Vacances Block */}
+              {vacancesInscriptions.length > 0 && (
+                <div className="bg-orange-50 dark:bg-orange-900/10 p-6 rounded-[2rem] border border-orange-100 dark:border-orange-900/20 space-y-4">
+                  <h3 className="text-sm font-black uppercase text-orange-600 flex items-center gap-2">
+                    <Calendar size={18} />
+                    🌞 Cours de Vacances
+                  </h3>
+                  
+                  {vacancesInscriptions.map(ins => (
+                    <div key={ins.sessionId} className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-black uppercase text-neutral-900 dark:text-white">{ins.sessionTitle}</p>
+                        <span className={cn(
+                          "text-[8px] font-black px-2 py-0.5 rounded-full uppercase",
+                          ins.statut === 'SOLDÉ' ? "bg-green-100 text-green-600" : "bg-orange-100 text-orange-600"
+                        )}>
+                          {ins.statut || 'EN COURS'}
+                        </span>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="p-2 bg-white dark:bg-neutral-900 rounded-xl border border-orange-100 dark:border-orange-900/20">
+                          <p className="text-[8px] font-bold text-neutral-400 uppercase">Versé</p>
+                          <p className="text-xs font-black text-emerald-600">{formatMontant(ins.total_verse || 0)}</p>
+                        </div>
+                        <div className="p-2 bg-white dark:bg-neutral-900 rounded-xl border border-orange-100 dark:border-orange-900/20">
+                          <p className="text-[8px] font-bold text-neutral-400 uppercase">Reste</p>
+                          <p className="text-xs font-black text-dia-red">{formatMontant(ins.reste || 0)}</p>
+                        </div>
+                      </div>
+
+                      {ins.versements && ins.versements.length > 0 && (
+                        <div className="space-y-1">
+                          {ins.versements.map((v: any, idx: number) => (
+                            <div key={idx} className="flex items-center justify-between text-[9px] font-bold p-1.5 bg-white/50 dark:bg-neutral-900/50 rounded-lg">
+                              <span className="text-neutral-400">{new Date(v.date).toLocaleDateString()}</span>
+                              <span className="text-emerald-600">{formatMontant(v.montant)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="pt-6 border-t border-neutral-100 dark:border-neutral-800 flex gap-3 flex-wrap">
                 <button 
                   onClick={() => {
@@ -1597,7 +1843,7 @@ export default function StudentManagement() {
 
                     const msg = `🔔 *RAPPEL DE PAIEMENT - ${APP_NAME_FOR_LINKS}*\n\n` +
                       `Bonjour ${selectedStudent.firstName},\n\n` +
-                      `Nous vous rappelons qu'il reste un solde de *${formatCurrency(balance)}* à régler pour votre scolarité.\n\n` +
+                      `Nous vous rappelons qu'il reste un solde de *${formatMontant(balance)}* à régler pour votre scolarité.\n\n` +
                       `Merci de votre diligence.\n_L'Administration._`;
 
                     const a = document.createElement('a');
@@ -1752,14 +1998,14 @@ export default function StudentManagement() {
                           <td className="py-3">
                             {p.tranche ? `Scolarité - ${t('students.tranche')} ${p.tranche}` : (p.category ? p.category.replace('_', ' ') : 'Autre')}
                           </td>
-                          <td className="py-3 text-right font-bold">{formatCurrency(p.amount)}</td>
+                          <td className="py-3 text-right font-bold">{formatMontant(p.amount)}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-neutral-900">
                         <td className="py-4 font-bold uppercase">{t('students.total_paid')}</td>
-                        <td className="py-4 text-right font-black text-lg">{formatCurrency((selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0))}</td>
+                        <td className="py-4 text-right font-black text-lg">{formatMontant((selectedStudent.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0))}</td>
                       </tr>
                     </tfoot>
                   </table>

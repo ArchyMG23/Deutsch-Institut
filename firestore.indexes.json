@@ -1,0 +1,52 @@
+{
+  "indexes": [
+    { "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath":"eleve_id","order":"ASCENDING"},
+        {"fieldPath":"date_versement","order":"DESCENDING"}
+      ]},
+    { "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath":"type","order":"ASCENDING"},
+        {"fieldPath":"date_versement","order":"DESCENDING"}
+      ]},
+    { "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath":"compte_destination","order":"ASCENDING"},
+        {"fieldPath":"date_versement","order":"DESCENDING"}
+      ]},
+    { "collectionGroup": "versements",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {"fieldPath":"niveau_id","order":"ASCENDING"},
+        {"fieldPath":"date","order":"DESCENDING"}
+      ]},
+    { "collectionGroup": "seances",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath":"enseignant_id","order":"ASCENDING"},
+        {"fieldPath":"date","order":"DESCENDING"}
+      ]}
+  ,
+  {
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "date_versement", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "niveaux",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "cycle", "order": "ASCENDING"},
+        {"fieldPath": "ordre", "order": "ASCENDING"},
+        {"fieldPath": "actif", "order": "ASCENDING"}
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

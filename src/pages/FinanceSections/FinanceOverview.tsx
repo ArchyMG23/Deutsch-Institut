@@ -7,6 +7,7 @@ import {
 import { motion } from 'motion/react';
 import { useData } from '../../context/DataContext';
 import { cn, formatCurrency } from '../../utils';
+import { formatMontant } from '../../lib/school-engine';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, 
   ResponsiveContainer, BarChart, Bar, Cell, PieChart as RePieChart, Pie 
@@ -44,7 +45,7 @@ const StatCard = ({ title, value, icon: Icon, color, subtitle, trend }: any) => 
       <div className="relative z-10">
         <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 mb-1">{title}</p>
         <h3 className="text-3xl font-black text-neutral-900 dark:text-white tabular-nums tracking-tight">
-          {typeof value === 'number' ? formatCurrency(value) : value}
+          {typeof value === 'number' ? formatMontant(value) : value}
         </h3>
         {subtitle && <div className="text-[10px] font-bold text-neutral-500 mt-2 uppercase flex items-center gap-1.5 opacity-60">
           <div className={cn("w-1.5 h-1.5 rounded-full", color)} />
@@ -201,7 +202,7 @@ export default function FinanceOverview() {
                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[index] }} />
                            <span className="text-xs font-black uppercase text-white/60">{item.name}</span>
                         </div>
-                        <span className="text-sm font-black tabular-nums">{formatCurrency(item.value)}</span>
+                        <span className="text-sm font-black tabular-nums">{formatMontant(item.value)}</span>
                      </div>
                   ))}
                </div>
@@ -216,11 +217,11 @@ export default function FinanceOverview() {
                   {(finances || []).slice(0, 4).map((f) => (
                      <div key={f.id} className="flex items-center justify-between p-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-2xl border border-neutral-100 dark:border-neutral-800">
                         <div className="space-y-1">
-                           <p className="text-[10px] font-black uppercase text-neutral-900 dark:text-white truncate max-w-[150px]">{f.libelle}</p>
-                           <p className="text-[8px] font-bold text-neutral-400 uppercase tabular-nums">{new Date(f.date_versement || f.createdAt).toLocaleDateString()}</p>
+                           <p className="text-[10px] font-black uppercase text-neutral-900 dark:text-white truncate max-w-[150px]">{f.description || f.libelle || f.notes || 'Transaction'}</p>
+                           <p className="text-[8px] font-bold text-neutral-400 uppercase tabular-nums">{new Date(f.date || f.date_versement || f.createdAt).toLocaleDateString()}</p>
                         </div>
-                        <p className={cn("text-xs font-black tabular-nums", (f.montant || 0) < 0 ? "text-dia-red" : "text-emerald-600")}>
-                           {formatCurrency(Math.abs(f.montant || 0))}
+                        <p className={cn("text-xs font-black tabular-nums", (f.amount || f.montant || 0) < 0 ? "text-dia-red" : "text-emerald-600")}>
+                           {formatMontant(Math.abs(f.amount || f.montant || 0))}
                         </p>
                      </div>
                   ))}

@@ -18,16 +18,17 @@ import FinanceDiverse from './FinanceSections/FinanceDiverse';
 import FinanceSortie from './FinanceSections/FinanceSortie';
 import FinanceArchives from './FinanceSections/FinanceArchives';
 import FinanceMaintenance from './FinanceSections/FinanceMaintenance';
+import FinanceHistoriqueNiveau from './FinanceSections/FinanceHistoriqueNiveau';
 
 const SECTIONS = [
   { id: 'overview', label: 'Analyse', icon: LayoutDashboard, color: 'text-dia-red', role: 'admin' },
-  { id: 'inscription', label: 'Inscription', icon: UserPlus, color: 'text-purple-600', role: 'admin' },
-  { id: 'scolarite', label: 'Scolarité', icon: Landmark, color: 'text-emerald-600', role: 'admin' },
+  { id: 'inscription', label: 'Inscriptions', icon: UserPlus, color: 'text-purple-600', role: 'admin' },
+  { id: 'scolarite', label: 'Scolarités', icon: Landmark, color: 'text-emerald-600', role: 'admin' },
   { id: 'vorbereitung', label: 'Vorbereitung', icon: Target, color: 'text-amber-600', role: 'admin' },
   { id: 'vacances', label: 'Cours de Vacances', icon: Sun, color: 'text-amber-400', role: 'admin' },
-  { id: 'diverse', label: 'Entrées Diverses', icon: PlusCircle, color: 'text-blue-500', role: 'admin' },
-  { id: 'sortie', label: 'Sorties / Charges', icon: ArrowUpRight, color: 'text-orange-600', role: 'admin' },
-  { id: 'archives', label: 'Archives', icon: History, color: 'text-neutral-500', role: 'admin' },
+  { id: 'historique', label: 'Historique / Niveau', icon: History, color: 'text-neutral-500', role: 'admin' },
+  { id: 'sortie', label: 'Charges Centre', icon: ArrowUpRight, color: 'text-orange-600', role: 'admin' },
+  { id: 'archives', label: 'Archive Transactions', icon: Wallet, color: 'text-neutral-500', role: 'admin' },
   { id: 'maintenance', label: 'Maintenance', icon: Database, color: 'text-dia-red', role: 'superadmin' },
 ];
 
@@ -47,7 +48,7 @@ export default function FinanceManagement() {
       case 'scolarite': return <FinanceScolarite />;
       case 'vorbereitung': return <FinanceVorbereitung />;
       case 'vacances': return <FinanceVacances />;
-      case 'diverse': return <FinanceDiverse />;
+      case 'historique': return <FinanceHistoriqueNiveau />;
       case 'sortie': return <FinanceSortie />;
       case 'archives': return <FinanceArchives />;
       case 'maintenance': return <FinanceMaintenance />;

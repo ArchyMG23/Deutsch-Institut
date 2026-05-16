@@ -5,6 +5,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { toast } from 'sonner';
 import { cn, formatCurrency } from '../../utils';
+import { showToast, handleError } from '../../lib/errorHandler';
+import { EventBus, EVENTS } from '../../lib/eventBus';
 
 export default function FinanceDiverse() {
   const { fetchWithAuth } = useAuth();
@@ -34,17 +36,25 @@ export default function FinanceDiverse() {
         })
       });
       if (res.ok) {
-        toast.success("Transaction diverse enregistrée !");
+        showToast("Transaction diverse enregistrée !", 'success');
+        
+        // Emission des événements
+        EventBus.emit(EVENTS.TRANSACTION_AJOUTEE, { 
+          amount: parseFloat(formData.amount), 
+          type: 'diverse' 
+        });
+        
         setFormData({
           libelle: '', amount: '', date: new Date().toISOString().split('T')[0],
           accountType: 'caisse', paymentMethod: 'Espèces', notes: ''
         });
         refreshAll(true);
       } else {
-        toast.error("Erreur lors de l'enregistrement");
+        const errorData = await res.json();
+        showToast(errorData.message || "Erreur lors de l'enregistrement", 'error');
       }
     } catch (err) {
-      toast.error("Erreur réseau");
+      handleError("PaymentDiverse", err);
     } finally {
       setLoading(false);
     }

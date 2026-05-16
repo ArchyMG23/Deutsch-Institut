@@ -1,287 +1,182 @@
-// ===============================================================
-// Assumed Data Model
-// ===============================================================
-//
-// Collection: users
-// Fields:
-//   - uid: string (required)
-//   - matricule: string (required)
-//   - email: string (required, email format)
-//   - role: string (required, ['admin', 'teacher', 'student'])
-//   - firstName: string (required)
-//   - lastName: string (required)
-//   - mustChangePassword: bool (optional)
-//   - status: string (required, ['online', 'offline'])
-//   - createdAt: string (required, ISO 8601)
-//
-// Collection: students
-// Fields:
-//   - birthDate: string
-//   - birthPlace: string
-//   - gender: string (['M', 'F'])
-//   - phone: string
-//   - parentName: string
-//   - parentPhone: string
-//   - classId: string
-//
-// Collection: teachers
-// Fields:
-//   - hourlyRate: number
-//   - assignedClasses: list
-//   - phone: string
-//
-// Collection: finances
-// Fields:
-//   - type: string (['income', 'expense'])
-//   - amount: number
-//   - date: string
-//   - description: string
-//   - bankBalanceAfter: number
-//   - cashBalanceAfter: number
-//
-// ===============================================================
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 0. Global Safety Net - Default deny
+    // 0. Global Safety Net
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if isAuth() && request.auth.token.email in ['yombivictor@gmail.com', 'gabrielyombi311@gmail.com', 'victoryombi@gmail.com', 'gabrielyombi@gmail.com'];
     }
 
-    // ===============================================================
-    // Shared Helpers
-    // ===============================================================
-
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    // Identifies if the user is a verified admin or a bootstrap admin
-    function isAdmin() {
-      return isSignedIn() && (
-        (request.auth.token.email != null && request.auth.token.email.lower() == "yombivictor@gmail.com") ||
-        (request.auth.token.email != null && request.auth.token.email.lower() == "gabrielyombi311@gmail.com") || 
-        request.auth.uid == "ODbaguDQ7GRMDmGLo8SzsH46u2E2" ||
+    function isAuth()       { return request.auth != null; }
+    
+    function isAdmin()      {
+      return isAuth() && (
+        request.auth.token.email in ['yombivictor@gmail.com', 'gabrielyombi311@gmail.com', 'victoryombi@gmail.com'] ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'super_admin'])
       );
     }
-
+    
     function isSuperAdmin() {
-      return isAdmin() && (
-        request.auth.token.email.lower() == "gabrielyombi311@gmail.com" ||
-        request.auth.token.email.lower() == "yombivictor@gmail.com" ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
+      return isAuth() && (
+        request.auth.token.email in ['yombivictor@gmail.com', 'gabrielyombi311@gmail.com', 'victoryombi@gmail.com'] ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin')
       );
     }
-
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+    
+    function isOwner(uid)   {
+      return isAuth() && request.auth.uid == uid;
     }
 
-    function isVerified() {
-      // Mandate verification for write operations as per instructions, 
-      // but allow bootstrap admins even if unverified for initial setup.
-      return isSignedIn() && (
-        request.auth.token.email_verified == true ||
-        request.auth.token.email == "yombivictor@gmail.com" ||
-        request.auth.token.email == "gabrielyombi311@gmail.com" ||
-        request.auth.uid == "ODbaguDQ7GRMDmGLo8SzsH46u2E2"
-      );
+    // Comptes financiers — lecture admin, écriture engine via isAdmin()
+    match /comptes/{compte} {
+      allow read:  if isAdmin();
+      allow write: if isAdmin(); 
     }
 
-    function isValidId(id) { 
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    // Transactions
+    match /transactions/{id} {
+      allow read:   if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isSuperAdmin();
+      allow delete: if isSuperAdmin();
+    }
+    
+    // Finances (Flattened records)
+    match /finances/{id} {
+      allow read:   if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isSuperAdmin();
+      allow delete: if isSuperAdmin();
+    }
+    
+    // Sorties
+    match /sorties/{id} {
+      allow read:   if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isSuperAdmin();
+      allow delete: if isSuperAdmin();
     }
 
-    function incoming() { 
-      return request.resource.data; 
-    }
-
-    function existing() { 
-      return resource.data; 
-    }
-
-    // ===============================================================
-    // Entity Validators
-    // ===============================================================
-
-    function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'matricule', 'email', 'role', 'firstName', 'lastName', 'status', 'createdAt']) &&
-             data.uid == request.auth.uid &&
-             data.role in ['admin', 'teacher', 'student'] &&
-             data.email is string &&
-             data.firstName is string && data.firstName.size() < 100 &&
-             data.lastName is string && data.lastName.size() < 100;
-    }
-
-    function isValidChatMessage(data) {
-      return data.keys().hasAll(['uid_auteur', 'alias', 'message', 'timestamp', 'supprime']) &&
-             data.uid_auteur == request.auth.uid &&
-             data.message is string && data.message.size() > 0 && data.message.size() <= 2000 &&
-             data.alias is string &&
-             data.supprime is bool;
-    }
-
-    function isValidFinance(data) {
-      return data.keys().hasAll(['type', 'amount', 'date', 'description']) &&
-             data.type in ['income', 'expense'] &&
-             data.amount is number && data.amount >= 0;
-    }
-
-    // ===============================================================
-    // Collection Rules
-    // ===============================================================
-
-    // Chat Éleves - Public chat area
-    match /chat_eleves/{messageId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      
-      allow create: if isVerified() && isValidChatMessage(incoming());
-      
-      allow update: if isVerified() && (
-        isAdmin() || 
-        (existing().uid_auteur == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['supprime']))
-      );
-      
-      allow delete: if isAdmin();
-    }
-
-    // Users & Profiles
-    match /users/{userId} {
-      allow read: if isSignedIn() && (isOwner(userId) || isAdmin() || resource.data.matricule in ['T26001', 'S26001']);
-      allow create: if isSignedIn() && isValidUser(incoming()) && (isOwner(userId) || isAdmin());
-      allow update: if isVerified() && (
-        isAdmin() || 
-        (isOwner(userId) && incoming().role == existing().role && incoming().uid == existing().uid)
-      );
-      allow delete: if isAdmin();
-    }
-
-    match /students/{studentId} {
-      allow read: if isSignedIn() && (isOwner(studentId) || isAdmin());
+    // Scolarités
+    match /scolarites/{eleve_id} {
+      allow read:  if isAdmin() || isOwner(eleve_id);
       allow write: if isAdmin();
-    }
-
-    match /teachers/{teacherId} {
-      allow read: if isSignedIn() && (isOwner(teacherId) || isAdmin());
-      allow write: if isAdmin();
-    }
-
-    // Academy Data
-    match /ecole/{configId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /classes/{classId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    // Finance & Scolarite - STRATEGIC LOCKDOWN
-    // All financial writes SHOULD go through the backend /api/financial-event endpoint
-    // to guarantee atomicity and correct balance updates.
-    match /finances/{recordId} {
-      allow read: if isAdmin();
-      allow write: if false; // Forced to API for security & atomicity
-    }
-
-    match /comptes/{accountId} {
-      allow read: if isAdmin();
-      allow write: if false; // Only server-side updates
-    }
-
-    match /scolarites/{eleveId} {
-      allow read: if isAdmin() || isOwner(eleveId);
-      allow create, delete: if isAdmin();
-      allow update: if isAdmin(); // Should be restricted but allowing for schema sync
-
-      match /versements/{versementId} {
-        allow read: if isAdmin() || isOwner(eleveId);
-        allow write: if false; // Forced to API
-      }
-    }
-
-    match /vorbereitung/{eleveId} {
-      allow read: if isAdmin() || isOwner(eleveId);
-      allow create, delete: if isAdmin();
-      
-      match /versements/{versementId} {
-        allow read: if isAdmin() || isOwner(eleveId);
-        allow write: if false; // Forced to API
-      }
-    }
-
-    match /cours_vacances/{sessionId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-
-      match /inscriptions/{studentId} {
-        allow read: if isAdmin() || isOwner(studentId);
+      match /versements/{vid} {
+        allow read:  if isAdmin() || isOwner(eleve_id);
         allow write: if isAdmin();
+      }
+    }
 
-        match /versements/{versementId} {
-          allow read: if isAdmin() || isOwner(studentId);
-          allow write: if false; // Forced to API
+    // Vorbereitung
+    match /vorbereitung/{eleve_id} {
+      allow read:  if isAdmin() || isOwner(eleve_id);
+      allow write: if isAdmin();
+      match /versements/{vid} {
+        allow read:  if isAdmin() || isOwner(eleve_id);
+        allow write: if isAdmin();
+      }
+    }
+
+    // Cours de vacances
+    match /cours_vacances/{session_id} {
+      allow read:  if isAuth();
+      allow write: if isAdmin();
+      match /inscriptions/{eleve_id} {
+        allow read:  if isAdmin() || isOwner(eleve_id);
+        allow write: if isAdmin();
+        match /versements/{vid} {
+          allow read:  if isAdmin() || isOwner(eleve_id);
+          allow write: if isAdmin();
         }
       }
     }
 
-    match /sorties/{sortieId} {
-      allow read: if isAdmin();
-      allow write: if false; // Forced to API
+    // Élèves
+    match /eleves/{eleve_id} {
+      allow read:  if isAdmin() || isOwner(eleve_id);
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isSuperAdmin();
+    }
+    
+    // Support for students collection as well
+    match /students/{eleve_id} {
+      allow read:  if isAdmin() || isOwner(eleve_id);
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isSuperAdmin();
     }
 
-    // Collection Group for Versements - REQUIRED for Financial Dashboard
-    match /{path=**}/versements/{versementId} {
-      allow read: if isAdmin();
+    // Users
+    match /users/{uid} {
+       allow read: if isAdmin() || isOwner(uid);
+       allow create: if isAdmin() || isOwner(uid);
+       allow update: if isAdmin() || isOwner(uid);
+       allow delete: if isSuperAdmin();
     }
 
-    match /transactions/{transId} {
-      allow read: if isAdmin();
-      allow write: if false; // Ledger is immutable from client
+    // Enseignants, séances, rapports
+    match /enseignants/{id} {
+      allow read, write: if isAdmin();
     }
-
-    match /levels/{levelId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+    match /teachers/{id} {
+      allow read, write: if isAdmin();
     }
-
-    match /evaluations/{evaluationId} {
-      allow read: if isSignedIn() && (isAdmin() || resource.data.studentId == request.auth.uid || resource.data.teacherId == request.auth.uid);
-      allow write: if isAdmin() || (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher');
+    match /seances/{id} {
+      allow read:   if isAdmin() || 
+        (resource != null && resource.data.enseignant_id == request.auth.uid);
+      allow create: if isAuth();
+      allow update, delete: if isAdmin();
     }
-
-    // Reports & Communiques
-    match /rapports_journaliers/{rapportId} {
-      allow read: if isAdmin() || (isSignedIn() && (resource.data.enseignant_id == request.auth.uid || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher'));
-      allow create: if isSignedIn() && (incoming().enseignant_id == request.auth.uid || isAdmin());
-      allow update: if isAdmin() || (isSignedIn() && existing().enseignant_id == request.auth.uid);
+    match /rapports_journaliers/{id} {
+      allow read:   if isAdmin() || 
+        (resource != null && resource.data.enseignant_id == request.auth.uid);
+      allow create: if isAuth();
+      allow update: if isAdmin() || 
+        (resource != null && resource.data.enseignant_id == request.auth.uid);
       allow delete: if isAdmin();
     }
 
-    match /communiques/{communiqueId} {
-      allow read: if isSignedIn();
+    // Chat élèves (anonymat garanti)
+    match /chat_eleves/{id} {
+      allow read:   if isAuth();
+      allow create: if isAuth();
+      allow delete: if isAdmin() || 
+        (resource != null && resource.data.uid_auteur == request.auth.uid);
+    }
+    
+    // Classes, Levels
+    match /classes/{id} {
+      allow read: if isAuth();
       allow write: if isAdmin();
-      
-      match /reads/{userId} {
-        allow read: if isAdmin() || isOwner(userId);
-        allow create: if isOwner(userId);
-      }
+    }
+    match /levels/{id} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
     }
 
-    match /audit_logs/{logId} {
-      allow read: if isAdmin();
-      allow create: if isSignedIn();
-      allow update, delete: if false;
+    // Evaluations
+    match /evaluations/{id} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
     }
 
-    match /library/{itemId} {
-      allow read: if isSignedIn();
+    // Logs — lecture seule super admin
+    match /audit_log/{id}    { allow read: if isSuperAdmin(); }
+    match /error_log/{id}    { 
+      allow read: if isSuperAdmin(); 
+      allow create: if isAuth();
+    }
+    match /maintenance_log/{id} { allow read: if isSuperAdmin(); }
+    
+    // Legacy support for audit_logs (plural)
+    match /audit_logs/{id}    { allow read: if isSuperAdmin(); }
+    
+    // Library
+    match /library/{id} {
+      allow read: if isAuth();
       allow write: if isAdmin();
     }
   }

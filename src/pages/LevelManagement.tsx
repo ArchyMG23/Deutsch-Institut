@@ -1,397 +1,403 @@
 import React, { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 import { 
   Plus, 
-  X, 
+  Search, 
   Edit2, 
   Trash2, 
-  Layers,
-  Clock,
-  Wallet,
-  ChevronUp,
-  ChevronDown,
-  Search
+  Activity, 
+  Clock, 
+  Banknote,
+  BookOpen,
+  ArrowRight,
+  ChevronRight,
+  Filter
 } from 'lucide-react';
-import { Level } from '../types';
-import { formatCurrency } from '../utils';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
+import { Level } from '../types';
+import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import { cn } from '../utils';
 
 export default function LevelManagement() {
-  const { t } = useTranslation();
-  const { user, fetchWithAuth, profile } = useAuth();
-  const { levels, loading, refreshLevels } = useData();
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const { fetchWithAuth } = useAuth();
+  const { levels, refreshLevels } = useData();
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLevel, setEditingLevel] = useState<Level | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>({ key: 'name', direction: 'asc' });
-  const [submitting, setSubmitting] = useState(false);
-
-  const isSuperAdmin = 
-    profile?.role === 'admin' || 
-    (profile as any)?.isSuperAdmin || 
-    (user as any)?.isSuperAdmin || 
-    user?.email?.toLowerCase() === 'yombivictor@gmail.com' || 
-    user?.email?.toLowerCase() === 'gabrielyombi311@gmail.com';
+  const [formData, setFormData] = useState<Partial<Level>>({
+    name: '',
+    tuition: 0,
+    hours: 60,
+    stream: 'Allemand'
+  });
 
   useEffect(() => {
-    refreshLevels();
-  }, [refreshLevels]);
+    loadLevels();
+  }, []);
 
-  const handleAddLevel = async (e: React.FormEvent<HTMLFormElement>) => {
+  const loadLevels = async () => {
+    setLoading(true);
+    await refreshLevels();
+    setLoading(false);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (submitting) return;
-    setSubmitting(true);
-    
-    const formData = new FormData(e.currentTarget);
-    
-    const typeValue = formData.get('type') as string;
-    const streamValue = (formData.get('stream') as string) || (typeValue.charAt(0).toUpperCase() + typeValue.slice(1));
-    
-    const newLevel = {
-      name: formData.get('name'),
-      tuition: Number(formData.get('tuition')),
-      hours: Number(formData.get('hours')),
-      type: typeValue,
-      stream: streamValue,
-    };
-
     try {
-      const res = await fetchWithAuth('/api/levels', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newLevel)
+      const url = editingLevel ? `/api/levels/${editingLevel.id}` : '/api/levels';
+      const method = editingLevel ? 'PUT' : 'POST';
+      
+      const isVorb = isVorbereitung(editingLevel || ({} as Level) || { name: formData.name });
+
+      const finalData = {
+        ...formData,
+        nom: formData.name,
+        frais_scolarite: isVorb ? null : formData.tuition,
+        tuition: isVorb ? null : formData.tuition,
+        nb_heures_total: isVorb ? null : formData.hours,
+        hours: isVorb ? null : formData.hours,
+        type: isVorb ? 'vorbereitung' : 'standard',
+        tarif_variable: isVorb,
+        quota_variable: isVorb,
+        cycle: (formData.stream || 'Allemand').toLowerCase(),
+        actif: true,
+        ordre: levels.length + 1,
+        frais_examen: 0,
+        paiement_fractionnable: true,
+        nb_fractions_max: null,
+        taux_horaire_salle: 0,
+        duree_seance_standard: 0,
+        nb_seances_par_semaine: 0,
+        capacite_max: 30,
+        seuil_ouverture: 1,
+        vorbereitung_disponible: false,
+        vacances_disponible: false
+      };
+      
+      await fetchWithAuth(url, {
+        method,
+        body: JSON.stringify(finalData)
       });
-      if (res.ok) {
-        setIsAddModalOpen(false);
-        await refreshLevels(true);
-        toast.success(t('levels.level_added'));
-      } else {
-        const errorData = await res.json();
-        toast.error(errorData.message || t('common.error'));
-      }
-    } catch (err) {
-      console.error("Error adding level:", err);
-      toast.error(t('common.error'));
-    } finally {
-      setSubmitting(false);
+
+      toast.success(editingLevel ? 'Niveau mis à jour' : 'Niveau créé');
+      setIsModalOpen(false);
+      setEditingLevel(null);
+      setFormData({ name: '', tuition: 0, hours: 60, stream: 'Allemand' });
+      loadLevels();
+    } catch (err: any) {
+      toast.error(err.message);
     }
   };
 
-  const handleEditLevel = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!editingLevel) return;
-    const formData = new FormData(e.currentTarget);
-    
-    const typeValue = formData.get('type') as string;
-    const streamValue = (formData.get('stream') as string) || (typeValue.charAt(0).toUpperCase() + typeValue.slice(1));
-    
-    const updatedLevel = {
-      name: formData.get('name'),
-      tuition: Number(formData.get('tuition')),
-      hours: Number(formData.get('hours')),
-      type: typeValue,
-      stream: streamValue,
-    };
-
-    setSubmitting(true);
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Voulez-vous vraiment supprimer ce niveau ?')) return;
     try {
-      const res = await fetchWithAuth(`/api/levels/${editingLevel.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedLevel)
-      });
-      if (res.ok) {
-        setEditingLevel(null);
-        await refreshLevels(true);
-        toast.success(t('levels.level_updated'));
-      } else {
-        const errorData = await res.json();
-        toast.error(errorData.message || t('common.error'));
-      }
-    } catch (err) {
-      console.error("Error editing level:", err);
-      toast.error(t('common.error'));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleDeleteLevel = async (id: string) => {
-    if (!isSuperAdmin) {
-      toast.error('Seul le Super Administrateur peut supprimer des niveaux.');
-      return;
-    }
-    if (!window.confirm(t('levels.confirm_delete'))) return;
-    try {
-      const res = await fetchWithAuth(`/api/levels/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        await refreshLevels(true);
-        toast.success(t('levels.level_deleted'));
-      } else {
-        toast.error(t('common.error'));
-      }
-    } catch (err) {
-      console.error("Error deleting level:", err);
-      toast.error("Erreur technique lors de la suppression");
+      await fetchWithAuth(`/api/levels/${id}`, { method: 'DELETE' });
+      toast.success('Niveau supprimé');
+      loadLevels();
+    } catch (err: any) {
+      toast.error(err.message);
     }
   };
 
   const filteredLevels = levels.filter(l => 
-    l.name.toLowerCase().includes(searchQuery.toLowerCase())
+    l.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    l.stream?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const sortedLevels = [...filteredLevels].sort((a, b) => {
-    if (!sortConfig) return 0;
-    const { key, direction } = sortConfig;
-    
-    let aValue: any = (a as any)[key];
-    let bValue: any = (b as any)[key];
-
-    if (typeof aValue === 'string') {
-      aValue = aValue.toLowerCase();
-      bValue = bValue.toLowerCase();
-    }
-
-    if (aValue < bValue) return direction === 'asc' ? -1 : 1;
-    if (aValue > bValue) return direction === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  const handleSort = (key: string) => {
-    let direction: 'asc' | 'desc' = 'asc';
-    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key, direction });
+  const isVorbereitung = (level: Level) => {
+    return (
+      level.type === 'vorbereitung' ||
+      (level.name || level.nom || '').toLowerCase().includes('vorbereitung') ||
+      (level as any).tarif_variable === true
+    );
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h3 className="text-xl font-bold">{t('levels.title')}</h3>
-        {isSuperAdmin && (
-          <button 
-            onClick={() => setIsAddModalOpen(true)}
-            className="btn-primary flex items-center gap-2"
-          >
-            <Plus size={18} />
-            <span>{t('levels.add_level')}</span>
-          </button>
-        )}
+    <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto">
+      {/* ... (Header Section remains same) */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-4xl font-black tracking-tight flex items-center gap-3">
+            <span className="p-3 bg-dia-red rounded-2xl text-white shadow-lg shadow-dia-red/20">
+              <BookOpen className="w-8 h-8" />
+            </span>
+            Gestion des Niveaux
+          </h1>
+          <p className="mt-2 text-neutral-500 font-medium">Configurez les cursus, tarifs et quotas horaires.</p>
+        </div>
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => {
+            setEditingLevel(null);
+            setFormData({ name: '', tuition: 0, hours: 60, stream: 'Allemand' });
+            setIsModalOpen(true);
+          }}
+          className="flex items-center justify-center gap-2 px-6 py-4 bg-dia-red text-white rounded-2xl font-black shadow-xl shadow-dia-red/30 hover:bg-dia-red-dark transition-all"
+        >
+          <Plus className="w-5 h-5" />
+          Ajouter un Cursus
+        </motion.button>
       </div>
 
-      <div className="card p-4 flex flex-col sm:flex-row gap-4 items-center">
-        <div className="relative group flex-1">
-          <input 
-            type="text" 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t('classes.search_placeholder')}
-            className="w-full pl-10 pr-4 py-2 bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg focus:ring-2 focus:ring-dia-red transition-all"
+      {/* Search & Stats Bar */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <div className="lg:col-span-3 h-14 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl flex items-center px-4 gap-3 focus-within:ring-2 focus-within:ring-dia-red/20 transition-all">
+          <Search className="w-5 h-5 text-neutral-400" />
+          <input
+            type="text"
+            placeholder="Rechercher un niveau, cycle..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="flex-1 bg-transparent border-none outline-none text-sm font-bold"
           />
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-dia-red transition-colors pointer-events-none z-10" size={18} />
+          <Filter className="w-5 h-5 text-neutral-400 cursor-pointer hover:text-dia-red transition-colors" />
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-neutral-400 uppercase">{t('common.sort_by')}:</span>
-          <select 
-            value={sortConfig?.key || ''} 
-            onChange={(e) => handleSort(e.target.value)}
-            className="bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-dia-red outline-none"
-          >
-            <option value="name">{t('common.name')}</option>
-            <option value="tuition">{t('sidebar.finances')}</option>
-            <option value="hours">{t('levels.hours')}</option>
-          </select>
-          <button 
-            onClick={() => handleSort(sortConfig?.key || 'name')}
-            className="p-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg hover:bg-neutral-200 transition-colors"
-          >
-            {sortConfig?.direction === 'asc' ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-          </button>
+        <div className="bg-amber-100 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40 rounded-2xl flex items-center justify-center gap-3 px-4">
+          <Activity className="w-5 h-5 text-amber-600" />
+          <span className="text-sm font-black text-amber-900 dark:text-amber-400">
+            {levels.length} Cursus Actifs
+          </span>
         </div>
       </div>
 
+      {/* Levels Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {sortedLevels.map((level) => (
-          <div key={level.id} className="card p-6 group hover:shadow-xl transition-all border-dia-red/0 hover:border-dia-red/20 border">
-            <div className="flex justify-between items-start mb-4">
-              <div className="w-12 h-12 rounded-2xl bg-dia-red/10 text-dia-red flex items-center justify-center">
-                <Layers size={24} />
-              </div>
-              <div className="flex gap-2">
-                {isSuperAdmin && (
-                  <>
-                    <button 
-                      onClick={() => setEditingLevel(level)}
-                      className="p-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-all"
-                      title={t('common.edit')}
-                    >
-                      <Edit2 size={16} className="text-neutral-600 dark:text-neutral-400" />
-                    </button>
-                    <button 
-                      onClick={() => handleDeleteLevel(level.id)}
-                      className="p-2 bg-red-50 dark:bg-red-900/10 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/20 transition-all"
-                      title={t('common.delete')}
-                    >
-                      <Trash2 size={16} className="text-red-600" />
-                    </button>
-                  </>
+        <AnimatePresence mode='popLayout'>
+          {filteredLevels.map((level, idx) => {
+            const isVorb = isVorbereitung(level);
+            return (
+              <motion.div
+                layout
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ delay: idx * 0.05 }}
+                key={level.id}
+                className={cn(
+                  "group bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 hover:shadow-2xl hover:shadow-dia-red/10 transition-all duration-300 relative overflow-hidden",
+                  isVorb ? "border-orange-500/20 bg-orange-50/10 dark:bg-orange-950/5 border-dashed" : "hover:border-dia-red/30"
                 )}
-              </div>
-            </div>
-            
-            <div className="mb-4">
-              <p className="text-[10px] font-black uppercase text-dia-red mb-1">{level.stream || t('common.general')}</p>
-              <h4 className="text-2xl font-bold">{level.name}</h4>
-            </div>
-            
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 text-sm">
-                <Wallet size={16} className="text-neutral-400" />
-                <span className="font-medium">{formatCurrency(level.tuition)}</span>
-              </div>
-              <div className="flex items-center gap-3 text-sm">
-                <Clock size={16} className="text-neutral-400" />
-                <span className="font-medium">{level.hours} {t('levels.hours')}</span>
-              </div>
-            </div>
-          </div>
-        ))}
+              >
+                {/* Card Badge */}
+                <div className={`absolute top-4 right-4 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                  level.stream === 'Allemand' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                }`}>
+                  {level.stream}
+                </div>
+
+                <div className="space-y-6">
+                  <div className="space-y-1">
+                    <h3 className="text-2xl font-black text-neutral-900 dark:text-white group-hover:text-dia-red transition-colors">
+                      {level.name || level.nom}
+                    </h3>
+                    <div className="flex items-center gap-3 text-neutral-400">
+                      <span className="text-[10px] font-bold uppercase tracking-widest">{level.id}</span>
+                    </div>
+                  </div>
+
+                  {isVorb ? (
+                    /* SPECIAL VORBEREITUNG VIEW */
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-3 p-4 bg-orange-100/30 dark:bg-orange-500/5 rounded-2xl border border-orange-500/10 border-dashed">
+                        <div className="p-2 bg-orange-500 text-white rounded-xl">
+                          <Banknote className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black uppercase text-orange-600/60 leading-none mb-1">Tarif</p>
+                          <p className="text-xl font-black text-orange-600">Variable</p>
+                          <p className="text-[10px] font-bold text-neutral-400">Saisi à chaque versement</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3 p-4 bg-orange-100/30 dark:bg-orange-500/5 rounded-2xl border border-orange-500/10 border-dashed">
+                        <div className="p-2 bg-orange-500 text-white rounded-xl">
+                          <Clock className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black uppercase text-orange-600/60 leading-none mb-1">Durée</p>
+                          <p className="text-xl font-black text-orange-600">Variable</p>
+                          <p className="text-[10px] font-bold text-neutral-400">Selon la session d'examen</p>
+                        </div>
+                      </div>
+                      <div className="p-3 bg-orange-500/10 rounded-xl text-center">
+                        <p className="text-[11px] font-black text-orange-700 uppercase">🎯 Préparation intensive B1/B2/C1</p>
+                      </div>
+                    </div>
+                  ) : (
+                    /* STANDARD LEVEL VIEW */
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-neutral-50 dark:bg-neutral-800/50 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800">
+                        <div className="flex items-center gap-2 text-neutral-500 mb-1">
+                          <Banknote className="w-3.5 h-3.5" />
+                          <span className="text-[9px] font-black uppercase">Tarif</span>
+                        </div>
+                        <div className="text-lg font-black text-neutral-900 dark:text-white">
+                          {(level.tuition || level.frais_scolarite || 0).toLocaleString()} <span className="text-xs">FCFA</span>
+                        </div>
+                      </div>
+                      <div className="bg-neutral-50 dark:bg-neutral-800/50 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800">
+                        <div className="flex items-center gap-2 text-neutral-500 mb-1">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span className="text-[9px] font-black uppercase">Quota</span>
+                        </div>
+                        <div className="text-lg font-black text-neutral-900 dark:text-white">
+                          {level.hours || level.nb_heures_total || 0} <span className="text-xs">Hrs</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-4 border-t border-neutral-100 dark:border-neutral-800">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setEditingLevel(level);
+                          setFormData({
+                            name: level.name || level.nom,
+                            tuition: level.tuition || level.frais_scolarite || 0,
+                            hours: level.hours || level.nb_heures_total || 0,
+                            stream: (level.stream || level.cycle || 'Allemand') as any
+                          });
+                          setIsModalOpen(true);
+                        }}
+                        className="p-3 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 rounded-xl hover:bg-dia-red hover:text-white transition-all font-bold"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(level.id)}
+                        className="p-3 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 rounded-xl hover:bg-red-600 hover:text-white transition-all"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <motion.div
+                      whileHover={{ x: 5 }}
+                      className="flex items-center gap-2 text-dia-red font-black text-xs cursor-pointer"
+                    >
+                      Details <ChevronRight className="w-4 h-4" />
+                    </motion.div>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
       </div>
 
-      {/* Add Level Modal */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-neutral-900 w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-              <h3 className="text-2xl font-bold tracking-tight">{t('levels.add_level')}</h3>
-              <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
-                <X size={24} />
-              </button>
-            </div>
-            <form onSubmit={handleAddLevel} className="p-8 space-y-6">
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Type (Langue)</label>
-                    <select name="type" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
-                      <option value="allemand">Allemand</option>
-                      <option value="anglais">Anglais</option>
-                      <option value="autre">Autre</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Cycle / Filière</label>
-                    <input 
-                      name="stream" 
-                      placeholder="ex: Général"
-                      type="text" 
-                      className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" 
-                    />
-                  </div>
+      {/* Level Modal */}
+      <AnimatePresence>
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsModalOpen(false)}
+              className="absolute inset-0 bg-neutral-900/80 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative w-full max-w-lg bg-white dark:bg-neutral-900 rounded-[2.5rem] shadow-2xl overflow-hidden"
+            >
+              <div className="p-8 space-y-6">
+                <div className="space-y-1">
+                  <h2 className="text-3xl font-black tracking-tighter">
+                    {editingLevel ? 'Modifier le Cursus' : 'Nouveau Cursus'}
+                  </h2>
+                  <p className="text-neutral-500 font-medium">Définissez les paramètres de cet enseignement.</p>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('levels.name')}</label>
-                  <input name="name" required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('levels.price')}</label>
-                  <input name="tuition" required type="number" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('levels.hours')}</label>
-                  <input name="hours" required type="number" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
-                </div>
-              </div>
-              <div className="pt-4 flex gap-4">
-                <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">{t('common.cancel')}</button>
-                <button 
-                  type="submit" 
-                  disabled={submitting}
-                  className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
-                >
-                  {submitting ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
-                      {t('classes.creating')}
-                    </>
-                  ) : (
-                    t('common.submit')
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
-      {/* Edit Level Modal */}
-      {editingLevel && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-neutral-900 w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-              <h3 className="text-2xl font-bold tracking-tight">{t('common.edit')}</h3>
-              <button onClick={() => setEditingLevel(null)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
-                <X size={24} />
-              </button>
-            </div>
-            <form onSubmit={handleEditLevel} className="p-8 space-y-6">
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Type (Langue)</label>
-                    <select name="type" defaultValue={editingLevel.type || 'allemand'} className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all">
-                      <option value="allemand">Allemand</option>
-                      <option value="anglais">Anglais</option>
-                      <option value="autre">Autre</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">Cycle / Filière</label>
-                    <input 
-                      name="stream" 
-                      defaultValue={editingLevel.stream}
-                      type="text" 
-                      className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" 
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('levels.name')}</label>
-                  <input name="name" defaultValue={editingLevel.name} required type="text" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('levels.price')}</label>
-                  <input name="tuition" defaultValue={editingLevel.tuition} required type="number" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 ml-1">{t('levels.hours')}</label>
-                  <input name="hours" defaultValue={editingLevel.hours} required type="number" className="w-full px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:ring-2 focus:ring-dia-red/20 focus:border-dia-red outline-none transition-all" />
-                </div>
+                    <form onSubmit={handleSubmit} className="space-y-5">
+                      {isVorbereitung(editingLevel || ({} as Level)) && (
+                        <div className="p-4 bg-orange-100/50 dark:bg-orange-500/10 border-2 border-orange-500/20 border-dashed rounded-2xl flex gap-3 text-orange-800 dark:text-orange-400">
+                          <Banknote className="shrink-0" />
+                          <p className="text-xs font-bold leading-tight uppercase tracking-tight">
+                            Mode Variable Activé : Le Vorbereitung n'a pas de tarif ni de durée fixes. 
+                            Le montant est saisi librement à chaque versement.
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="col-span-2 space-y-2">
+                          <label className="text-[10px] font-black uppercase text-neutral-400 ml-4">Nom du Niveau</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="Ex: A1, B2 Intense..."
+                            value={formData.name}
+                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border-none rounded-2xl font-bold focus:ring-2 focus:ring-dia-red/20 transition-all outline-none"
+                          />
+                        </div>
+
+                        {!isVorbereitung(editingLevel || ({} as Level)) && (
+                          <>
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-black uppercase text-neutral-400 ml-4">Tarif Scolarité</label>
+                              <input
+                                type="number"
+                                required
+                                value={formData.tuition}
+                                onChange={(e) => setFormData({ ...formData, tuition: Number(e.target.value) })}
+                                className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border-none rounded-2xl font-bold focus:ring-2 focus:ring-dia-red/20 transition-all outline-none"
+                              />
+                            </div>
+
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-black uppercase text-neutral-400 ml-4">Volume Horaire</label>
+                              <input
+                                type="number"
+                                required
+                                value={formData.hours}
+                                onChange={(e) => setFormData({ ...formData, hours: Number(e.target.value) })}
+                                className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border-none rounded-2xl font-bold focus:ring-2 focus:ring-dia-red/20 transition-all outline-none"
+                              />
+                            </div>
+                          </>
+                        )}
+
+                        <div className="col-span-2 space-y-2">
+                          <label className="text-[10px] font-black uppercase text-neutral-400 ml-4">Cycle / Filière</label>
+                          <select
+                            value={formData.stream}
+                            onChange={(e) => setFormData({ ...formData, stream: e.target.value as any })}
+                            className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border-none rounded-2xl font-bold focus:ring-2 focus:ring-dia-red/20 transition-all outline-none appearance-none cursor-pointer"
+                          >
+                            <option value="Allemand">Allemand</option>
+                            <option value="Anglais">Anglais</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-3 pt-4">
+                        <button
+                          type="button"
+                          onClick={() => setIsModalOpen(false)}
+                          className="flex-1 py-4 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 rounded-2xl font-black hover:bg-neutral-200 transition-all"
+                        >
+                          Annuler
+                        </button>
+                        <button
+                          type="submit"
+                          className="flex-1 py-4 bg-dia-red text-white rounded-2xl font-black shadow-lg shadow-dia-red/20 hover:bg-dia-red-dark transition-all flex items-center justify-center gap-2"
+                        >
+                          {editingLevel ? 'Sauvegarder' : 'Créer le Niveau'}
+                          <ArrowRight className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </form>
               </div>
-              <div className="pt-4 flex gap-4">
-                <button type="button" onClick={() => setEditingLevel(null)} className="flex-1 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold transition-all hover:bg-neutral-200">{t('common.cancel')}</button>
-                <button 
-                  type="submit" 
-                  disabled={submitting}
-                  className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
-                >
-                  {submitting ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
-                      {t('common.updating')}
-                    </>
-                  ) : (
-                    t('common.save')
-                  )}
-                </button>
-              </div>
-            </form>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -1,16 +1,20 @@
 import React, { useState, useMemo } from 'react';
-import { Target, Search, Wallet, User, Calendar, Receipt, CreditCard, ChevronRight, CheckCircle2, Landmark, Printer, RefreshCw } from 'lucide-react';
+import { Target, Search, Wallet, User, Calendar, Receipt, CreditCard, ChevronRight, CheckCircle2, Landmark, Printer, RefreshCw, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { toast } from 'sonner';
 import { cn, formatCurrency } from '../../utils';
-import { collection, query, where, getDocs, orderBy, doc, getDoc } from 'firebase/firestore';
+import { formatMontant } from '../../lib/school-engine';
+import { showToast, handleError } from '../../lib/errorHandler';
+import { EventBus, EVENTS } from '../../lib/eventBus';
+import { collection, query, where, getDocs, orderBy, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { useEffect } from 'react';
 
 export default function FinanceVorbereitung() {
   const { fetchWithAuth } = useAuth();
-  const { students, refreshAll } = useData();
+  const { students, refreshAll, levels } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [isGuestMode, setIsGuestMode] = useState(false);
@@ -18,7 +22,13 @@ export default function FinanceVorbereitung() {
   const [loading, setLoading] = useState(false);
   const [vorbereitung, setVorbereitung] = useState<any>(null);
   const [versements, setVersements] = useState<any[]>([]);
-  const [targetAmount, setTargetAmount] = useState('50000');
+  const [targetAmount, setTargetAmount] = useState('');
+
+  // Configuration du niveau
+  const levelConfig = useMemo(() => {
+    if (!selectedStudent?.levelId || !levels) return null;
+    return levels.find(n => n.id === selectedStudent.levelId);
+  }, [selectedStudent, levels]);
 
   const filteredStudents = useMemo(() => {
     if (!searchTerm) return [];
@@ -29,30 +39,43 @@ export default function FinanceVorbereitung() {
     ).slice(0, 5);
   }, [searchTerm, students]);
 
-  const fetchVorbereitung = async (studentId: string) => {
-    try {
-      const vRef = doc(db, 'vorbereitung', studentId);
-      const vSnap = await getDoc(vRef);
-      if (vSnap.exists()) {
-        const data = { id: vSnap.id, ...vSnap.data() } as any;
+  useEffect(() => {
+    if (!selectedStudent) {
+      setVorbereitung(null);
+      setTargetAmount('');
+      setVersements([]);
+      return;
+    }
+
+    const vorbRef = doc(db, 'vorbereitung', selectedStudent.id);
+    const versRef = collection(db, 'vorbereitung', selectedStudent.id, 'versements');
+
+    const unsubVorb = onSnapshot(vorbRef, (snap) => {
+      if (snap.exists()) {
+        const data = { id: snap.id, ...snap.data() } as any;
         setVorbereitung(data);
-        setTargetAmount(String(data.montant_total_du || 50000));
-        const verSnap = await getDocs(query(collection(db, 'vorbereitung', studentId, 'versements'), orderBy('date', 'desc')));
-        setVersements(verSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setTargetAmount(String(data.montant_total_du || ''));
       } else {
         setVorbereitung(null);
-        setTargetAmount('');
-        setVersements([]);
+        // Utilisation du montant configuré au niveau ou rien
+        const defaultDue = levelConfig?.frais_vorbereitung_defaut || '';
+        setTargetAmount(String(defaultDue));
       }
-    } catch (err) {
-      toast.error("Erreur lors de la récupération");
-    }
-  };
+    });
+
+    const unsubVers = onSnapshot(query(versRef, orderBy('date', 'desc')), (snap) => {
+      setVersements(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => {
+      unsubVorb();
+      unsubVers();
+    };
+  }, [selectedStudent, levelConfig]);
 
   const handleSelectStudent = (student: any) => {
     setSelectedStudent(student);
     setSearchTerm('');
-    fetchVorbereitung(student.id);
   };
 
   const [paymentData, setPaymentData] = useState({
@@ -129,23 +152,30 @@ export default function FinanceVorbereitung() {
         })
       });
       if (res.ok) {
-        toast.success("Paiement Vorbereitung enregistré !");
+        showToast("Paiement Vorbereitung enregistré !", 'success');
         
         if (isGuestMode) {
            setIsGuestMode(false);
            setGuestData({ firstName: '', lastName: '', phone: '' });
            refreshAll(true);
         } else {
-           fetchVorbereitung(selectedStudent.id);
            refreshAll(true);
         }
         
+        // Emission des événements
+        EventBus.emit(EVENTS.TRANSACTION_AJOUTEE, { 
+          amount: parseFloat(paymentData.amount), 
+          type: 'vorbereitung',
+          studentId: finalStudentId 
+        });
+        
         setPaymentData({ ...paymentData, amount: '', notes: '' });
       } else {
-        toast.error("Erreur lors du paiement");
+        const errorData = await res.json();
+        showToast(errorData.message || "Erreur lors du paiement", 'error');
       }
     } catch (err: any) {
-      toast.error(err.message || "Erreur réseau");
+      handleError("PaymentVorbereitung", err);
     } finally {
       setLoading(false);
     }
@@ -283,11 +313,11 @@ export default function FinanceVorbereitung() {
                   <div className="space-y-3">
                     <div className="flex justify-between items-center text-[10px] font-black uppercase text-neutral-400">
                       <span>Total Vorbereitung</span>
-                      <span className="text-neutral-900 dark:text-white tabular-nums">{formatCurrency(vorbereitung.montant_total_du)}</span>
+                      <span className="text-neutral-900 dark:text-white tabular-nums">{formatMontant(vorbereitung.montant_total_du)}</span>
                     </div>
                     <div className="flex justify-between items-center text-[10px] font-black uppercase text-neutral-400">
                       <span>Déjà Versé</span>
-                      <span className="text-emerald-600 tabular-nums">{formatCurrency(vorbereitung.total_verse)}</span>
+                      <span className="text-emerald-600 tabular-nums">{formatMontant(vorbereitung.total_verse)}</span>
                     </div>
                     <div className="pt-3 border-t border-dashed border-neutral-200 dark:border-neutral-700 mt-3 flex justify-between items-center">
                       <span className="text-xs font-black uppercase text-neutral-900 dark:text-white">Reste à payer</span>
@@ -295,7 +325,7 @@ export default function FinanceVorbereitung() {
                         "text-xl font-black tabular-nums",
                         (vorbereitung.reste || 0) <= 0 ? "text-emerald-600" : "text-amber-600"
                       )}>
-                        {formatCurrency(vorbereitung.reste)}
+                        {formatMontant(vorbereitung.reste)}
                       </span>
                     </div>
                   </div>
@@ -340,7 +370,21 @@ export default function FinanceVorbereitung() {
                 </div>
               </div>
 
-              <form onSubmit={handlePayment} className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {selectedStudent && levelConfig && !levelConfig.vorbereitung_disponible ? (
+                <div className="p-8 bg-neutral-50 dark:bg-neutral-800 rounded-[2rem] flex flex-col items-center justify-center text-center space-y-4">
+                  <AlertCircle size={48} className="text-amber-500" />
+                  <div>
+                    <h4 className="text-lg font-black uppercase">Vorbereitung Non Disponible</h4>
+                    <p className="text-sm text-neutral-500 font-medium max-w-xs mx-auto">
+                      Le cycle Vorbereitung n'est pas configuré pour le niveau <span className="text-dia-red font-black">{levelConfig.nom}</span>.
+                    </p>
+                  </div>
+                  <div className="pt-2">
+                    <p className="text-[10px] font-bold text-neutral-400 uppercase">Contactez un administrateur pour modifier les options du niveau.</p>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handlePayment} className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-6">
                   <div className="space-y-2 p-4 bg-amber-50 dark:bg-amber-900/10 rounded-2xl border border-amber-100 dark:border-amber-800 animate-in slide-in-from-left duration-300">
                     <label className="text-[10px] font-black uppercase text-amber-600 ml-1">Objectif Total Vorbereitung</label>
@@ -350,7 +394,7 @@ export default function FinanceVorbereitung() {
                         value={targetAmount}
                         onChange={e => setTargetAmount(e.target.value)}
                         className="flex-1 p-3 bg-white dark:bg-neutral-800 rounded-xl border border-amber-200 dark:border-amber-700 font-black text-amber-600"
-                        placeholder="Ex: 50000"
+                        placeholder="Montant total..."
                       />
                       <button 
                         type="button"
@@ -391,7 +435,6 @@ export default function FinanceVorbereitung() {
                             });
                             if (res.ok) {
                               toast.success(!vorbereitung ? "Apprenant inscrit en Vorbereitung !" : "Objectif mis à jour !");
-                              fetchVorbereitung(studentId);
                               refreshAll(true);
                             } else {
                               const err = await res.json();
@@ -496,6 +539,7 @@ export default function FinanceVorbereitung() {
                   </button>
                 </div>
               </form>
+              )}
             </div>
           </div>
         </div>
@@ -523,7 +567,7 @@ export default function FinanceVorbereitung() {
                             {new Date(v.date || v.timestamp?.toDate()).toLocaleDateString('fr-FR')}
                          </td>
                          <td className="px-8 py-4 text-xs font-black text-dia-red tabular-nums">{v.recu_numero}</td>
-                         <td className="px-8 py-4 text-xs font-black text-neutral-900 dark:text-white tabular-nums">{formatCurrency(v.montant)}</td>
+                         <td className="px-8 py-4 text-xs font-black text-neutral-900 dark:text-white tabular-nums">{formatMontant(v.montant)}</td>
                          <td className="px-8 py-4 text-xs font-bold text-neutral-400 uppercase">{v.compte}</td>
                       </tr>
                    ))}

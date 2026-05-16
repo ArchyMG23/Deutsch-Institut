@@ -220,52 +220,14 @@ const memoryUpload = multer({
 async function startServer() {
   const app = express();
 
-  // Bootstrap Levels if empty
+  // Bootstrap Admins
   if (isFirebaseAdminInitialized) {
     try {
-      const levelsSnapshot = await dbAdmin.collection('levels').get();
-      if (levelsSnapshot.empty) {
-        console.log("Bootstrapping levels...");
-        const initialLevels = [
-          { id: 'a1_de', name: 'A1 (Allemand)', stream: 'Allemand', tuition: 110000, hours: 120 },
-          { id: 'a2_de', name: 'A2 (Allemand)', stream: 'Allemand', tuition: 110000, hours: 120 },
-          { id: 'b1_de', name: 'B1 (Allemand)', stream: 'Allemand', tuition: 120000, hours: 160 },
-          { id: 'b2_de', name: 'B2 (Allemand)', stream: 'Allemand', tuition: 120000, hours: 180 },
-          { id: 'c1_de', name: 'C1 (Allemand)', stream: 'Allemand', tuition: 130000, hours: 200 },
-          { id: 'a1_en', name: 'A1 (Anglais)', stream: 'Anglais', tuition: 50000, hours: 120 },
-          { id: 'a2_en', name: 'A2 (Anglais)', stream: 'Anglais', tuition: 50000, hours: 120 },
-          { id: 'b1_en', name: 'B1 (Anglais)', stream: 'Anglais', tuition: 90000, hours: 160 },
-          { id: 'b2_en', name: 'B2 (Anglais)', stream: 'Anglais', tuition: 90000, hours: 160 },
-          { id: 'vorbereitung', name: 'Vorbereitung', stream: 'Allemand', tuition: 50000, hours: 60 }
-        ];
-        // Enforce definitively
-        for (const level of initialLevels) {
-          await dbAdmin.collection('levels').doc(level.id).set(level, { merge: true });
-        }
-        console.log("Levels updated definitively.");
-      } else {
-        // Even if not empty, ensure the specified ones are correct
-        const forcedLevels = [
-          { id: 'a1_de', name: 'A1 (Allemand)', stream: 'Allemand', tuition: 110000 },
-          { id: 'a2_de', name: 'A2 (Allemand)', stream: 'Allemand', tuition: 110000 },
-          { id: 'b1_de', name: 'B1 (Allemand)', stream: 'Allemand', tuition: 120000 },
-          { id: 'b2_de', name: 'B2 (Allemand)', stream: 'Allemand', tuition: 120000 },
-          { id: 'c1_de', name: 'C1 (Allemand)', stream: 'Allemand', tuition: 130000 },
-          { id: 'a1_en', name: 'A1 (Anglais)', stream: 'Anglais', tuition: 50000 },
-          { id: 'a2_en', name: 'A2 (Anglais)', stream: 'Anglais', tuition: 50000 },
-          { id: 'b1_en', name: 'B1 (Anglais)', stream: 'Anglais', tuition: 90000 },
-          { id: 'b2_en', name: 'B2 (Anglais)', stream: 'Anglais', tuition: 90000 },
-          { id: 'vorbereitung', name: 'Vorbereitung', stream: 'Allemand', tuition: 50000 }
-        ];
-        for (const level of forcedLevels) {
-          await dbAdmin.collection('levels').doc(level.id).set(level, { merge: true });
-        }
-      }
-
-      // Bootstrap Admins
       const admins = [
         { email: 'yombivictor@gmail.com', firstName: 'Victor', lastName: 'Yombi', matricule: 'SUPERADMIN', isSuperAdmin: true },
-        { email: 'gabrielyombi311@gmail.com', firstName: 'Gabriel', lastName: 'Yombi', matricule: 'ADMIN_GABRIEL', isSuperAdmin: true }
+        { email: 'gabrielyombi311@gmail.com', firstName: 'Gabriel', lastName: 'Yombi', matricule: 'ADMIN_GABRIEL', isSuperAdmin: true },
+        { email: 'victoryombi@gmail.com', firstName: 'Victor', lastName: 'Yombi (Audit)', matricule: 'ADMIN_V', isSuperAdmin: true },
+        { email: 'gabrielyombi@gmail.com', firstName: 'Gabriel', lastName: 'Yombi (Audit)', matricule: 'ADMIN_G', isSuperAdmin: true }
       ];
 
       for (const adminData of admins) {
@@ -336,19 +298,26 @@ async function startServer() {
         }
 
         const decodedToken = await authAdmin.verifyIdToken(token);
+        
+        // Comprehensive user identification
+        const userEmail = decodedToken.email || '';
+        const isSuperAdminEmail = ['yombivictor@gmail.com', 'gabrielyombi311@gmail.com', 'victoryombi@gmail.com', 'gabrielyombi@gmail.com'].includes(userEmail);
+
         req.user = {
           id: decodedToken.uid,
-          email: decodedToken.email,
-          role: decodedToken.role || 'user'
+          email: userEmail,
+          role: decodedToken.role || 'user',
+          isSuperAdmin: isSuperAdminEmail
         };
         
         // Fetch missing info from Firestore if needed
-        if (!req.user.email || !decodedToken.role) {
+        if (!req.user.email || !decodedToken.role || req.user.role === 'user') {
           const userDoc = await dbAdmin.collection('users').doc(decodedToken.uid).get();
           if (userDoc.exists) {
             const userData = userDoc.data();
             if (!req.user.email) req.user.email = userData?.email;
             if (req.user.role === 'user') req.user.role = userData?.role || 'user';
+            if (userData?.isSuperAdmin) req.user.isSuperAdmin = true;
           }
         }
         
@@ -462,7 +431,7 @@ async function startServer() {
   // Self-repair: Ensure Super Admins exist in DB
   const ensureSuperAdmins = async () => {
     if (!isFirebaseAdminInitialized) return;
-    const admins = ['gabrielyombi311@gmail.com', 'yombivictor@gmail.com'];
+    const admins = ['gabrielyombi311@gmail.com', 'yombivictor@gmail.com', 'victoryombi@gmail.com', 'gabrielyombi@gmail.com'];
     for (const email of admins) {
       try {
         const snap = await dbAdmin.collection('users').where('email', '==', email).get();
@@ -1195,9 +1164,10 @@ async function startServer() {
       // 3. Scolarité Record - Calculate first to avoid ReferenceError
       const levelIdForTuition = studentData.levelId || (cycle === 'A' ? 'a1_de' : 'a1_en');
       const levelDoc = await dbAdmin.collection('levels').doc(levelIdForTuition).get();
+      const levelData = levelDoc.exists ? levelDoc.data() : null;
       const tuitionTotal = (req.body.totalTuition !== undefined && req.body.totalTuition !== null) 
         ? Number(req.body.totalTuition) 
-        : (levelDoc.exists ? (levelDoc.data()?.tuition || 0) : 0);
+        : (Number(levelData?.tuition || levelData?.frais_scolarite || 0));
 
       // 2. Student Record
       const newStudent = { 
@@ -1205,11 +1175,15 @@ async function startServer() {
         email: finalEmail,
         phone: studentData.phone || '',
         id: studentId, 
+        uid: studentId,
         matricule, 
         createdAt, 
         totalTuition: tuitionTotal,
+        totalPaid: 0,
+        reste: tuitionTotal,
         cycle: studentData.cycle || 'Allemand',
-        payments: [] // Initialize empty payments array
+        payments: [], // Initialize empty payments array
+        role: 'student'
       };
       batch.set(dbAdmin.collection('students').doc(studentId), newStudent);
 
@@ -1247,6 +1221,72 @@ async function startServer() {
       if (montantInscription > 0) {
         // Adjust balance
         await ajusterSolde(compteDestination as 'caisse' | 'banque', montantInscription, batch);
+
+        // Update finances collection too
+        batch.set(dbAdmin.collection('finances').doc(transId), {
+          id: transId, studentId, studentMatricule: matricule,
+          studentName: `${studentData.firstName} ${studentData.lastName}`,
+          amount: montantInscription, date: createdAt, type: 'income', category: 'Inscription',
+          method: modePaiement, accountType: compteDestination, status: 'active',
+          createdAt, updatedAt: createdAt
+        });
+      }
+
+      // 5. Handle initial payments (Scolarité)
+      let initialScolaritePaid = 0;
+      const initialPayments = studentData.payments || [];
+      for (const p of initialPayments) {
+        const amount = Number(p.amount) || 0;
+        if (amount <= 0) continue;
+
+        initialScolaritePaid += amount;
+        const pTransId = dbAdmin.collection('transactions').doc().id;
+        const pRecu = await generateReceiptNumber();
+        
+        const pData = {
+          id: pTransId,
+          type: 'scolarite',
+          eleve_id: studentId,
+          libelle: `Scolarité - Tranche ${p.tranche} - ${studentData.firstName} ${studentData.lastName}`,
+          montant: amount,
+          date_versement: p.date || createdAt,
+          mode_paiement: modePaiement,
+          compte_destination: compteDestination,
+          saisi_par: req.user.email,
+          timestamp_creation: admin.firestore.FieldValue.serverTimestamp(),
+          recu_numero: pRecu
+        };
+        batch.set(dbAdmin.collection('transactions').doc(pTransId), pData);
+        batch.set(dbAdmin.collection('finances').doc(pTransId), {
+          id: pTransId, studentId, studentMatricule: matricule,
+          studentName: `${studentData.firstName} ${studentData.lastName}`,
+          amount, date: p.date || createdAt, type: 'income', category: 'Scolarité',
+          method: modePaiement, accountType: compteDestination, status: 'active',
+          createdAt, updatedAt: createdAt
+        });
+
+        // Add to sub-collection for full traceability
+        batch.set(dbAdmin.collection('scolarites').doc(studentId).collection('versements').doc(pTransId), {
+          ...pData,
+          date: p.date || createdAt,
+          compte: compteDestination
+        });
+
+        await ajusterSolde(compteDestination as 'caisse' | 'banque', amount, batch);
+      }
+
+      // Update student and scolarite totals if any payments were made
+      if (initialScolaritePaid > 0) {
+        const newReste = Math.max(0, tuitionTotal - initialScolaritePaid);
+        batch.update(dbAdmin.collection('students').doc(studentId), {
+          totalPaid: initialScolaritePaid,
+          reste: newReste
+        });
+        batch.update(dbAdmin.collection('scolarites').doc(studentId), {
+          total_verse: initialScolaritePaid,
+          reste: newReste,
+          statut_paiement: initialScolaritePaid >= tuitionTotal ? 'SOLDÉ' : (initialScolaritePaid > 0 ? 'EN COURS' : 'NON PAYÉ')
+        });
       }
 
       await batch.commit();
@@ -1337,35 +1377,58 @@ async function startServer() {
           const newLevelId = studentData.levelId;
           const levelDoc = await dbAdmin.collection('levels').doc(newLevelId).get();
           const levelData = levelDoc.exists ? levelDoc.data() : null;
-          const tuition = (levelData?.tuition || 110000) + 10000;
           
-          const newScolaId = `${req.params.id}_${newLevelId}`;
-          const scolaRef = dbAdmin.collection('scolarites').doc(newScolaId);
+          // Use 'tuition' or 'frais_scolarite' field, fallback to 120000
+          const tuition = Number(levelData?.tuition || levelData?.frais_scolarite || 120000);
+          
+          const scolaRef = dbAdmin.collection('scolarites').doc(req.params.id);
           const scolaSnap = await scolaRef.get();
           
+          const studentPaid = Number(oldStudent.totalPaid) || 0;
+          const newReste = Math.max(0, tuition - studentPaid);
+
           if (!scolaSnap.exists) {
             await scolaRef.set({
-              id: newScolaId,
+              id: req.params.id,
               eleve_id: req.params.id,
               matricule: studentData.matricule || oldStudent.matricule,
               nom_eleve: `${studentData.firstName || oldStudent.firstName} ${studentData.lastName || oldStudent.lastName}`,
               classe_id: studentData.classId || oldStudent.classId || 'N/A',
-              filiere: levelData?.stream || 'N/A',
-              niveau: levelData?.name || 'Inconnu',
+              filiere: levelData?.stream || levelData?.cycle || 'N/A',
+              niveau: levelData?.name || levelData?.nom || 'Inconnu',
+              levelId: newLevelId,
               montant_total_du: tuition,
-              total_verse: 0,
-              reste: tuition,
-              surplus: 0,
-              statut_paiement: 'NON PAYÉ',
-              createdAt: new Date().toISOString()
+              total_verse: studentPaid,
+              reste: newReste,
+              statut_paiement: studentPaid >= tuition ? 'SOLDÉ' : (studentPaid > 0 ? 'EN COURS' : 'NON PAYÉ'),
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
             });
-            console.log(`[SYNC] Created new scolarite record for student ${req.params.id} at level ${newLevelId}`);
+          } else {
+            await scolaRef.update({
+              filiere: levelData?.stream || levelData?.cycle || 'N/A',
+              niveau: levelData?.name || levelData?.nom || 'Inconnu',
+              levelId: newLevelId,
+              montant_total_du: tuition,
+              reste: newReste,
+              statut_paiement: studentPaid >= tuition ? 'SOLDÉ' : (studentPaid > 0 ? 'EN COURS' : 'NON PAYÉ'),
+              updatedAt: new Date().toISOString()
+            });
           }
+
+          // CRITICAL: Update the student record directly too for UI progress bars
+          await studentRef.update({
+            totalTuition: tuition,
+            reste: newReste,
+            updatedAt: new Date().toISOString()
+          });
+          
+          console.log(`[SYNC] Updated tuition for student ${req.params.id} to ${tuition} (Level: ${newLevelId})`);
         } catch (err) {
-          console.error("Error syncing scolarite on level change:", err);
+          console.error("Error syncing student finance on level change:", err);
         }
       }
-
+      
       await userRef.set({
         email: studentData.email,
         firstName: studentData.firstName,
@@ -1382,24 +1445,77 @@ async function startServer() {
         await authAdmin.updateUser(req.params.id, updateData);
       }
 
-      // Handle finances if payments updated
-      if (studentData.payments) {
+      // Handle finances if payments updated (legacy sync)
+      if (studentData.payments && Array.isArray(studentData.payments)) {
+        let totalDiff = 0;
         for (let i = 0; i < studentData.payments.length; i++) {
           const p = studentData.payments[i];
           const oldP = oldStudent.payments?.[i];
-          const diff = p.amount - (oldP?.amount || 0);
+          const diff = Number(p.amount) - (Number(oldP?.amount) || 0);
           
-          if (diff > 0 && p.date) {
-            const financeId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+          if (diff !== 0 && p.date) {
+            totalDiff += diff;
+            const financeId = `F_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+            const createdAt = new Date().toISOString();
+            
+            // 1. Finance record
             await dbAdmin.collection('finances').doc(financeId).set({
-              id: financeId,
-              type: 'income',
-              amount: diff,
-              description: `Scolarité - ${studentData.matricule} - Tranche ${p.tranche}`,
-              category: 'Tuition',
-              date: p.date
+              id: financeId, studentId: req.params.id, studentMatricule: studentData.matricule || oldStudent.matricule,
+              studentName: `${studentData.firstName || oldStudent.firstName} ${studentData.lastName || oldStudent.lastName}`,
+              amount: diff, date: p.date, type: diff > 0 ? 'income' : 'expense', category: 'Scolarité',
+              method: p.method || 'Espèces', accountType: 'caisse', notes: `Sync - ${p.category || 'Paiement'}`,
+              receiptId: p.receiptId || `REC-S-${Date.now()}`, createdAt, updatedAt: createdAt, status: 'active'
+            });
+
+            // 2. Transaction record for ledger
+            await dbAdmin.collection('transactions').doc(financeId).set({
+              id: financeId, type: diff > 0 ? 'income' : 'expense', category: 'Scolarité',
+              eleve_id: req.params.id, matricule: studentData.matricule || oldStudent.matricule,
+              libelle: `Sync - ${studentData.firstName || oldStudent.firstName} - ${p.category || 'Paiement'}`,
+              montant: Math.abs(diff), date_versement: p.date, mode_paiement: p.method || 'Espèces',
+              compte_destination: 'caisse', recu_numero: p.receiptId || `REC-S-${Date.now()}`,
+              timestamp: admin.firestore.FieldValue.serverTimestamp()
             });
           }
+        }
+
+        if (totalDiff !== 0) {
+          // 3. Update Caisse Balance
+          await dbAdmin.collection('comptes').doc('caisse').update({
+            solde_actuel: admin.firestore.FieldValue.increment(totalDiff),
+            derniere_maj: admin.firestore.FieldValue.serverTimestamp()
+          });
+
+          // 4. Update formal scolarite record
+          const scolaRef = dbAdmin.collection('scolarites').doc(req.params.id);
+          const scolaSnap = await scolaRef.get();
+          if (scolaSnap.exists) {
+            const scolaData = scolaSnap.data() as any;
+            const newTotalVerse = (Number(scolaData.total_verse) || 0) + totalDiff;
+            const due = Number(scolaData.montant_total_du) || studentData.totalTuition || oldStudent.totalTuition || 120000;
+            const newReste = Math.max(0, due - newTotalVerse);
+            const newStatut = newTotalVerse >= due ? 'SOLDÉ' : (newTotalVerse > 0 ? 'EN COURS' : 'NON PAYÉ');
+            
+            await scolaRef.update({
+              total_verse: newTotalVerse,
+              reste: newReste,
+              statut_paiement: newStatut,
+              updatedAt: new Date().toISOString()
+            });
+          }
+
+          // 5. Update student doc totals for direct UI sync
+          const currentPaid = (Number(oldStudent.totalPaid) || 0) + totalDiff;
+          const currentTuition = Number(studentData.totalTuition) || Number(oldStudent.totalTuition) || 120000;
+          studentData.totalPaid = currentPaid;
+          studentData.reste = Math.max(0, currentTuition - currentPaid);
+          // We already called await studentRef.set(studentData, { merge: true }); above, 
+          // so we should update again if we want to persist these calculated fields.
+          await studentRef.update({
+            totalPaid: studentData.totalPaid,
+            reste: studentData.reste,
+            updatedAt: new Date().toISOString()
+          });
         }
       }
 
@@ -1438,51 +1554,92 @@ async function startServer() {
       console.log(`[HARD-DELETE] Executing atomic wipe for ${studentId} (${matricule})`);
 
       // 1. All finance records related to this student
-      const financeSnap = await dbAdmin.collection('finances')
+      const financeSnap1 = await dbAdmin.collection('finances')
         .where('studentId', '==', studentId)
         .where('status', '==', 'active')
+        .get();
+      const financeSnap2 = await dbAdmin.collection('finances')
+        .where('eleve_id', '==', studentId)
+        .where('status', '==', 'active')
+        .get();
+      
+      const transactionsSnap1 = await dbAdmin.collection('transactions')
+        .where('studentId', '==', studentId)
+        .get();
+      const transactionsSnap2 = await dbAdmin.collection('transactions')
+        .where('eleve_id', '==', studentId)
         .get();
       
       // Calculate amount to deduct from balances
       const balanceAdjustments: Record<string, number> = {};
-      financeSnap.docs.forEach(d => {
+      const allDeductions = [...financeSnap1.docs, ...financeSnap2.docs, ...transactionsSnap1.docs, ...transactionsSnap2.docs];
+      const seenIds = new Set();
+
+      allDeductions.forEach(d => {
+        if (seenIds.has(d.id)) return;
+        seenIds.add(d.id);
+        
         const data = d.data();
+        if (data.supprime === true || data.status === 'deleted') return;
+        
         const account = data.accountType || data.compte_destination || 'caisse';
-        const amount = Number(data.amount || 0);
-        balanceAdjustments[account] = (balanceAdjustments[account] || 0) + amount;
+        const amount = Number(data.amount || data.montant || 0);
+        
+        // Only adjust for income-type transactions (payments)
+        // Expenses (sortie) linked to a student are rare but if they exist they should be handled differently
+        // Usually students are linked to INCOMES.
+        if (amount !== 0) {
+          balanceAdjustments[account] = (balanceAdjustments[account] || 0) + amount;
+        }
       });
 
       // 2. Begin multi-step deletion
       // Update balances first
       for (const [account, total] of Object.entries(balanceAdjustments)) {
+        if (total === 0) continue;
         const balanceRef = dbAdmin.collection('comptes').doc(account === 'banque' ? 'banque' : 'caisse');
-        await balanceRef.update({
-          solde_actuel: admin.firestore.FieldValue.increment(-total),
-          derniere_maj: new Date().toISOString()
-        });
+        const bSnap = await balanceRef.get();
+        if (bSnap.exists) {
+          await balanceRef.update({
+            solde_actuel: admin.firestore.FieldValue.increment(-total),
+            derniere_maj: new Date().toISOString()
+          });
+        }
       }
 
       // 3. Delete related collections in batches
-      const collectionsToClean = ['finances', 'scolarites', 'vorbereitung'];
+      const collectionsToClean = ['finances', 'scolarites', 'vorbereitung', 'transactions', 'recus'];
       for (const coll of collectionsToClean) {
-        const field = coll === 'finances' ? 'studentId' : 'eleve_id';
-        const snap = await dbAdmin.collection(coll).where(field, '==', studentId).get();
+        // Query both common field names
+        const snap1 = await dbAdmin.collection(coll).where('studentId', '==', studentId).get();
+        const snap2 = await dbAdmin.collection(coll).where('eleve_id', '==', studentId).get();
+        
+        const allDocs = [...snap1.docs, ...snap2.docs];
+        const uniqueDocs = allDocs.filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
         
         let batch = dbAdmin.batch();
         let count = 0;
-        for (const doc of snap.docs) {
-          if (coll === 'scolarites') {
+        for (const doc of uniqueDocs) {
+          if (coll === 'scolarites' || coll === 'vorbereitung') {
              // Subcollection versements
              const vSnap = await doc.ref.collection('versements').get();
              vSnap.forEach(vd => {
                batch.delete(vd.ref);
                count++;
-               if (count >= 450) { batch.commit(); batch = dbAdmin.batch(); count = 0; }
+               if (count >= 450) { 
+                 batch.commit(); 
+                 batch = dbAdmin.batch(); 
+                 count = 0; 
+               }
              });
           }
           batch.delete(doc.ref);
           count++;
-          if (count >= 450) { batch.commit(); batch = dbAdmin.batch(); count = 0; }
+          if (count >= 450) { 
+            batch.commit(); 
+            batch = dbAdmin.batch(); 
+            count = 0; 
+          }
         }
         if (count > 0) await batch.commit();
       }
@@ -1745,13 +1902,15 @@ async function startServer() {
       const studentsMap = new Map(studentsSnap.docs.map(d => [d.id, d.data()]));
       const sessions = sessionsSnap.docs;
       
-      // Map finances by studentId
+      // Map finances by studentId or eleve_id
       const financesByStudent: Record<string, any[]> = {};
       financesSnap.docs.forEach(d => {
         const data = d.data();
-        const sid = data.studentId;
-        if (!financesByStudent[sid]) financesByStudent[sid] = [];
-        financesByStudent[sid].push(data);
+        const sid = data.studentId || data.eleve_id;
+        if (sid) {
+          if (!financesByStudent[sid]) financesByStudent[sid] = [];
+          financesByStudent[sid].push(data);
+        }
       });
 
       // Map inscriptions by studentId
@@ -1836,13 +1995,21 @@ async function startServer() {
           } else {
              batch.update(scolRef, obj);
           }
+
+          // Update student document for direct access in student list
+          batch.update(studentDoc.ref, {
+            totalPaid: totalScol,
+            reste: Math.max(0, due - totalScol),
+            updatedAt: new Date().toISOString()
+          });
+
           opCount++; await commitIfFull();
           results.scolarites++;
         }
 
         // Vorbereitung
-        const vorbs = studentFinances.filter(f => f.category === 'Vorbereitung' || f.category === 'vorbereitung');
-        const totalVorb = vorbs.reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
+        const vorbs = studentFinances.filter(f => ['vorbereitung', 'Vorbereitung', 'Vorbereitung Allemand', 'Vorbereitung Anglais'].includes(f.category));
+        const totalVorb = vorbs.reduce((sum, f) => sum + (Number(f.amount || f.montant || 0)), 0);
         const vorbDoc = vorbereitungSnap.docs.find(d => d.id === sid);
         if (vorbDoc || totalVorb > 0) {
           const vorbRef = dbAdmin.collection('vorbereitung').doc(sid);
@@ -2038,6 +2205,7 @@ async function startServer() {
           transaction.set(vRefSub, {
             id: transId, montant: amount, date: date || createdAt,
             mode_paiement: paymentMethod || 'Espèces', recu_numero,
+            compte: accountType,
             notes: notes || '', saisi_par: req.user.email
           });
         }
@@ -2080,8 +2248,29 @@ async function startServer() {
           payments: admin.firestore.FieldValue.arrayUnion({
             amount, date: date || createdAt, receiptId: recu_numero,
             category: type || 'Scolarité', method: paymentMethod || 'Espèces', notes: notes || ''
-          })
+          }),
+          totalPaid: admin.firestore.FieldValue.increment(amount),
+          reste: admin.firestore.FieldValue.increment(-amount),
+          updatedAt: createdAt
         });
+
+        // ALSO Update the formal scolarite record for reporting/dashboard consistency
+        const scolaRef = dbAdmin.collection('scolarites').doc(studentId);
+        const scolaSnap = await transaction.get(scolaRef);
+        if (scolaSnap.exists) {
+          const scolaData = scolaSnap.data() as any;
+          const newTotalVerse = (Number(scolaData.total_verse) || 0) + amount;
+          const due = Number(scolaData.montant_total_du) || student.totalTuition || 120000;
+          const newReste = Math.max(0, due - newTotalVerse);
+          const newStatut = newTotalVerse >= due ? 'SOLDÉ' : (newTotalVerse > 0 ? 'EN COURS' : 'NON PAYÉ');
+          
+          transaction.update(scolaRef, {
+            total_verse: newTotalVerse,
+            reste: newReste,
+            statut_paiement: newStatut,
+            updatedAt: createdAt
+          });
+        }
 
         let finalCategory = 'Scolarité';
         if (type === 'vorbereitung') finalCategory = 'Vorbereitung';
@@ -2120,6 +2309,22 @@ async function startServer() {
         timestamp_creation: admin.firestore.FieldValue.serverTimestamp(), notes: notes || '', modifié: false, supprimé: false
       });
 
+      // ALSO UPDATE FINANCES
+      batch.set(dbAdmin.collection('finances').doc(transId), {
+        id: transId,
+        type: 'income',
+        category: 'Autre Revenu',
+        description: libelle,
+        amount: amount,
+        date: date || new Date().toISOString(),
+        method: paymentMethod,
+        accountType: accountType,
+        notes: notes || '',
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        createdBy: req.user.id
+      });
+
       await ajusterSolde(accountType, amount, batch);
       await batch.commit();
 
@@ -2152,6 +2357,23 @@ async function startServer() {
         modifié: false, supprimé: false
       });
 
+      // ALSO UPDATE FINANCES
+      batch.set(dbAdmin.collection('finances').doc(transId), {
+        id: transId,
+        type: 'expense',
+        category: categorie,
+        description: libelle,
+        amount: -Math.abs(amount),
+        date: date || new Date().toISOString(),
+        method: paymentMethod,
+        accountType: accountType,
+        notes: notes || '',
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        createdBy: req.user.id,
+        teacherId: teacherId || null
+      });
+
       await ajusterSolde(accountType, -amount, batch);
 
       // If salary, mark sessions as paid
@@ -2170,12 +2392,77 @@ async function startServer() {
     }
   });
 
-  app.get('/api/finances', authenticate, async (req: any, res) => {
+  app.get('/api/finances', authenticate, async (req: any, res: any) => {
     try {
-      const snapshot = await dbAdmin.collection('transactions').orderBy('date_versement', 'desc').limit(1000).get();
-      const transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      res.json(transactions);
+      const { studentId, month } = req.query;
+      
+      const [finSnap, transSnap] = await Promise.all([
+        dbAdmin.collection('finances').where('status', '==', 'active').get(),
+        dbAdmin.collection('transactions').get()
+      ]);
+
+      const finRecords = finSnap.docs.map(d => {
+        const data = d.data();
+        return { 
+          id: d.id, 
+          ...data,
+          montant: Number(data.amount || data.montant || 0),
+          date_versement: data.date || data.createdAt,
+          libelle: data.notes || data.libelle || data.category || 'Paiement',
+          compte_destination: data.accountType || data.compte_destination || 'caisse',
+          source: 'finances'
+        };
+      });
+
+      const transRecords = transSnap.docs
+        .filter(d => !d.data().supprimé && d.data().status !== 'deleted')
+        .map(d => {
+          const data = d.data();
+          return { 
+            id: d.id, 
+            ...data,
+            montant: Number(data.montant || data.amount || 0),
+            date_versement: data.date_versement || data.date || data.createdAt,
+            libelle: data.libelle || data.notes || data.category || 'Transaction',
+            compte_destination: data.compte_destination || data.accountType || 'caisse',
+            source: 'transactions'
+          };
+        });
+
+      let records = [...finRecords, ...transRecords];
+
+      // Déduplication par ID (Donne la priorité aux enregistrements de 'finances' car ils sont souvent enrichis)
+      const seenIds = new Set();
+      const finalRecords = [];
+      for (const r of records) {
+        if (!seenIds.has(r.id)) {
+          seenIds.add(r.id);
+          finalRecords.push(r);
+        }
+      }
+
+      let filtered = finalRecords;
+
+      if (studentId) {
+        filtered = filtered.filter((f: any) => (f.studentId === studentId || f.eleve_id === studentId));
+      }
+
+      if (month) {
+        filtered = filtered.filter((f: any) => {
+          const d = new Date(f.date_versement || f.date || f.createdAt);
+          return d.getMonth().toString() === month;
+        });
+      }
+
+      filtered.sort((a: any, b: any) => {
+        const da = new Date(a.date_versement || a.date || a.createdAt).getTime();
+        const dbValue = new Date(b.date_versement || b.date || b.createdAt).getTime();
+        return dbValue - da;
+      });
+
+      res.json(filtered.slice(0, 1000));
     } catch (err: any) {
+      console.error("Finance fetch error:", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -2183,35 +2470,122 @@ async function startServer() {
   // 4. Recalculate balances (Tool 1)
   app.post('/api/finances/recalculate', authenticate, checkSuperAdmin, async (req, res) => {
     try {
-      const snapshot = await dbAdmin.collection('finances').where('status', '==', 'active').get();
+      const [txSnap, finSnap, sortiesSnap, studentsSnap] = await Promise.all([
+        dbAdmin.collection('transactions').get(),
+        dbAdmin.collection('finances').get(),
+        dbAdmin.collection('sorties').get(),
+        dbAdmin.collection('students').get()
+      ]);
+      
+      const studentsMap = new Map(studentsSnap.docs.map(d => [d.id, d.data()]));
+      
+      let batch = dbAdmin.batch();
+      let opCount = 0;
       let caisse = 0;
       let banque = 0;
+      const seenIds = new Set();
 
-      snapshot.forEach(doc => {
-        const d = doc.data();
-        const amt = Number(d.amount) || 0;
-        const account = d.accountType || d.compte_destination || 'caisse';
+      // Priorité 1: Transactions (Livre journal principal)
+      txSnap.forEach(doc => {
+        const tx = doc.data();
+        if (tx.supprimé || tx.status === 'deleted') return;
+        seenIds.add(doc.id);
+        
+        const montant = Number(tx.montant || tx.amount || 0);
+        
+        // --- SYNC TO FINANCES ---
+        // Ensure this transaction exists in finances collection for the frontend
+        if (!finSnap.docs.find(d => d.id === doc.id)) {
+          const sid = tx.eleve_id || tx.studentId;
+          const sName = tx.studentName || (studentsMap.get(sid)?.firstName + ' ' + studentsMap.get(sid)?.lastName);
+          const sMatricule = tx.studentMatricule || studentsMap.get(sid)?.matricule;
+          
+          batch.set(dbAdmin.collection('finances').doc(doc.id), {
+            id: doc.id,
+            studentId: sid || null,
+            studentMatricule: sMatricule || null,
+            studentName: sName || tx.libelle || 'Inconnu',
+            amount: montant,
+            date: tx.date_versement || tx.date || tx.createdAt || new Date().toISOString(),
+            type: tx.type === 'sortie' ? 'expense' : 'income',
+            category: tx.type === 'scolarite' ? 'Scolarité' : 
+                      tx.type === 'vorbereitung' ? 'Vorbereitung' : 
+                      tx.type === 'inscription' ? 'Inscription' : 
+                      tx.type === 'sortie' ? 'Dépense' : 'Autre',
+            method: tx.mode_paiement || tx.method || 'Espèces',
+            accountType: tx.compte_destination || tx.accountType || 'caisse',
+            status: 'active',
+            libelle: tx.libelle || tx.description,
+            createdAt: tx.createdAt || tx.timestamp_creation || new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+          opCount++;
+        }
+        // -------------------------
 
-        if (account === 'caisse') caisse += amt;
-        else if (account === 'banque') banque += amt;
+        if (tx.type === 'virement_caisse_banque' || tx.type === 'virement_cb') {
+          caisse -= montant; 
+          banque += montant; 
+          return;
+        }
+        
+        // On saute les sorties car elles sont traitées via sortiesSnap pour plus de précision (legacy support)
+        if (tx.type === 'sortie' || (tx.libelle && tx.libelle.startsWith('SORTIE:'))) return;
+        
+        const account = tx.compte_destination || tx.accountType || 'caisse';
+        if (account === 'caisse') caisse += montant;
+        else if (account === 'banque') banque += montant;
       });
 
-      // Special case: check if there are expenses or other transactions that should deduct
-      // For now, these are the main inputs. If we have expenses (depenses), we should subtract them.
-      const expensesSnap = await dbAdmin.collection('expenses').get();
-      expensesSnap.forEach(d => {
-        const data = d.data();
-        const amt = Number(data.amount) || 0;
-        const account = data.account || 'caisse';
-        if (account === 'caisse') caisse -= amt;
-        else if (account === 'banque') banque -= amt;
+      // Priority 2: Student creation inscriptions potentially missing in transactions but mentioned in students
+      // We'll skip this for now as Fixed students now have it.
+
+      // Priority 3: Finances (Already synced above or legacy)
+      finSnap.forEach(doc => {
+        if (seenIds.has(doc.id)) return;
+        const f = doc.data();
+        if (f.status === 'deleted' || f.supprimé) return;
+        seenIds.add(doc.id);
+        
+        const amount = Number(f.amount || f.montant || 0);
+        const account = f.accountType || f.compte_destination || 'caisse';
+        if (account === 'caisse') caisse += amount;
+        else if (account === 'banque') banque += amount;
       });
 
-      await dbAdmin.collection('comptes').doc('caisse').set({ solde_actuel: caisse, derniere_maj: admin.firestore.FieldValue.serverTimestamp(), nom: 'Caisse Principale' }, { merge: true });
-      await dbAdmin.collection('comptes').doc('banque').set({ solde_actuel: banque, derniere_maj: admin.firestore.FieldValue.serverTimestamp(), nom: 'Compte Bancaire' }, { merge: true });
+      // Priorité 3: Sorties (Spécifiques dépenses)
+      sortiesSnap.forEach(doc => {
+        const s = doc.data();
+        if (s.supprimé || s.status === 'deleted') return;
+        
+        const montant = Number(s.montant || s.amount || 0);
+        const account = s.source_compte || s.accountType || 'caisse';
+        
+        // On ne dédupe pas forcément par ID ici car les sorties peuvent avoir des IDs différents des transactions
+        // Mais puisqu'on a sauté tx.type === 'sortie' plus haut, on évite le double comptage
+        if (account === 'caisse') caisse -= montant;
+        else if (account === 'banque') banque -= montant;
+      });
 
-      res.json({ message: 'Balances recalculées avec succès', caisse, banque });
+      await dbAdmin.collection('comptes').doc('caisse').set({ 
+        solde_actuel: caisse, 
+        derniere_maj: admin.firestore.FieldValue.serverTimestamp(), 
+        nom: 'Caisse Principale' 
+      }, { merge: true });
+      
+      await dbAdmin.collection('comptes').doc('banque').set({ 
+        solde_actuel: banque, 
+        derniere_maj: admin.firestore.FieldValue.serverTimestamp(), 
+        nom: 'Compte Bancaire' 
+      }, { merge: true });
+
+      if (opCount > 0) {
+        await batch.commit();
+      }
+
+      res.json({ message: `Balances recalculées et ${opCount} transactions synchronisées.`, caisse, banque });
     } catch (err: any) {
+      console.error("Recalculate error:", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -2303,30 +2677,112 @@ async function startServer() {
   app.post('/api/finances/recalculate-balances', authenticate, async (req: any, res) => {
     if (!req.user.isSuperAdmin && req.user.role !== 'admin') return res.status(403).json({ message: 'Interdit' });
     try {
-      const finances = await dbAdmin.collection('finances').where('status', '==', 'active').get();
+      // 1. Fetch the absolute truth
+      const [transSnap, sortiesSnap, existingFinSnap] = await Promise.all([
+        dbAdmin.collection('transactions').get(),
+        dbAdmin.collection('sorties').get(),
+        dbAdmin.collection('finances').get()
+      ]);
+
+      const existingFinIds = new Set(existingFinSnap.docs.map(d => d.id));
       let caisse = 0;
       let banque = 0;
+      let synched = 0;
       
-      finances.forEach(doc => {
-        const d = doc.data();
-        const amt = Number(d.amount) || 0;
-        if (d.type === 'income') {
-          if (d.accountType === 'caisse') caisse += amt; else banque += amt;
-        } else if (d.type === 'expense') {
-          if (d.accountType === 'caisse') caisse -= amt; else banque -= amt;
-        } else if (d.type === 'transfer' || d.type === 'virement_cb') {
-          const src = d.sourceAccount || 'caisse';
-          const dest = d.destinationAccount || 'banque';
-          if (src === 'caisse') caisse -= amt; else banque -= amt;
-          if (dest === 'caisse') caisse += amt; else banque += amt;
-        }
-      });
+      let batch = dbAdmin.batch();
+      let multiCount = 0;
 
-      await dbAdmin.collection('comptes').doc('caisse').set({ solde_actuel: caisse, derniere_maj: new Date().toISOString() });
-      await dbAdmin.collection('comptes').doc('banque').set({ solde_actuel: banque, derniere_maj: new Date().toISOString() });
+      const commitIfFull = async () => {
+        if (multiCount >= 450) {
+          await batch.commit();
+          batch = dbAdmin.batch();
+          multiCount = 0;
+        }
+      };
+
+      // Process Transactions
+      for (const doc of transSnap.docs) {
+        const d = doc.data();
+        if (d.supprimé || d.status === 'deleted') continue;
+        
+        const amt = Number(d.montant || d.amount || 0);
+        const acc = d.compte_destination || d.accountType || 'caisse';
+        
+        // Skip sorties as they are in sorties collection in this DB structure
+        if (d.type === 'sortie' || (d.libelle && d.libelle.startsWith('SORTIE:'))) continue;
+
+        if (d.type === 'income' || d.type === 'diverse' || d.type === 'inscription' || d.type === 'scolarite' || d.type === 'vorbereitung') {
+          if (acc === 'banque') banque += amt; else caisse += amt;
+        } else if (d.type === 'expense') {
+          if (acc === 'banque') banque -= amt; else caisse -= amt;
+        } else if (d.type === 'virement_cb') {
+          caisse -= amt; banque += amt;
+        }
+
+        // Sync to finances if missing
+        if (!existingFinIds.has(doc.id)) {
+          batch.set(dbAdmin.collection('finances').doc(doc.id), {
+            id: doc.id,
+            type: d.type === 'sortie' || d.type === 'expense' ? 'expense' : 'income',
+            category: d.category || d.type || 'Autre',
+            description: d.libelle || d.notes || 'Ancienne transaction',
+            amount: amt,
+            date: d.date_versement || d.date || d.createdAt || new Date().toISOString(),
+            method: d.mode_paiement || 'Inconnu',
+            accountType: acc,
+            status: 'active',
+            createdAt: d.createdAt || new Date().toISOString(),
+            studentId: d.eleve_id || d.studentId || null,
+            studentMatricule: d.matricule || null
+          });
+          synched++; multiCount++; await commitIfFull();
+        }
+      }
+
+      // Process Sorties
+      for (const doc of sortiesSnap.docs) {
+        const d = doc.data();
+        if (d.supprimé || d.status === 'deleted') continue;
+        const amt = Number(d.montant || 0);
+        const acc = d.source_compte || d.accountType || 'caisse';
+        
+        if (acc === 'banque') banque -= amt; else caisse -= amt;
+
+        if (!existingFinIds.has(doc.id)) {
+          batch.set(dbAdmin.collection('finances').doc(doc.id), {
+            id: doc.id,
+            type: 'expense',
+            category: d.categorie || 'Dépense',
+            description: d.libelle || d.notes || 'Ancienne dépense',
+            amount: -Math.abs(amt),
+            date: d.date || d.createdAt || new Date().toISOString(),
+            method: d.mode_paiement || 'Espèces',
+            accountType: acc,
+            status: 'active',
+            createdAt: d.createdAt || new Date().toISOString(),
+            teacherId: d.teacherId || null
+          });
+          synched++; multiCount++; await commitIfFull();
+        }
+      }
+
+      if (multiCount > 0) await batch.commit();
+
+      // Final Balance Sync
+      await dbAdmin.collection('comptes').doc('caisse').set({ 
+        solde_actuel: caisse, 
+        derniere_maj: new Date().toISOString(),
+        nom: 'Caisse Principale'
+      }, { merge: true });
+      await dbAdmin.collection('comptes').doc('banque').set({ 
+        solde_actuel: banque, 
+        derniere_maj: new Date().toISOString(),
+        nom: 'Compte Bancaire'
+      }, { merge: true });
       
-      res.json({ caisse, banque });
+      res.json({ caisse, banque, synchedToArchive: synched });
     } catch (err: any) {
+      console.error("Critical recalculate logic error:", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -2434,7 +2890,7 @@ async function startServer() {
       if (!isPowerUser) return res.status(403).json({ message: "Interdit: Droits d'administrateur requis pour annuler une transaction." });
       
       const { id } = req.params;
-      const reason = req.body?.reason || 'Suppression manuelle';
+      const reason = (req.body && req.body.reason) ? req.body.reason : 'Suppression manuelle';
 
       await dbAdmin.runTransaction(async (transaction) => {
         // 1. Fetch the transaction
@@ -2522,9 +2978,17 @@ async function startServer() {
           }
         }
 
-        // 6. Soft delete main transaction
+        // 6. Soft delete main transaction and ledger entry
         transaction.update(financeRef, {
           status: 'deleted',
+          deletedAt: new Date().toISOString(),
+          deletedBy: req.user.email,
+          deletionReason: reason
+        });
+
+        const transLedgerRef = dbAdmin.collection('transactions').doc(id);
+        transaction.update(transLedgerRef, {
+          supprimé: true,
           deletedAt: new Date().toISOString(),
           deletedBy: req.user.email,
           deletionReason: reason
@@ -2622,6 +3086,47 @@ async function startServer() {
       
       await dbAdmin.collection('finances').doc(id).set(record);
       
+      // SYNC: Update student totals if it's a tuition-related payment
+      const category = (record.category || '').toLowerCase();
+      const studentId = record.studentId || record.eleve_id;
+      const amount = Number(record.amount || record.montant || 0);
+      
+      if (studentId && record.status !== 'deleted' && record.type === 'income' && 
+          (category.includes('scolarit') || category.includes('scola') || category.includes('vorbereitung') || category.includes('vacances') || category.includes('inscription') || category.includes('tranche') || category.includes('versement') || category.includes('paiement'))) {
+        try {
+          const studentRef = dbAdmin.collection('students').doc(studentId);
+          const studentSnap = await studentRef.get();
+          if (studentSnap.exists) {
+            const studentData = studentSnap.data() as any;
+            const newTotalPaid = (Number(studentData.totalPaid) || 0) + amount;
+            const tuition = Number(studentData.totalTuition) || 0;
+            
+            await studentRef.update({
+              totalPaid: newTotalPaid,
+              reste: Math.max(0, tuition - newTotalPaid),
+              updatedAt: new Date().toISOString()
+            });
+            
+            // Also update scolarites collection
+            const scolaRef = dbAdmin.collection('scolarites').doc(studentId);
+            const scolaSnap = await scolaRef.get();
+            if (scolaSnap.exists) {
+              const scolaData = scolaSnap.data() as any;
+              const scolaTotal = (Number(scolaData.total_verse) || 0) + amount;
+              const scolaDue = Number(scolaData.montant_total_du) || tuition || 0;
+              await scolaRef.update({
+                total_verse: scolaTotal,
+                reste: Math.max(0, scolaDue - scolaTotal),
+                statut_paiement: scolaTotal >= scolaDue ? 'SOLDÉ' : (scolaTotal > 0 ? 'EN COURS' : 'NON PAYÉ'),
+                updatedAt: new Date().toISOString()
+              });
+            }
+          }
+        } catch (syncErr) {
+          console.error("[SYNC] Error syncing student on manual finance creation:", syncErr);
+        }
+      }
+      
       // Audit Log
       const auditId = dbAdmin.collection('audit_logs').doc().id;
       await dbAdmin.collection('audit_logs').doc(auditId).set({
@@ -2707,8 +3212,6 @@ async function startServer() {
   });
 
   // Levels API
-
-
   app.get('/api/levels', authenticate, async (req, res) => {
     try {
       const snapshot = await dbAdmin.collection('levels').get();
