@@ -376,7 +376,7 @@ export default function FinanceVorbereitung() {
                   <div>
                     <h4 className="text-lg font-black uppercase">Vorbereitung Non Disponible</h4>
                     <p className="text-sm text-neutral-500 font-medium max-w-xs mx-auto">
-                      Le cycle Vorbereitung n'est pas configuré pour le niveau <span className="text-dia-red font-black">{levelConfig.nom}</span>.
+                      Le cycle Vorbereitung n'est pas configuré pour le niveau <span className="text-dia-red font-black">{levelConfig.nom || levelConfig.name || 'Sélectionné'}</span>.
                     </p>
                   </div>
                   <div className="pt-2">

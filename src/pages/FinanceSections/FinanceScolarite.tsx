@@ -85,18 +85,16 @@ export default function FinanceScolarite() {
 
     const amount = parseFloat(paymentData.amount);
     
-    // VALIDATION PAR NIVEAU
+    // VALIDATION PAR NIVEAU (Warning only, following user intent that partial payment is for all levels)
     if (levelConfig) {
-      if (!levelConfig.paiement_fractionnable && amount < scolarite.reste) {
-        toast.error(`Paiement partiel non autorisé pour le niveau ${levelConfig.nom}. Le montant doit être de ${formatMontant(scolarite.reste)}.`);
-        return;
+      if (levelConfig.paiement_fractionnable === false && amount < (scolarite.reste || 0)) {
+        toast.warning(`Note: Le paiement fractionné n'est pas activé pour le niveau ${levelConfig.nom || levelConfig.name || 'Sélectionné'}, mais vous pouvez continuer.`);
       }
       
       if (levelConfig.nb_fractions_max !== null) {
         const currentFractions = versements.length;
-        if (currentFractions >= levelConfig.nb_fractions_max && amount < scolarite.reste) {
-          toast.error(`Nombre maximum de fractions atteint (${levelConfig.nb_fractions_max}). Veuillez solder la scolarité.`);
-          return;
+        if (currentFractions >= levelConfig.nb_fractions_max && amount < (scolarite.reste || 0)) {
+          toast.warning(`Attention: Nombre maximum de fractions recommandé atteint (${levelConfig.nb_fractions_max}).`);
         }
       }
     }

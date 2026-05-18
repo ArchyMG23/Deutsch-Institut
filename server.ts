@@ -2124,6 +2124,46 @@ async function startServer() {
     }
   });
 
+  // Unified Financial Event Endpoint (used by TuitionManagement and others)
+  app.post('/api/financial-event', authenticate, async (req: any, res) => {
+    const { type, payload } = req.body;
+    
+    try {
+      if (type === 'payment') {
+        // Dispatch to payment logic (we can just redirect or internally call the logic)
+        // Redirection might be tricky with req.body, so let's use an internal function or just re-route the request
+        req.url = '/api/finances/payment';
+        req.body = payload;
+        return app._router.handle(req, res, () => {});
+      } else if (type === 'expense') {
+        req.url = '/api/finances/sortie';
+        // Map payload fields to what /api/finances/sortie expects
+        req.body = {
+          categorie: payload.category,
+          libelle: payload.description,
+          amount: payload.amount,
+          date: payload.date,
+          accountType: payload.accountType,
+          paymentMethod: payload.paymentMethod,
+          notes: payload.notes,
+          teacherId: payload.teacherId
+        };
+        return app._router.handle(req, res, () => {});
+      } else if (type === 'reversal') {
+        const { originalFinanceId, reason } = payload;
+        req.url = `/api/finances/${originalFinanceId}`;
+        req.method = 'DELETE';
+        req.body = { reason };
+        return app._router.handle(req, res, () => {});
+      } else {
+        res.status(400).json({ message: "Type d'événement inconnu" });
+      }
+    } catch (err: any) {
+      console.error("Financial event dispatch error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
   app.post('/api/finances/payment', authenticate, async (req: any, res) => {
     const { studentId, amount, date, paymentMethod, accountType, type, levelId, notes, sessionId, sessionTitle } = req.body;
     if (!studentId || !amount || amount <= 0) return res.status(400).json({ message: 'Données invalides' });
@@ -2153,14 +2193,14 @@ async function startServer() {
 
         // Fetch Level if needed for scolarite logic
         let levelSnap = null;
-        if (student.levelId) {
+        if (student.levelId && typeof student.levelId === 'string') {
           levelSnap = await transaction.get(dbAdmin.collection('levels').doc(student.levelId));
         }
 
         // Fetch Inscription for Vacances if needed
         let insSnap = null;
         let insRef = null;
-        if (type === 'vacances' && sessionId) {
+        if (type === 'vacances' && sessionId && typeof sessionId === 'string') {
           insRef = dbAdmin.collection('cours_vacances').doc(sessionId).collection('inscriptions').doc(studentId);
           insSnap = await transaction.get(insRef);
           if (!insSnap.exists) throw new Error("Inscription aux cours de vacances introuvable");
@@ -2869,50 +2909,6 @@ async function startServer() {
     }
   });
 
-  // Finance & Scolarite Unified API (Ledger Focus)
-  app.get('/api/finances', authenticate, async (req: any, res: any) => {
-    try {
-      const { year, month, type, status } = req.query;
-      let queryRef: any = dbAdmin.collection('finances');
-      
-      queryRef = dbAdmin.collection('finances');
-      const snapshot = await queryRef.orderBy('date', 'desc').limit(5000).get();
-      let records = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
-      
-      if (type) {
-        records = records.filter((r: any) => r.type === type);
-      }
-      
-      // Filter out deleted/reversed for normal stats, but allow if specifically requested
-      if (status) {
-        records = records.filter((r: any) => r.status === status);
-      } else {
-        // By default, exclude deleted and reversed
-        records = records.filter((r: any) => r.status !== 'deleted' && r.status !== 'reversed');
-      }
-      
-      // Secondary filters (Month / Year)
-      if (year && year !== 'all') {
-        records = records.filter((f: any) => {
-          const d = new Date(f.date || f.createdAt);
-          return d.getFullYear().toString() === year;
-        });
-      }
-      
-      if (month && month !== 'all') {
-        records = records.filter((f: any) => {
-          const d = new Date(f.date || f.createdAt);
-          return d.getMonth().toString() === month;
-        });
-      }
-
-      res.json(records);
-    } catch (err: any) {
-      console.error("Finance fetch error:", err);
-      res.status(500).json({ message: err.message });
-    }
-  });
-
   app.delete('/api/finances/:id', authenticate, async (req: any, res: any) => {
     try {
       const userSnap = await dbAdmin.collection('users').doc(req.user.id).get();
@@ -2941,7 +2937,12 @@ async function startServer() {
 
         // READ ALL NECESSARY DOCS
         const balanceRef = dbAdmin.collection('comptes').doc(account === 'banque' ? 'banque' : 'caisse');
-        const bSnap = await transaction.get(balanceRef);
+        const sRef = studentId ? dbAdmin.collection('students').doc(studentId) : null;
+        
+        const [bSnap, sSnap] = await Promise.all([
+          transaction.get(balanceRef),
+          sRef ? transaction.get(sRef) : Promise.resolve(null)
+        ]);
 
         let scodaRef = null;
         let scodaSnap = null;
@@ -2962,7 +2963,9 @@ async function startServer() {
            }
         }
 
-        // 2. Reverse balance
+        // 2. PHASE D'ÉCRITURE (PAS DE GET APRÈS CETTE LIGNE)
+        
+        // Reverse balance
         if (bSnap.exists) {
           transaction.update(balanceRef, {
             solde_actuel: admin.firestore.FieldValue.increment(-amount),
@@ -3000,14 +3003,10 @@ async function startServer() {
         }
 
         // 5. Update main student record payments array
-        if (studentId) {
-          const sRef = dbAdmin.collection('students').doc(studentId);
-          const sSnap = await transaction.get(sRef);
-          if (sSnap.exists) {
-            const sData = sSnap.data() as any;
-            const updatedPayments = (sData.payments || []).filter((p: any) => p.id !== id);
-            transaction.update(sRef, { payments: updatedPayments });
-          }
+        if (sSnap && sSnap.exists && sRef) {
+          const sData = sSnap.data() as any;
+          const updatedPayments = (sData.payments || []).filter((p: any) => p.id !== id);
+          transaction.update(sRef, { payments: updatedPayments });
         }
 
         // 6. Soft delete main transaction and ledger entry
