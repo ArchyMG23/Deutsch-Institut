@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldAlert, RefreshCw, Trash2, Database, CheckCircle2, AlertCircle, BookOpen, Users } from 'lucide-react';
+import { ShieldAlert, RefreshCw, Trash2, Database, CheckCircle2, AlertCircle, BookOpen, Users, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { toast } from 'sonner';
@@ -9,7 +9,7 @@ import { db } from '../../firebase';
 import { collection, query, where, getDocs, getDoc, doc, setDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { corrigerMontantsDu } from '../../utils/finance';
 
-export default function FinanceMaintenance() {
+export default function FinanceMaintenance({ onBack }: { onBack?: () => void }) {
   const { fetchWithAuth, user, profile } = useAuth();
   const { refreshAll, levels } = useData();
   const [running, setRunning] = useState<string | null>(null);
@@ -185,6 +185,14 @@ export default function FinanceMaintenance() {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center gap-4 mb-8">
+        {onBack && (
+          <button 
+            onClick={onBack}
+            className="p-3 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-2xl transition-all"
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
         <div className="p-4 bg-dia-red text-white rounded-[1.5rem] shadow-xl shadow-dia-red/20">
           <Database size={32} />
         </div>

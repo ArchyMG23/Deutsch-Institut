@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PlusCircle, Wallet, Landmark, ArrowDownRight, CheckCircle2, User, Search, Calendar, Tag, CreditCard, ChevronRight } from 'lucide-react';
+import { PlusCircle, Wallet, Landmark, ArrowDownRight, CheckCircle2, User, Search, Calendar, Tag, CreditCard, ChevronRight, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -8,7 +8,7 @@ import { cn, formatCurrency } from '../../utils';
 import { showToast, handleError } from '../../lib/errorHandler';
 import { EventBus, EVENTS } from '../../lib/eventBus';
 
-export default function FinanceDiverse() {
+export default function FinanceDiverse({ onBack }: { onBack?: () => void }) {
   const { fetchWithAuth } = useAuth();
   const { refreshAll } = useData();
   const [loading, setLoading] = useState(false);
@@ -63,6 +63,14 @@ export default function FinanceDiverse() {
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-5xl mx-auto">
       <div className="flex items-center gap-4 mb-8">
+        {onBack && (
+          <button 
+            onClick={onBack}
+            className="p-3 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-2xl transition-all"
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
         <div className="p-4 bg-emerald-500 text-white rounded-[1.5rem] shadow-xl shadow-emerald-500/20">
           <PlusCircle size={32} />
         </div>

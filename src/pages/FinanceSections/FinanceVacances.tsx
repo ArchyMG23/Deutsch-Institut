@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Sun, Search, Wallet, User, Calendar, Receipt, CreditCard, ChevronRight, CheckCircle2, Landmark, Printer, Plus, Trash2, Edit3, Users, RefreshCw } from 'lucide-react';
+import { Sun, Search, Wallet, User, Calendar, Receipt, CreditCard, ChevronRight, CheckCircle2, Landmark, Printer, Plus, Trash2, Edit3, Users, RefreshCw, ArrowLeft, ArrowUpDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -11,7 +11,7 @@ import { EventBus, EVENTS } from '../../lib/eventBus';
 import { collection, query, where, getDocs, orderBy, doc, getDoc, setDoc, addDoc, onSnapshot, deleteDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 
-export default function FinanceVacances() {
+export default function FinanceVacances({ onBack }: { onBack?: () => void }) {
   const { fetchWithAuth, user } = useAuth();
   const { students, refreshAll } = useData();
   const [loading, setLoading] = useState(false);
@@ -22,6 +22,8 @@ export default function FinanceVacances() {
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [isGuestMode, setIsGuestMode] = useState(false);
   const [guestData, setGuestData] = useState({ firstName: '', lastName: '', phone: '' });
+  const [sortBy, setSortBy] = useState<'name' | 'matricule'>('name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // Configuration du niveau d'un étudiant recherché
   const getLevelOfStudent = (_studentId: string) => {
@@ -232,10 +234,30 @@ export default function FinanceVacances() {
     ).slice(0, 5);
   }, [searchTerm, students]);
 
+  const sortedInscriptions = useMemo(() => {
+    return [...inscriptions].sort((a, b) => {
+      let comp = 0;
+      if (sortBy === 'name') {
+        comp = `${a.prenom} ${a.nom}`.localeCompare(`${b.prenom} ${b.nom}`);
+      } else if (sortBy === 'matricule') {
+        comp = (a.matricule || '').localeCompare(b.matricule || '');
+      }
+      return sortOrder === 'desc' ? -comp : comp;
+    });
+  }, [inscriptions, sortBy, sortOrder]);
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-4">
+          {onBack && (
+            <button 
+              onClick={onBack}
+              className="p-3 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-2xl transition-all"
+            >
+              <ArrowLeft size={20} />
+            </button>
+          )}
           <div className="p-4 bg-amber-400 text-white rounded-[1.5rem] shadow-xl shadow-amber-400/20">
             <Sun size={32} />
           </div>
@@ -422,13 +444,33 @@ export default function FinanceVacances() {
                     )}
                   </div>
 
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <p className="text-[10px] font-black text-neutral-400 uppercase">Trie</p>
+                    <select 
+                      value={sortBy}
+                      onChange={e => setSortBy(e.target.value as any)}
+                      className="text-[9px] font-black uppercase bg-neutral-50 dark:bg-neutral-800 border-none rounded-lg p-1 px-2 focus:ring-1 focus:ring-amber-400"
+                    >
+                      <option value="name">Nom</option>
+                      <option value="matricule">Matricule</option>
+                    </select>
+                    <button 
+                      onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                      className="text-[9px] font-black"
+                    >
+                      {sortOrder === 'asc' ? '↑' : '↓'}
+                    </button>
+                  </div>
+                </div>
+
                 <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
                   {inscriptions.length === 0 && (
                     <div className="text-center py-20">
                       <p className="text-xs font-bold text-neutral-400 uppercase">Aucun inscrit pour cette session</p>
                     </div>
                   )}
-                  {inscriptions.map(ins => (
+                  {sortedInscriptions.map(ins => (
                     <button
                       key={ins.id}
                       onClick={() => setSelectedInscription(ins)}

@@ -26,6 +26,7 @@ const SECTIONS = [
   { id: 'scolarite', label: 'Scolarités', icon: Landmark, color: 'text-emerald-600', role: 'admin' },
   { id: 'vorbereitung', label: 'Vorbereitung', icon: Target, color: 'text-amber-600', role: 'admin' },
   { id: 'vacances', label: 'Cours de Vacances', icon: Sun, color: 'text-amber-400', role: 'admin' },
+  { id: 'diverse', label: 'Entrées Diverses', icon: PlusCircle, color: 'text-emerald-500', role: 'admin' },
   { id: 'historique', label: 'Historique / Niveau', icon: History, color: 'text-neutral-500', role: 'admin' },
   { id: 'sortie', label: 'Charges Centre', icon: ArrowUpRight, color: 'text-orange-600', role: 'admin' },
   { id: 'archives', label: 'Archive Transactions', icon: Wallet, color: 'text-neutral-500', role: 'admin' },
@@ -41,17 +42,20 @@ export default function FinanceManagement() {
 
   const visibleSections = SECTIONS.filter(s => s.role === 'admin' || (s.role === 'superadmin' && isSuperAdmin));
 
+  const handleBack = () => setActiveTab('overview');
+
   const renderContent = () => {
     switch (activeTab) {
       case 'overview': return <FinanceOverview />;
-      case 'inscription': return <FinanceInscription />;
-      case 'scolarite': return <FinanceScolarite />;
-      case 'vorbereitung': return <FinanceVorbereitung />;
-      case 'vacances': return <FinanceVacances />;
-      case 'historique': return <FinanceHistoriqueNiveau />;
-      case 'sortie': return <FinanceSortie />;
-      case 'archives': return <FinanceArchives />;
-      case 'maintenance': return <FinanceMaintenance />;
+      case 'inscription': return <FinanceInscription onBack={handleBack} />;
+      case 'scolarite': return <FinanceScolarite onBack={handleBack} />;
+      case 'vorbereitung': return <FinanceVorbereitung onBack={handleBack} />;
+      case 'vacances': return <FinanceVacances onBack={handleBack} />;
+      case 'diverse': return <FinanceDiverse onBack={handleBack} />;
+      case 'historique': return <FinanceHistoriqueNiveau onBack={handleBack} />;
+      case 'sortie': return <FinanceSortie onBack={handleBack} />;
+      case 'archives': return <FinanceArchives onBack={handleBack} />;
+      case 'maintenance': return <FinanceMaintenance onBack={handleBack} />;
       default: return <FinanceOverview />;
     }
   };

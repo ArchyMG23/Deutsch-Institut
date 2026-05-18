@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { History, Search, Printer, Banknote, Calendar, CreditCard, ChevronRight, AlertCircle, RefreshCw, User, UserPlus, Target, Landmark } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { History, Search, Printer, Banknote, Calendar, CreditCard, ChevronRight, AlertCircle, RefreshCw, User, UserPlus, Target, Landmark, ArrowLeft, ArrowUpDown } from 'lucide-react';
 import { db } from '../../firebase';
 import { collection, query, where, getDocs, orderBy, doc, getDoc } from 'firebase/firestore';
 import { toDateSafe, formatCurrency, cn } from '../../utils';
@@ -49,7 +49,7 @@ async function chargerHistoriqueCompletEleve(eleve_id: string): Promise<any[]> {
     const q = query(
       collection(db, 'transactions'),
       where('eleve_id', '==', eleve_id),
-      orderBy('timestamp_creation', 'desc')
+      orderBy('date_versement', 'desc')
     );
     const snap = await getDocs(q);
     snap.docs.forEach(d => {
@@ -154,12 +154,14 @@ function grouperParNiveau(txs: any[]) {
   return groups;
 }
 
-export default function FinanceHistoriqueNiveau() {
+export default function FinanceHistoriqueNiveau({ onBack }: { onBack?: () => void }) {
   const [matricule, setMatricule] = useState('');
   const [student, setStudent] = useState<any>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const [sortBy, setSortBy] = useState<'date' | 'amount' | 'category'>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const handleSearch = async () => {
     if (!matricule.trim()) return;
@@ -184,7 +186,21 @@ export default function FinanceHistoriqueNiveau() {
     }
   };
 
-  const grouped = grouperParNiveau(transactions);
+  const sortedTransactions = useMemo(() => {
+    return [...transactions].sort((a, b) => {
+      let comparison = 0;
+      if (sortBy === 'date') {
+        comparison = (a.date?.getTime() || 0) - (b.date?.getTime() || 0);
+      } else if (sortBy === 'amount') {
+        comparison = (a.montant || 0) - (b.montant || 0);
+      } else if (sortBy === 'category') {
+        comparison = String(a.categorie || '').localeCompare(String(b.categorie || ''));
+      }
+      return sortOrder === 'desc' ? -comparison : comparison;
+    });
+  }, [transactions, sortBy, sortOrder]);
+
+  const grouped = grouperParNiveau(sortedTransactions);
   const totalGlobal = transactions.reduce((s, t) => s + t.montant, 0);
 
   const getIcon = (cat: string) => {
@@ -198,6 +214,14 @@ export default function FinanceHistoriqueNiveau() {
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex items-center gap-4 mb-8">
+        {onBack && (
+          <button 
+            onClick={onBack}
+            className="p-3 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-2xl transition-all"
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
         <div className="p-4 bg-neutral-900 text-white rounded-[1.5rem] shadow-xl">
           <History size={32} />
         </div>
@@ -238,6 +262,27 @@ export default function FinanceHistoriqueNiveau() {
                 animate={{ opacity: 1, y: 0 }}
                 className="pt-6 border-t border-neutral-100 dark:border-neutral-800 space-y-4"
               >
+                <div className="flex items-center justify-between px-1">
+                  <p className="text-[10px] font-black uppercase text-neutral-400">Tri par</p>
+                  <div className="flex items-center gap-1">
+                    <select 
+                      value={sortBy}
+                      onChange={e => setSortBy(e.target.value as any)}
+                      className="text-[10px] font-black uppercase bg-neutral-50 dark:bg-neutral-800 border-none rounded-lg p-1.5 focus:ring-1 focus:ring-dia-red"
+                    >
+                      <option value="date">Date</option>
+                      <option value="amount">Montant</option>
+                      <option value="category">Type</option>
+                    </select>
+                    <button 
+                      onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                      className="p-1 px-2 bg-neutral-50 dark:bg-neutral-800 rounded-lg text-[10px]"
+                    >
+                      {sortOrder === 'asc' ? '↑' : '↓'}
+                    </button>
+                  </div>
+                </div>
+
                 <div className="p-5 bg-neutral-900 rounded-[1.5rem] text-white flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center font-black text-white/50">
                     {(student.firstName?.[0] || 'S')}{(student.lastName?.[0] || 'T')}
@@ -330,10 +375,15 @@ export default function FinanceHistoriqueNiveau() {
                             {txs.map((tx) => (
                               <tr key={tx.id} className="group hover:bg-neutral-50/50 dark:hover:bg-neutral-800/30 transition-all">
                                 <td className="px-10 py-5">
-                                  <div className="flex items-center gap-2">
-                                    <Calendar size={14} className="text-neutral-300" />
-                                    <span className="text-[11px] font-black text-neutral-900 dark:text-white tabular-nums uppercase">
-                                      {tx.date?.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) || '—'}
+                                  <div className="flex flex-col gap-0.5">
+                                    <div className="flex items-center gap-2">
+                                      <Calendar size={14} className="text-neutral-300" />
+                                      <span className="text-[11px] font-black text-neutral-900 dark:text-white tabular-nums uppercase">
+                                        {tx.date?.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) || '—'}
+                                      </span>
+                                    </div>
+                                    <span className="text-[9px] text-neutral-400 font-bold ml-6">
+                                      {tx.date?.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                                     </span>
                                   </div>
                                 </td>

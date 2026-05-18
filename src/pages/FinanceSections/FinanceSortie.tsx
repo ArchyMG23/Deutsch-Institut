@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LogOut, Wallet, Landmark, ArrowUpRight, CheckCircle2, User, Search, Calendar, Tag, CreditCard, ChevronRight } from 'lucide-react';
+import { LogOut, Wallet, Landmark, ArrowUpRight, CheckCircle2, User, Search, Calendar, Tag, CreditCard, ChevronRight, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -19,7 +19,7 @@ const CATEGORIES = [
   'Divers'
 ];
 
-export default function FinanceSortie() {
+export default function FinanceSortie({ onBack }: { onBack?: () => void }) {
   const { fetchWithAuth } = useAuth();
   const { teachers, refreshAll } = useData();
   const [loading, setLoading] = useState(false);
@@ -77,6 +77,14 @@ export default function FinanceSortie() {
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex items-center gap-4 mb-8">
+        {onBack && (
+          <button 
+            onClick={onBack}
+            className="p-3 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-2xl transition-all"
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
         <div className="p-4 bg-orange-600 text-white rounded-[1.5rem] shadow-xl shadow-orange-600/20">
           <ArrowUpRight size={32} />
         </div>

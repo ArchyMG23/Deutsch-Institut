@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Target, Search, Wallet, User, Calendar, Receipt, CreditCard, ChevronRight, CheckCircle2, Landmark, Printer, RefreshCw, AlertCircle } from 'lucide-react';
+import { Target, Search, Wallet, User, Calendar, Receipt, CreditCard, ChevronRight, CheckCircle2, Landmark, Printer, RefreshCw, AlertCircle, ArrowLeft, ArrowUpDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -12,7 +12,7 @@ import { collection, query, where, getDocs, orderBy, doc, getDoc, onSnapshot } f
 import { db } from '../../firebase';
 import { useEffect } from 'react';
 
-export default function FinanceVorbereitung() {
+export default function FinanceVorbereitung({ onBack }: { onBack?: () => void }) {
   const { fetchWithAuth } = useAuth();
   const { students, refreshAll, levels } = useData();
   const [searchTerm, setSearchTerm] = useState('');
@@ -23,6 +23,8 @@ export default function FinanceVorbereitung() {
   const [vorbereitung, setVorbereitung] = useState<any>(null);
   const [versements, setVersements] = useState<any[]>([]);
   const [targetAmount, setTargetAmount] = useState('');
+  const [sortBy, setSortBy] = useState<'name' | 'matricule'>('name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // Configuration du niveau
   const levelConfig = useMemo(() => {
@@ -30,14 +32,26 @@ export default function FinanceVorbereitung() {
     return levels.find(n => n.id === selectedStudent.levelId);
   }, [selectedStudent, levels]);
 
+  const sortedStudents = useMemo(() => {
+    return [...students].sort((a, b) => {
+      let comp = 0;
+      if (sortBy === 'name') {
+        comp = `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+      } else if (sortBy === 'matricule') {
+        comp = (a.matricule || '').localeCompare(b.matricule || '');
+      }
+      return sortOrder === 'desc' ? -comp : comp;
+    });
+  }, [students, sortBy, sortOrder]);
+
   const filteredStudents = useMemo(() => {
     if (!searchTerm) return [];
-    return students.filter(s => 
+    return sortedStudents.filter(s => 
       s.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.matricule?.toLowerCase().includes(searchTerm.toLowerCase())
     ).slice(0, 5);
-  }, [searchTerm, students]);
+  }, [searchTerm, sortedStudents]);
 
   useEffect(() => {
     if (!selectedStudent) {
@@ -184,6 +198,14 @@ export default function FinanceVorbereitung() {
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex items-center gap-4 mb-8">
+        {onBack && (
+          <button 
+            onClick={onBack}
+            className="p-3 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-2xl transition-all"
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
         <div className="p-4 bg-amber-500 text-white rounded-[1.5rem] shadow-xl shadow-amber-500/20">
           <Target size={32} />
         </div>
@@ -333,9 +355,28 @@ export default function FinanceVorbereitung() {
               </motion.div>
             ) : (
               <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800">
+                 <div className="flex items-center justify-between mb-4 px-1">
+                   <p className="text-[10px] font-black text-neutral-400 uppercase">Trie</p>
+                   <div className="flex items-center gap-2">
+                     <select 
+                       value={sortBy}
+                       onChange={e => setSortBy(e.target.value as any)}
+                       className="text-[9px] font-black uppercase bg-neutral-50 dark:bg-neutral-800 border-none rounded-lg p-1 px-2 focus:ring-1 focus:ring-amber-500"
+                     >
+                       <option value="name">Nom</option>
+                       <option value="matricule">Matricule</option>
+                     </select>
+                     <button 
+                       onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                       className="text-[9px] font-black"
+                     >
+                       {sortOrder === 'asc' ? '↑' : '↓'}
+                     </button>
+                   </div>
+                 </div>
                  <p className="text-[10px] font-black text-neutral-400 uppercase mb-4 text-center">Derniers Étudiants dans le Système</p>
                  <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                  {students.slice(0, 10).map(s => (
+                  {sortedStudents.slice(0, 10).map(s => (
                     <button
                       key={s.id}
                       onClick={() => handleSelectStudent(s)}

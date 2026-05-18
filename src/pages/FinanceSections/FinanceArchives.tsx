@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { History, Search, Download, Filter, Printer, Calendar, ArrowUpDown, Trash2, Edit2, AlertCircle, RefreshCw } from 'lucide-react';
+import { History, Search, Download, Filter, Printer, Calendar, ArrowUpDown, Trash2, Edit2, AlertCircle, RefreshCw, ArrowLeft } from 'lucide-react';
 import { collection, query, getDocs, orderBy, where, doc, getDoc, limit } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useData } from '../../context/DataContext';
@@ -11,13 +11,17 @@ import { EventBus, EVENTS } from '../../lib/eventBus';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 
-export default function FinanceArchives() {
+export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
   const { finances, loading, refreshFinances, refreshStudents } = useData();
   const { user, fetchWithAuth } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterAccount, setFilterAccount] = useState('all');
+  const [sortBy, setSortBy] = useState<'date' | 'name' | 'matricule' | 'amount'>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingTransaction, setEditingTransaction] = useState<any>(null);
+  const [editFormData, setEditFormData] = useState({ amount: '', date: '', libelle: '' });
 
   const isAuthorized = user?.role === 'admin' || user?.isSuperAdmin;
 
@@ -32,11 +36,26 @@ export default function FinanceArchives() {
     const seenReceipts = new Set();
 
     try {
+      // 0. Source: /finances (Primary ledger)
+      const finSnap = await getDocs(query(collection(db, 'finances'), where('status', '==', 'active'), limit(300)));
+      finSnap.forEach(doc => {
+        const d = doc.data();
+        seenIds.add(doc.id);
+        if (d.receiptId || d.recu_numero) seenReceipts.add(d.receiptId || d.recu_numero);
+        toutes.push(normaliseTransaction(doc.id, {
+          ...d,
+          type: d.type || 'income',
+          libelle: d.description || d.libelle || d.category || 'Transaction',
+          eleve_id: d.studentId || d.eleve_id
+        }, 'income'));
+      });
+
       // 1. Source: /transactions
-      const txSnap = await getDocs(query(collection(db, 'transactions'), orderBy('timestamp_creation', 'desc')));
+      const txSnap = await getDocs(query(collection(db, 'transactions'), orderBy('date_versement', 'desc'), limit(300)));
       txSnap.forEach(doc => {
         const d = doc.data();
         if (d.supprimé === true || d.status === 'deleted') return;
+        if (seenIds.has(doc.id)) return;
         seenIds.add(doc.id);
         if (d.recu_numero) seenReceipts.add(d.recu_numero);
         toutes.push(normaliseTransaction(doc.id, d, 'transactions'));
@@ -160,7 +179,7 @@ export default function FinanceArchives() {
 
   const filteredFinances = useMemo(() => {
     const dataSource = allTransactions.length > 0 ? allTransactions : finances;
-    return (dataSource || []).filter(f => {
+    const filtered = (dataSource || []).filter(f => {
       const matchSearch = String(f.libelle || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                           String(f.matricule || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                           String(f.recu_numero || '').toLowerCase().includes(searchTerm.toLowerCase());
@@ -170,7 +189,23 @@ export default function FinanceArchives() {
 
       return matchSearch && matchType && matchAccount;
     });
-  }, [allTransactions, finances, searchTerm, filterType, filterAccount]);
+
+    return [...filtered].sort((a, b) => {
+      let comparison = 0;
+      if (sortBy === 'date') {
+        const da = new Date(a.date_versement).getTime() || 0;
+        const db_ = new Date(b.date_versement).getTime() || 0;
+        comparison = da - db_;
+      } else if (sortBy === 'name') {
+        comparison = String(a.libelle || '').localeCompare(String(b.libelle || ''));
+      } else if (sortBy === 'matricule') {
+        comparison = String(a.matricule || '').localeCompare(String(b.matricule || ''));
+      } else if (sortBy === 'amount') {
+        comparison = (Number(a.montant) || 0) - (Number(b.montant) || 0);
+      }
+      return sortOrder === 'desc' ? -comparison : comparison;
+    });
+  }, [allTransactions, finances, searchTerm, filterType, filterAccount, sortBy, sortOrder]);
 
   const { totalEntrees, totalSorties } = useMemo(() => {
     let entrees = 0;
@@ -185,6 +220,31 @@ export default function FinanceArchives() {
     return { totalEntrees: entrees, totalSorties: sorties };
   }, [filteredFinances]);
 
+  const handleUpdate = async () => {
+    if (!editingTransaction) return;
+    
+    toast.promise(
+      fetchWithAuth(`/api/finances/${editingTransaction.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          amount: Number(editFormData.amount), 
+          date: editFormData.date,
+          description: editFormData.libelle
+        })
+      }).then(async r => {
+        if (!r.ok) throw new Error((await r.json()).message);
+        setEditingTransaction(null);
+        refreshFinances();
+        fetchFullHistory();
+      }),
+      {
+        loading: 'Mise à jour...',
+        success: 'Transaction mise à jour',
+        error: (err) => err.message
+      }
+    );
+  };
   const handleDelete = async (id: string, libelle: string) => {
     if (!window.confirm(`Êtes-vous sûr de vouloir ANNULER la transaction : "${libelle}" ?\n\nCela recalculera les soldes de l'élève et du compte concernés.`)) return;
     
@@ -219,6 +279,14 @@ export default function FinanceArchives() {
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-4">
+          {onBack && (
+            <button 
+              onClick={onBack}
+              className="p-3 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-2xl transition-all"
+            >
+              <ArrowLeft size={20} />
+            </button>
+          )}
           <div className="p-4 bg-purple-600 text-white rounded-[1.5rem] shadow-xl shadow-purple-600/20">
             <History size={32} />
           </div>
@@ -281,6 +349,28 @@ export default function FinanceArchives() {
              <option value="caisse">Caisse</option>
              <option value="banque">Banque</option>
            </select>
+
+           <div className="h-4 w-[1px] bg-neutral-200 dark:bg-neutral-800 mx-2" />
+
+           <div className="flex items-center gap-1">
+             <ArrowUpDown size={14} className="text-neutral-400" />
+             <select 
+               value={sortBy}
+               onChange={e => setSortBy(e.target.value as any)}
+               className="bg-neutral-50 dark:bg-neutral-800 border-none rounded-xl p-3 font-black text-[10px] uppercase focus:ring-2 focus:ring-purple-500"
+             >
+               <option value="date">Date</option>
+               <option value="name">Désignation</option>
+               <option value="matricule">Matricule</option>
+               <option value="amount">Montant</option>
+             </select>
+             <button 
+               onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+               className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-xl hover:bg-neutral-100 transition-all"
+             >
+               {sortOrder === 'asc' ? '↑' : '↓'}
+             </button>
+           </div>
         </div>
       </div>
 
@@ -307,7 +397,10 @@ export default function FinanceArchives() {
                     filteredFinances.map((f) => (
                       <tr key={f.id} className="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/30 transition-colors group">
                         <td className="px-8 py-5 whitespace-nowrap text-xs font-black text-neutral-900 dark:text-white tabular-nums uppercase">
-                           {new Date(f.date_versement || f.date || f.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}
+                           {new Date(f.date_versement || f.date || f.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                           <div className="text-[9px] text-neutral-400 font-bold">
+                             {new Date(f.date_versement || f.date || f.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                           </div>
                         </td>
                         <td className="px-8 py-5 whitespace-nowrap">
                            <span className={cn(
@@ -341,30 +434,23 @@ export default function FinanceArchives() {
                         </td>
                         <td className="px-8 py-5 whitespace-nowrap">
                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              {isAuthorized && (
+                                {isAuthorized && (
                                 <button 
                                   onClick={() => {
-                                    const newAmount = window.prompt("Nouveau montant (FCFA) :", String(f.montant));
-                                    if (newAmount === null) return;
-                                    const newDate = window.prompt("Nouvelle date (AAAA-MM-JJ) :", new Date(f.date_versement || f.date).toISOString().split('T')[0]);
-                                    if (newDate === null) return;
-
-                                    toast.promise(
-                                      fetchWithAuth(`/api/finances/${f.id}`, {
-                                        method: 'PUT',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ amount: Number(newAmount), date: newDate })
-                                      }).then(async r => {
-                                        if (!r.ok) throw new Error((await r.json()).message);
-                                        refreshAll(true);
-                                        fetchFullHistory();
-                                      }),
-                                      {
-                                        loading: 'Mise à jour...',
-                                        success: 'Transaction mise à jour',
-                                        error: (err) => err.message
-                                      }
-                                    );
+                                    setEditingTransaction(f);
+                                    const d = new Date(f.date_versement || f.date);
+                                    // Local ISO format for datetime-local: YYYY-MM-DDTHH:mm
+                                    const year = d.getFullYear();
+                                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                                    const day = String(d.getDate()).padStart(2, '0');
+                                    const hours = String(d.getHours()).padStart(2, '0');
+                                    const minutes = String(d.getMinutes()).padStart(2, '0');
+                                    
+                                    setEditFormData({
+                                      amount: String(f.montant),
+                                      date: `${year}-${month}-${day}T${hours}:${minutes}`,
+                                      libelle: f.libelle
+                                    });
                                   }}
                                   className="p-2 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg text-neutral-400 hover:text-blue-600 transition-all"
                                   title="Modifier cette transaction"
@@ -421,6 +507,71 @@ export default function FinanceArchives() {
             )}
          </div>
       </div>
+      {/* Edit Modal */}
+      <AnimatePresence>
+        {editingTransaction && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white dark:bg-neutral-900 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden"
+            >
+              <div className="p-8 border-b border-neutral-100 dark:border-neutral-800">
+                <h3 className="text-xl font-black text-neutral-900 dark:text-white uppercase tracking-tight">Modifier la Transaction</h3>
+                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mt-1">ID: {editingTransaction.id}</p>
+              </div>
+
+              <div className="p-8 space-y-6">
+                <div>
+                  <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Libellé</label>
+                  <input 
+                    type="text"
+                    value={editFormData.libelle}
+                    onChange={e => setEditFormData({...editFormData, libelle: e.target.value})}
+                    className="w-full mt-1 p-4 bg-neutral-50 dark:bg-neutral-800 border-none rounded-2xl font-bold focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Montant (FCFA)</label>
+                    <input 
+                      type="number"
+                      value={editFormData.amount}
+                      onChange={e => setEditFormData({...editFormData, amount: e.target.value})}
+                      className="w-full mt-1 p-4 bg-neutral-50 dark:bg-neutral-800 border-none rounded-2xl font-bold focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Date & Heure</label>
+                    <input 
+                      type="datetime-local"
+                      value={editFormData.date}
+                      onChange={e => setEditFormData({...editFormData, date: e.target.value})}
+                      className="w-full mt-1 p-4 bg-neutral-50 dark:bg-neutral-800 border-none rounded-2xl font-bold focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-8 bg-neutral-50 dark:bg-neutral-800/50 flex gap-4">
+                <button 
+                  onClick={() => setEditingTransaction(null)}
+                  className="flex-1 py-4 bg-white dark:bg-neutral-900 text-neutral-500 font-black uppercase text-xs rounded-2xl hover:bg-neutral-100 transition-all"
+                >
+                  Annuler
+                </button>
+                <button 
+                  onClick={handleUpdate}
+                  className="flex-1 py-4 bg-purple-600 text-white font-black uppercase text-xs rounded-2xl hover:bg-purple-700 shadow-xl shadow-purple-600/20 transition-all"
+                >
+                  Enregistrer
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

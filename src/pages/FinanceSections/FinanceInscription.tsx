@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { UserPlus, Wallet, ArrowRight, CheckCircle2, User, Search, Fingerprint, Calendar, CreditCard, Landmark, ChevronRight } from 'lucide-react';
+import { UserPlus, Wallet, ArrowRight, CheckCircle2, User, Search, Fingerprint, Calendar, CreditCard, Landmark, ChevronRight, ArrowLeft, ArrowUpDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -139,21 +139,35 @@ const BillingPanel = ({ formData, setFormData, loading, handleSubmit }: any) => 
   </div>
 );
 
-export default function FinanceInscription() {
+export default function FinanceInscription({ onBack }: { onBack?: () => void }) {
   const { fetchWithAuth } = useAuth();
   const { levels, refreshAll, students } = useData();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState<'name' | 'matricule'>('name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   const filteredStudents = useMemo(() => {
-    if (!searchTerm) return students.slice(0, 10);
-    return students.filter(s => 
-      s.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.matricule?.toLowerCase().includes(searchTerm.toLowerCase())
-    ).slice(0, 10);
-  }, [searchTerm, students]);
+    let list = [...students];
+    if (searchTerm) {
+      list = list.filter(s => 
+        s.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        s.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        s.matricule?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    return list.sort((a, b) => {
+      let comp = 0;
+      if (sortBy === 'name') {
+        comp = `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+      } else if (sortBy === 'matricule') {
+        comp = (a.matricule || '').localeCompare(b.matricule || '');
+      }
+      return sortOrder === 'desc' ? -comp : comp;
+    }).slice(0, 10);
+  }, [searchTerm, students, sortBy, sortOrder]);
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -258,6 +272,14 @@ export default function FinanceInscription() {
   return (
     <div className="space-y-8 max-w-7xl mx-auto px-4">
       <div className="flex items-center gap-4 mb-8">
+        {onBack && (
+          <button 
+            onClick={onBack}
+            className="p-3 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-2xl transition-all"
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
         <div className="p-4 bg-dia-red text-white rounded-[1.5rem] shadow-xl shadow-dia-red/20">
           <UserPlus size={32} />
         </div>
@@ -408,10 +430,28 @@ export default function FinanceInscription() {
             <BillingPanel formData={formData} setFormData={setFormData} loading={loading} handleSubmit={handleSubmit} />
           </div>
 
-          <div className="bg-white dark:bg-neutral-900 p-6 md:p-8 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 shadow-sm">
-            <div className="flex items-center gap-2 mb-4">
-              <Search size={14} className="text-dia-red" />
-              <h3 className="text-[10px] font-black uppercase text-neutral-400 tracking-widest">Vérifier Doublons</h3>
+          <div className="bg-white dark:bg-neutral-900 p-6 md:p-8 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 shadow-sm transition-all h-fit">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Search size={14} className="text-dia-red" />
+                <h3 className="text-[10px] font-black uppercase text-neutral-400 tracking-widest">Doublons</h3>
+              </div>
+              <div className="flex items-center gap-1">
+                <select 
+                  value={sortBy}
+                  onChange={e => setSortBy(e.target.value as any)}
+                  className="text-[8px] font-black uppercase bg-neutral-100 dark:bg-neutral-800 border-none rounded p-1"
+                >
+                  <option value="name">Nom</option>
+                  <option value="matricule">Matricule</option>
+                </select>
+                <button 
+                  onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                  className="text-[8px] font-black p-1 bg-neutral-100 dark:bg-neutral-800 rounded"
+                >
+                  {sortOrder === 'asc' ? '↑' : '↓'}
+                </button>
+              </div>
             </div>
             <input 
               type="text" 

@@ -1202,6 +1202,10 @@ async function startServer() {
         ? Number(req.body.totalTuition) 
         : (Number(levelData?.tuition || levelData?.frais_scolarite || 0));
 
+      // 4. Inscription Transaction (Record even if 0 to track registration date)
+      const transId = dbAdmin.collection('transactions').doc().id;
+      const recu_numero = await generateReceiptNumber();
+
       // 2. Student Record
       const newStudent = { 
         ...studentData, 
@@ -1242,13 +1246,11 @@ async function startServer() {
         createdAt
       });
 
-      // 4. Inscription Transaction (Record even if 0 to track registration date)
-      const transId = dbAdmin.collection('transactions').doc().id;
-      const recu_numero = await generateReceiptNumber();
       const transactionData = {
         id: transId,
         type: 'inscription',
         eleve_id: studentId,
+        matricule,
         libelle: `Frais d'inscription - ${studentData.firstName} ${studentData.lastName}${montantInscription === 0 ? ' (Bourse totale / Sans frais)' : ''}`,
         montant: montantInscription,
         date_versement: createdAt,
@@ -3077,9 +3079,23 @@ async function startServer() {
         };
 
         if (date) {
-           // Normalize date to midday UTC
-           const dateVal = date.includes('T') ? date : new Date(date + 'T12:00:00Z').toISOString();
-           updateData.date = dateVal;
+           // Try to parse the date safely
+           let finalDate: string;
+           try {
+             if (date.includes('T') && !date.endsWith('Z')) {
+               // Local date from datetime-local input, parse it
+               finalDate = new Date(date).toISOString();
+             } else if (date.includes('T')) {
+               // Already ISO
+               finalDate = date;
+             } else {
+               // Simple date YYYY-MM-DD, use midday UTC
+               finalDate = new Date(date + 'T12:00:00Z').toISOString();
+             }
+           } catch (e) {
+             finalDate = new Date().toISOString();
+           }
+           updateData.date = finalDate;
         }
         if (notes !== undefined) updateData.notes = notes;
         if (category) updateData.category = category;
