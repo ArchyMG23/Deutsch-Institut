@@ -5,7 +5,7 @@ import { db } from '../../firebase';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, cn } from '../../utils';
-import { formatMontant } from '../../lib/school-engine';
+import { synchroniserSoldes, formatMontant } from '../../lib/school-engine';
 import { showToast, handleError } from '../../lib/errorHandler';
 import { EventBus, EVENTS } from '../../lib/eventBus';
 import { motion, AnimatePresence } from 'motion/react';
@@ -37,14 +37,33 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
     const seenReceipts = new Set();
 
     try {
+      const normalizedType = (t: string) => {
+        const low = String(t).toLowerCase();
+        if (low === 'sortie' || low === 'expense') return 'expense';
+        if (low === 'virement_caisse_banque' || low === 'virement_cb') return 'virement';
+        return low;
+      };
+
+      const fingerprint = (d: any) => {
+        // Create a unique key based on amount, day, and normalized category
+        const val = Math.abs(Number(d.montant || d.amount || 0));
+        const dateStr = (d.date || d.date_versement || d.timestamp || '').toString().split('T')[0];
+        const category = normalizedType(d.type || d.categorie || d.category || '');
+        return `${val}_${dateStr}_${category}`;
+      };
+      const seenFingerprints = new Set();
+
       // 0. Source: /finances (Primary ledger) - Removing strict 'active' filter as some records lack it
-      const finSnap = await getDocs(query(collection(db, 'finances'), limit(500)));
+      const finSnap = await getDocs(query(collection(db, 'finances'), orderBy('date', 'desc'), limit(500)));
       finSnap.forEach(doc => {
         const d = doc.data();
         if (d.status === 'deleted' || d.supprimé === true) return;
         seenIds.add(doc.id);
         if (d.receiptId || d.recu_numero) seenReceipts.add(d.receiptId || d.recu_numero);
-        toutes.push(normaliseTransaction(doc.id, d, 'income'));
+        
+        const norm = normaliseTransaction(doc.id, d, 'income');
+        seenFingerprints.add(fingerprint(norm));
+        toutes.push(norm);
       });
 
       // 1. Source: /transactions
@@ -53,24 +72,37 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
         const d = doc.data();
         if (d.supprimé === true || d.status === 'deleted') return;
         if (seenIds.has(doc.id)) return;
+        
+        const norm = normaliseTransaction(doc.id, d, 'transactions');
+        const fp = fingerprint(norm);
+        if (seenFingerprints.has(fp)) return;
+
         seenIds.add(doc.id);
-        if (d.recu_numero) seenReceipts.add(d.recu_numero);
-        toutes.push(normaliseTransaction(doc.id, d, 'transactions'));
+        seenFingerprints.add(fp);
+        if (d.recu_numero || d.receiptId) seenReceipts.add(d.recu_numero || d.receiptId);
+        toutes.push(norm);
       });
 
       // 2. Source: /sorties
-      const sortiesSnap = await getDocs(collection(db, 'sorties'));
+      const sortiesSnap = await getDocs(query(collection(db, 'sorties'), orderBy('date', 'desc'), limit(300)));
       sortiesSnap.forEach(doc => {
         const d = doc.data();
         if (d.supprimé === true || d.status === 'deleted') return;
         if (seenIds.has(doc.id)) return;
-        seenIds.add(doc.id);
-        toutes.push(normaliseTransaction(doc.id, {
+        
+        const norm = normaliseTransaction(doc.id, {
           ...d,
           type: 'sortie',
           libelle: d.libelle || d.categorie || 'Dépense',
           compte_destination: d.source_compte || d.compte || '—'
-        }, 'sortie'));
+        }, 'sortie');
+        
+        const fp = fingerprint(norm);
+        if (seenFingerprints.has(fp)) return;
+
+        seenIds.add(doc.id);
+        seenFingerprints.add(fp);
+        toutes.push(norm);
       });
 
       // 3. Versements Orphelins
@@ -87,15 +119,20 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
           if (seenIds.has(vd.id)) return;
           if (d.recu_numero && seenReceipts.has(d.recu_numero)) return;
           
-          seenIds.add(vd.id);
-          if (d.recu_numero) seenReceipts.add(d.recu_numero);
-          
-          toutes.push(normaliseTransaction(vd.id, {
+          const norm = normaliseTransaction(vd.id, {
             ...d,
             type: 'scolarite',
             libelle: `Scolarité — ${sName}`,
             eleve_id: sid
-          }, 'scolarite'));
+          }, 'scolarite');
+          
+          const fp = fingerprint(norm);
+          if (seenFingerprints.has(fp)) return;
+
+          seenIds.add(vd.id);
+          seenFingerprints.add(fp);
+          if (d.recu_numero) seenReceipts.add(d.recu_numero);
+          toutes.push(norm);
         });
 
         // Vorbereitung
@@ -105,15 +142,20 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
           if (seenIds.has(vd.id)) return;
           if (d.recu_numero && seenReceipts.has(d.recu_numero)) return;
           
-          seenIds.add(vd.id);
-          if (d.recu_numero) seenReceipts.add(d.recu_numero);
-          
-          toutes.push(normaliseTransaction(vd.id, {
+          const norm = normaliseTransaction(vd.id, {
             ...d,
             type: 'vorbereitung',
             libelle: `Vorbereitung — ${sName}`,
             eleve_id: sid
-          }, 'vorbereitung'));
+          }, 'vorbereitung');
+          
+          const fp = fingerprint(norm);
+          if (seenFingerprints.has(fp)) return;
+
+          seenIds.add(vd.id);
+          seenFingerprints.add(fp);
+          if (d.recu_numero) seenReceipts.add(d.recu_numero);
+          toutes.push(norm);
         });
       }
 
@@ -148,6 +190,20 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
 
     // Determine type label and libelle
     const type = data.type || typeDefaut || 'diverse';
+    const normalizedType = (t: string) => {
+      const low = String(t).toLowerCase();
+      if (low === 'sortie' || low === 'expense') return 'expense';
+      if (low === 'virement_caisse_banque' || low === 'virement_cb') return 'virement';
+      return low;
+    };
+
+    // Defensive: if amount is strictly negative, it's an expense regardless of the explicit type
+    const val = Number(data.montant ?? data.amount ?? 0);
+    let finalType = type;
+    if (val < 0 && normalizedType(type) !== 'virement') {
+      finalType = 'expense';
+    }
+    
     let label = data.libelle || data.description || data.notes || (data.type ? labelType(data.type) : 'Transaction');
     
     // If it's a student payment and name is missing from label, add it
@@ -157,10 +213,10 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
 
     return {
       id,
-      type: type,
+      type: finalType,
       libelle: label,
-      montant: Number(data.montant || data.amount) || 0,
-      amount: Number(data.amount || data.montant) || 0,
+      montant: Number(data.montant ?? data.amount ?? 0),
+      amount: Number(data.amount ?? data.montant ?? 0),
       date_versement: dateObj.toISOString(),
       date: dateObj.toISOString(),
       mode_paiement: data.mode_paiement || data.method || '—',
@@ -171,7 +227,7 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
       recu_numero: data.recu_numero || data.receiptId,
       saisi_par: data.saisi_par || data.createdBy || '—',
       notes: data.notes || data.description || '',
-      category: data.category || type
+      category: data.category || data.categorie || finalType
     };
   };
 
@@ -203,6 +259,8 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
       if (filterType !== 'all') {
         if (filterType === 'virement_cb') {
           matchesFilter = f.type === 'virement_cb' || f.type === 'virement_caisse_banque';
+        } else if (filterType === 'sortie') {
+          matchesFilter = f.type === 'sortie' || f.type === 'expense';
         } else {
           matchesFilter = f.type === filterType;
         }
@@ -242,13 +300,26 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
     let entrees = 0;
     let sorties = 0;
     filteredFinances.forEach(f => {
-      if (f.type === 'sortie' || f.type === 'expense') {
-        sorties += (Number(f.montant) || 0);
+      // Use both possible field names, ensure it is a number
+      const val = Number(f.montant ?? f.amount ?? 0);
+      const absAmt = Math.abs(val);
+      
+      // Determine if it is an expense: explicit type OR negative value
+      const isExpense = f.type === 'sortie' || f.type === 'expense' || val < 0;
+      
+      if (isExpense) {
+        sorties += absAmt;
       } else if (f.type !== 'virement_cb' && f.type !== 'virement_caisse_banque') {
-        entrees += (Number(f.montant) || 0);
+        // Virement is excluded from simple sum total as it's a transfer between internal accounts
+        entrees += absAmt;
       }
     });
-    return { totalEntrees: entrees, totalSorties: sorties };
+
+    // Ensure we don't return negative zero or floating point leftovers
+    return { 
+      totalEntrees: Math.round(entrees), 
+      totalSorties: Math.round(sorties) 
+    };
   }, [filteredFinances]);
 
   const handleUpdate = async () => {
@@ -308,6 +379,21 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
   };
 
 
+  const handleSyncBalances = async () => {
+    setIsDeepLoading(true);
+    try {
+      await synchroniserSoldes();
+      toast.success("Soldes synchronisés avec succès");
+      refreshFinances();
+      fetchFullHistory();
+    } catch (err) {
+      console.error(err);
+      toast.error("Erreur lors de la synchronisation");
+    } finally {
+      setIsDeepLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
@@ -330,6 +416,14 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
         </div>
         
         <div className="flex items-center gap-2">
+           <button 
+             onClick={handleSyncBalances}
+             disabled={isDeepLoading}
+             className="btn-secondary py-2 px-4 rounded-xl flex items-center gap-2 text-[10px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100"
+             title="Recalculer les soldes de caisse et banque depuis le grand livre"
+           >
+              <RefreshCw size={16} className={isDeepLoading ? "animate-spin" : ""} /> Sync Soldes
+           </button>
            <button 
              onClick={fetchFullHistory}
              disabled={isDeepLoading}
@@ -452,7 +546,7 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
                              f.type === 'virement_cb' ? "bg-blue-100 text-blue-600" : 
                              f.type === 'inscription' ? "bg-dia-red/10 text-dia-red" : "bg-emerald-100 text-emerald-600"
                            )}>
-                              {f.type}
+                              {labelType(f.type)}
                            </span>
                         </td>
                         <td className="px-8 py-5">
@@ -533,11 +627,15 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
               </div>
               <div className="px-6 py-3 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800 shadow-sm border-l-4 border-l-emerald-500">
                 <p className="text-[9px] font-black text-emerald-600 uppercase tracking-[0.2em] mb-1">Total Entrées</p>
-                <p className="text-2xl font-black text-emerald-600 tabular-nums leading-none whitespace-nowrap">+{formatMontant(totalEntrees)}</p>
+                <p className="text-2xl font-black text-emerald-600 tabular-nums leading-none whitespace-nowrap">
+                  {totalEntrees > 0 ? `+${formatMontant(totalEntrees)}` : formatMontant(0)}
+                </p>
               </div>
               <div className="px-6 py-3 bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-800 shadow-sm border-l-4 border-l-red-500">
                 <p className="text-[9px] font-black text-red-600 uppercase tracking-[0.2em] mb-1">Total Sorties</p>
-                <p className="text-2xl font-black text-red-600 tabular-nums leading-none whitespace-nowrap">-{formatMontant(totalSorties)}</p>
+                <p className="text-2xl font-black text-red-600 tabular-nums leading-none whitespace-nowrap">
+                  {totalSorties >= 1 ? `-${formatMontant(totalSorties)}` : formatMontant(0)}
+                </p>
               </div>
             </div>
             
