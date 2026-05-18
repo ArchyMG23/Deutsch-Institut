@@ -87,10 +87,20 @@ async function generateReceiptNumber(): Promise<string> {
   });
 }
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Helper to handle __dirname and __filename in both ESM and CJS
+let _filename: string;
+let _dirname: string;
 
-const PORT = process.env.PORT || 3000;
+try {
+  _filename = fileURLToPath(import.meta.url);
+  _dirname = path.dirname(_filename);
+} catch (e) {
+  // Fallback for CommonJS (bundled) environment
+  _filename = __filename;
+  _dirname = __dirname;
+}
+
+const PORT = Number(process.env.PORT) || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'dia-secret-key-2026';
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
 const APP_NAME = process.env.APP_NAME || 'DIA DEUTSCH INSTITUT';
