@@ -2124,45 +2124,43 @@ async function startServer() {
       const createdAt = new Date().toISOString();
 
       await dbAdmin.runTransaction(async (transaction) => {
-        // 1. ALL READS FIRST
+        // 1. PHASE DE LECTURE (TOUS LES GETS ICI)
         const studentRef = dbAdmin.collection('students').doc(studentId);
         const balanceRef = dbAdmin.collection('comptes').doc(accountType === 'banque' ? 'banque' : 'caisse');
-        
-        const [studentDoc, balanceDoc] = await Promise.all([
+        const scolariteRefBase = dbAdmin.collection('scolarites').doc(studentId); // Always read scolarites for summary
+        const vorbereitungRefBase = dbAdmin.collection('vorbereitung').doc(studentId);
+
+        // Fetching basics
+        const [studentDoc, balanceDoc, scolariteSnap, vorbereitungSnap] = await Promise.all([
           transaction.get(studentRef),
-          transaction.get(balanceRef)
+          transaction.get(balanceRef),
+          transaction.get(scolariteRefBase),
+          transaction.get(vorbereitungRefBase)
         ]);
 
         if (!studentDoc.exists) throw new Error('Étudiant introuvable');
         const student = studentDoc.data() as any;
 
-        // Conditional Reads for Scolarite/Vorbereitung
-        let scolariteDoc = null;
+        // Fetch Level if needed for scolarite logic
         let levelSnap = null;
-        let scolariteRef = null;
-        
-        if (type !== 'vacances') {
-          const coll = (type === 'vorbereitung' || req.body.category === 'vorbereitung') ? 'vorbereitung' : 'scolarites';
-          scolariteRef = dbAdmin.collection(coll).doc(studentId);
-          scolariteDoc = await transaction.get(scolariteRef);
-          
-          if (!scolariteDoc.exists && !student.totalTuition && student.levelId && req.body.totalDue === undefined) {
-             levelSnap = await transaction.get(dbAdmin.collection('levels').doc(student.levelId));
-          }
+        if (student.levelId) {
+          levelSnap = await transaction.get(dbAdmin.collection('levels').doc(student.levelId));
         }
 
-        // Conditional Reads for Vacances
-        let insDoc = null;
+        // Fetch Inscription for Vacances if needed
+        let insSnap = null;
         let insRef = null;
         if (type === 'vacances' && sessionId) {
           insRef = dbAdmin.collection('cours_vacances').doc(sessionId).collection('inscriptions').doc(studentId);
-          insDoc = await transaction.get(insRef);
-          if (!insDoc.exists) throw new Error("Inscription aux cours de vacances introuvable");
+          insSnap = await transaction.get(insRef);
+          if (!insSnap.exists) throw new Error("Inscription aux cours de vacances introuvable");
         }
 
-        // 2. LOGIC & WRITES
-        if (type === 'vacances' && insDoc && insRef) {
-          const insData = insDoc.data() as any;
+        // 2. PHASE DE LOGIQUE ET D'ÉCRITURE (PAS DE GET APRÈS CETTE LIGNE)
+        
+        // Handle Vacances
+        if (type === 'vacances' && insSnap && insRef) {
+          const insData = insSnap.data() as any;
           const newTotalVerse = (Number(insData.total_verse) || 0) + amount;
           const totalDu = Number(insData.montant_total_du) || 0;
           
@@ -2181,11 +2179,16 @@ async function startServer() {
             saisi_par: req.user.email
           });
         } 
-        else if (scolariteRef) {
+        // Handle Scolarite or Vorbereitung
+        else {
+          const isVorbereitung = type === 'vorbereitung' || req.body.category === 'vorbereitung';
+          const targetRef = isVorbereitung ? vorbereitungRefBase : scolariteRefBase;
+          const targetSnap = isVorbereitung ? vorbereitungSnap : scolariteSnap;
+
           let dueAmt: number;
           let newTotal: number;
 
-          if (!scolariteDoc || !scolariteDoc.exists) {
+          if (!targetSnap.exists) {
             const lId = student.levelId;
             let due = (req.body.totalDue !== undefined) ? Number(req.body.totalDue) : 110000;
             if (req.body.totalDue === undefined) {
@@ -2195,7 +2198,7 @@ async function startServer() {
             dueAmt = due;
             newTotal = amount;
 
-            transaction.set(scolariteRef, {
+            transaction.set(targetRef, {
               eleve_id: studentId, 
               matricule: student.matricule || '', 
               nom_eleve: `${student.firstName || ''} ${student.lastName || ''}`,
@@ -2208,11 +2211,11 @@ async function startServer() {
               updatedAt: createdAt
             });
           } else {
-            const sData = scolariteDoc.data() as any;
+            const sData = targetSnap.data() as any;
             dueAmt = Number(sData.montant_total_du) || 0;
             newTotal = (Number(sData.total_verse) || 0) + amount;
 
-            transaction.update(scolariteRef, {
+            transaction.update(targetRef, {
               total_verse: newTotal,
               reste: Math.max(0, dueAmt - newTotal),
               surplus: newTotal > dueAmt,
@@ -2221,7 +2224,7 @@ async function startServer() {
             });
           }
 
-          const vRefSub = scolariteRef.collection('versements').doc(transId);
+          const vRefSub = targetRef.collection('versements').doc(transId);
           transaction.set(vRefSub, {
             id: transId, montant: amount, date: date || createdAt,
             mode_paiement: paymentMethod || 'Espèces', recu_numero,
@@ -2230,13 +2233,30 @@ async function startServer() {
           });
         }
 
+        // ALSO Update the formal scolarite record for reporting/dashboard consistency (Sync logic)
+        // If it wasn't already updated (e.g. it was a vacances or vorbereitung payment)
+        if (type !== 'scolarite' && scolariteSnap.exists) {
+          const scolaData = scolariteSnap.data() as any;
+          const newTotalVerse = (Number(scolaData.total_verse) || 0) + amount;
+          const due = Number(scolaData.montant_total_du) || student.totalTuition || 120000;
+          const newReste = Math.max(0, due - newTotalVerse);
+          const newStatut = newTotalVerse >= due ? 'SOLDÉ' : (newTotalVerse > 0 ? 'EN COURS' : 'NON PAYÉ');
+          
+          transaction.update(scolariteRefBase, {
+            total_verse: newTotalVerse,
+            reste: newReste,
+            statut_paiement: newStatut,
+            updatedAt: createdAt
+          });
+        }
+
         // Global Ledger & Balance
         const transRef = dbAdmin.collection('transactions').doc(transId);
         transaction.set(transRef, {
           id: transId,
-          type: 'income', // Standardize to 'income' for all revenue
+          type: 'income',
           category: type || 'Scolarité',
-          category_original: type, // Keep for debugging if needed
+          category_original: type,
           eleve_id: studentId,
           matricule: student.matricule || '',
           libelle: notes || `${type === 'vacances' ? 'Cours Vacances' : (type === 'vorbereitung' ? 'Vorbereitung' : 'Scolarité')} - ${student.firstName} ${student.lastName}`,
@@ -2273,24 +2293,6 @@ async function startServer() {
           reste: admin.firestore.FieldValue.increment(-amount),
           updatedAt: createdAt
         });
-
-        // ALSO Update the formal scolarite record for reporting/dashboard consistency
-        const scolaRef = dbAdmin.collection('scolarites').doc(studentId);
-        const scolaSnap = await transaction.get(scolaRef);
-        if (scolaSnap.exists) {
-          const scolaData = scolaSnap.data() as any;
-          const newTotalVerse = (Number(scolaData.total_verse) || 0) + amount;
-          const due = Number(scolaData.montant_total_du) || student.totalTuition || 120000;
-          const newReste = Math.max(0, due - newTotalVerse);
-          const newStatut = newTotalVerse >= due ? 'SOLDÉ' : (newTotalVerse > 0 ? 'EN COURS' : 'NON PAYÉ');
-          
-          transaction.update(scolaRef, {
-            total_verse: newTotalVerse,
-            reste: newReste,
-            statut_paiement: newStatut,
-            updatedAt: createdAt
-          });
-        }
 
         let finalCategory = 'Scolarité';
         if (type === 'vorbereitung') finalCategory = 'Vorbereitung';
