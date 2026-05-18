@@ -3072,6 +3072,18 @@ async function startServer() {
         const financeSnap = await transaction.get(financeRef);
         if (!financeSnap.exists) throw new Error("Transaction introuvable");
         const oldData = financeSnap.data() as any;
+
+        const studentId = oldData.studentId || oldData.eleve_id;
+        const studentRef = studentId ? dbAdmin.collection('students').doc(studentId) : null;
+        const scolaRef = studentId ? dbAdmin.collection('scolarites').doc(studentId) : null;
+        const transRef = dbAdmin.collection('transactions').doc(id);
+
+        // ALL READS MUST BE BEFORE ALL WRITES
+        const [studentSnap, scolaSnap, transSnap] = await Promise.all([
+          studentRef ? transaction.get(studentRef) : Promise.resolve(null),
+          scolaRef ? transaction.get(scolaRef) : Promise.resolve(null),
+          transaction.get(transRef)
+        ]);
         
         const updateData: any = {
           updatedAt: new Date().toISOString(),
@@ -3115,11 +3127,7 @@ async function startServer() {
           }
 
           // Sync Student if applicable
-          const studentId = oldData.studentId || oldData.eleve_id;
-          if (studentId) {
-            const studentRef = dbAdmin.collection('students').doc(studentId);
-            const studentSnap = await transaction.get(studentRef);
-            if (studentSnap.exists) {
+          if (studentRef && studentSnap && studentSnap.exists) {
                const sData = studentSnap.data() as any;
                const newTotalPaid = (Number(sData.totalPaid) || 0) + delta;
                const tuition = Number(sData.totalTuition) || 0;
@@ -3134,26 +3142,19 @@ async function startServer() {
             }
             
             // Sync Scolarite record if exists
-            const scolaRef = dbAdmin.collection('scolarites').doc(studentId);
-            const scolaSnap = await transaction.get(scolaRef);
-            if (scolaSnap.exists) {
+            if (scolaRef && scolaSnap && scolaSnap.exists) {
                const scData = scolaSnap.data() as any;
                const scTotal = (Number(scData.total_verse) || 0) + delta;
-               const scDue = Number(scData.montant_total_du) || studentSnap.data()?.totalTuition || 0;
+               const scDue = Number(scData.montant_total_du) || (studentSnap && studentSnap.exists ? studentSnap.data()?.totalTuition : 0) || 0;
                transaction.update(scolaRef, {
                  total_verse: scTotal,
                  reste: Math.max(0, scDue - scTotal),
                  statut_paiement: scTotal >= scDue ? 'SOLDÉ' : (scTotal > 0 ? 'EN COURS' : 'NON PAYÉ')
                });
             }
-          }
         } else if (date) {
            // Even if amount didn't change, we might need to sync the date in student payments array
-           const studentId = oldData.studentId || oldData.eleve_id;
-           if (studentId) {
-             const studentRef = dbAdmin.collection('students').doc(studentId);
-             const studentSnap = await transaction.get(studentRef);
-             if (studentSnap.exists) {
+           if (studentRef && studentSnap && studentSnap.exists) {
                 const sData = studentSnap.data() as any;
                 transaction.update(studentRef, {
                   payments: (sData.payments || []).map((p: any) => 
@@ -3161,15 +3162,12 @@ async function startServer() {
                   )
                 });
              }
-           }
         }
 
         transaction.update(financeRef, updateData);
 
         // Also Update Transactions collection for consistency
-        const transRef = dbAdmin.collection('transactions').doc(id);
-        const transSnap = await transaction.get(transRef);
-        if (transSnap.exists) {
+        if (transSnap && transSnap.exists) {
           const transUpdate: any = { modified: true, updatedAt: new Date().toISOString() };
           if (updateData.amount !== undefined) transUpdate.montant = updateData.amount;
           if (updateData.date) transUpdate.date_versement = updateData.date;
