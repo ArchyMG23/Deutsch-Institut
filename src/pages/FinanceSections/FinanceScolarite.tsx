@@ -30,7 +30,14 @@ export default function FinanceScolarite({ onBack }: { onBack?: () => void }) {
   }, [selectedStudent, levels]);
 
   const sortedStudents = useMemo(() => {
-    return [...students].sort((a, b) => {
+    // Filter out students who are not in a standard level (ex: exclude Vorbereitung and pure Vacances)
+    const filtered = students.filter(s => {
+      if (!s.levelId) return false;
+      const level = levels.find(l => l.id === s.levelId);
+      return level?.type === 'standard';
+    });
+
+    return [...filtered].sort((a, b) => {
       let comp = 0;
       if (sortBy === 'name') {
         comp = `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
@@ -39,7 +46,7 @@ export default function FinanceScolarite({ onBack }: { onBack?: () => void }) {
       }
       return sortOrder === 'desc' ? -comp : comp;
     });
-  }, [students, sortBy, sortOrder]);
+  }, [students, sortBy, sortOrder, levels]);
 
   const filteredStudents = useMemo(() => {
     if (!searchTerm) return [];
@@ -150,22 +157,33 @@ export default function FinanceScolarite({ onBack }: { onBack?: () => void }) {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="flex items-center gap-4 mb-8">
+      <div className="flex items-center justify-between gap-4 mb-8">
+        <div className="flex items-center gap-4">
+          {onBack && (
+            <button 
+              onClick={onBack}
+              className="p-3 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-2xl transition-all"
+            >
+              <ArrowLeft size={20} />
+            </button>
+          )}
+          <div className="p-4 bg-dia-red text-white rounded-[1.5rem] shadow-xl shadow-dia-red/20">
+            <Landmark size={32} />
+          </div>
+          <div>
+            <h2 className="text-3xl font-black text-neutral-900 dark:text-white uppercase tracking-tight">Scolarité (Deutsch Institut)</h2>
+            <p className="text-neutral-500 font-bold uppercase text-sm">Gestion des versements et suivi des soldes</p>
+          </div>
+        </div>
+        
         {onBack && (
           <button 
             onClick={onBack}
-            className="p-3 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-2xl transition-all"
+            className="hidden md:block px-6 py-3 bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-black uppercase text-[10px] tracking-widest rounded-xl hover:bg-neutral-200 transition-all border border-neutral-200 dark:border-neutral-700"
           >
-            <ArrowLeft size={20} />
+            Retour
           </button>
         )}
-        <div className="p-4 bg-dia-red text-white rounded-[1.5rem] shadow-xl shadow-dia-red/20">
-          <Landmark size={32} />
-        </div>
-        <div>
-          <h2 className="text-3xl font-black text-neutral-900 dark:text-white uppercase tracking-tight">Scolarité (Deutsch Institut)</h2>
-          <p className="text-neutral-500 font-bold uppercase text-sm">Gestion des versements et suivi des soldes</p>
-        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

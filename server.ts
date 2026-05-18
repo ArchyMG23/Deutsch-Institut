@@ -70,6 +70,12 @@ async function generateMatricule(firstName: string, lastName: string, cycle: 'A'
   });
 }
 
+function validatePassword(password: string) {
+  if (!password) return { isValid: false, message: "Le mot de passe est requis" };
+  if (password.length < 6) return { isValid: false, message: "Le mot de passe doit faire au moins 6 caractères" };
+  return { isValid: true, message: "" };
+}
+
 async function generateReceiptNumber(): Promise<string> {
   if (!isFirebaseAdminInitialized) return `REC-${new Date().getFullYear()}-0000`;
   const year = new Date().getFullYear();
@@ -3078,7 +3084,7 @@ async function startServer() {
         const scolaRef = studentId ? dbAdmin.collection('scolarites').doc(studentId) : null;
         const transRef = dbAdmin.collection('transactions').doc(id);
 
-        // ALL READS MUST BE BEFORE ALL WRITES
+        // PRE-FETCH ALL NECESSARY DOCUMENTS (CRITICAL: ALL READS BEFORE ALL WRITES)
         const [studentSnap, scolaSnap, transSnap] = await Promise.all([
           studentRef ? transaction.get(studentRef) : Promise.resolve(null),
           scolaRef ? transaction.get(scolaRef) : Promise.resolve(null),
@@ -3091,34 +3097,29 @@ async function startServer() {
         };
 
         if (date) {
-           // Try to parse the date safely
-           let finalDate: string;
-           try {
-             if (date.includes('T') && !date.endsWith('Z')) {
-               // Local date from datetime-local input, parse it
-               finalDate = new Date(date).toISOString();
-             } else if (date.includes('T')) {
-               // Already ISO
-               finalDate = date;
-             } else {
-               // Simple date YYYY-MM-DD, use midday UTC
-               finalDate = new Date(date + 'T12:00:00Z').toISOString();
-             }
-           } catch (e) {
-             finalDate = new Date().toISOString();
-           }
-           updateData.date = finalDate;
+            let finalDate: string;
+            try {
+              if (date.includes('T') && !date.endsWith('Z')) {
+                finalDate = new Date(date).toISOString();
+              } else if (date.includes('T')) {
+                finalDate = date;
+              } else {
+                finalDate = new Date(date + 'T12:00:00Z').toISOString();
+              }
+            } catch (e) {
+              finalDate = new Date().toISOString();
+            }
+            updateData.date = finalDate;
         }
         if (notes !== undefined) updateData.notes = notes;
         if (category) updateData.category = category;
         if (description) updateData.description = description;
 
-        // Handle Amount Delta
+        // Perform Writes
         if (amount !== undefined && Number(amount) !== Number(oldData.amount)) {
           const newAmount = Number(amount);
           const oldAmount = Number(oldData.amount);
           const delta = newAmount - oldAmount;
-          
           updateData.amount = newAmount;
 
           // Adjust Balance
@@ -3126,52 +3127,50 @@ async function startServer() {
             await ajusterSolde(oldData.accountType as 'caisse' | 'banque', delta, transaction);
           }
 
-          // Sync Student if applicable
+          // Sync Student
           if (studentRef && studentSnap && studentSnap.exists) {
-               const sData = studentSnap.data() as any;
-               const newTotalPaid = (Number(sData.totalPaid) || 0) + delta;
-               const tuition = Number(sData.totalTuition) || 0;
-               
-               transaction.update(studentRef, {
-                 totalPaid: newTotalPaid,
-                 reste: Math.max(0, tuition - newTotalPaid),
-                 payments: (sData.payments || []).map((p: any) => 
-                   p.id === id ? { ...p, amount: newAmount, date: updateData.date || p.date } : p
-                 )
-               });
-            }
+            const sData = studentSnap.data() as any;
+            const newTotalPaid = (Number(sData.totalPaid) || 0) + delta;
+            const tuition = Number(sData.totalTuition) || 0;
             
-            // Sync Scolarite record if exists
-            if (scolaRef && scolaSnap && scolaSnap.exists) {
-               const scData = scolaSnap.data() as any;
-               const scTotal = (Number(scData.total_verse) || 0) + delta;
-               const scDue = Number(scData.montant_total_du) || (studentSnap && studentSnap.exists ? studentSnap.data()?.totalTuition : 0) || 0;
-               transaction.update(scolaRef, {
-                 total_verse: scTotal,
-                 reste: Math.max(0, scDue - scTotal),
-                 statut_paiement: scTotal >= scDue ? 'SOLDÉ' : (scTotal > 0 ? 'EN COURS' : 'NON PAYÉ')
-               });
-            }
+            transaction.update(studentRef, {
+              totalPaid: newTotalPaid,
+              reste: Math.max(0, tuition - newTotalPaid),
+              payments: (sData.payments || []).map((p: any) => 
+                p.id === id ? { ...p, amount: newAmount, date: updateData.date || p.date } : p
+              )
+            });
+          }
+          
+          // Sync Scolarite
+          if (scolaRef && scolaSnap && scolaSnap.exists) {
+            const scData = scolaSnap.data() as any;
+            const scTotal = (Number(scData.total_verse) || 0) + delta;
+            const scDue = Number(scData.montant_total_du) || (studentSnap && studentSnap.exists ? studentSnap.data()?.totalTuition : 0) || 0;
+            transaction.update(scolaRef, {
+              total_verse: scTotal,
+              reste: Math.max(0, scDue - scTotal),
+              statut_paiement: scTotal >= scDue ? 'SOLDÉ' : (scTotal > 0 ? 'EN COURS' : 'NON PAYÉ')
+            });
+          }
         } else if (date) {
-           // Even if amount didn't change, we might need to sync the date in student payments array
-           if (studentRef && studentSnap && studentSnap.exists) {
-                const sData = studentSnap.data() as any;
-                transaction.update(studentRef, {
-                  payments: (sData.payments || []).map((p: any) => 
-                    p.id === id ? { ...p, date: updateData.date } : p
-                  )
-                });
-             }
+            if (studentRef && studentSnap && studentSnap.exists) {
+              const sData = studentSnap.data() as any;
+              transaction.update(studentRef, {
+                payments: (sData.payments || []).map((p: any) => 
+                  p.id === id ? { ...p, date: updateData.date } : p
+                )
+              });
+            }
         }
 
         transaction.update(financeRef, updateData);
 
-        // Also Update Transactions collection for consistency
         if (transSnap && transSnap.exists) {
           const transUpdate: any = { modified: true, updatedAt: new Date().toISOString() };
           if (updateData.amount !== undefined) transUpdate.montant = updateData.amount;
           if (updateData.date) transUpdate.date_versement = updateData.date;
-          if (description) transUpdate.libelle = description;
+          if (description || updateData.description) transUpdate.libelle = description || updateData.description;
           transaction.update(transRef, transUpdate);
         }
       });

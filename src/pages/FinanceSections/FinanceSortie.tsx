@@ -10,6 +10,7 @@ import { EventBus, EVENTS } from '../../lib/eventBus';
 
 const CATEGORIES = [
   'Salaires enseignants',
+  'Salaires du personnel',
   'Loyer & Charges',
   'Marketing & Publicité',
   'Matériel & Fournitures',

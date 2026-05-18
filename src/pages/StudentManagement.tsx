@@ -229,6 +229,12 @@ export default function StudentManagement() {
       }
 
       // 4. Mise à jour UI direct (ID-based comme demandé)
+      if (montant_du === 0 && total_verse_scol === 0) {
+        block.classList.add('hidden');
+      } else {
+        block.classList.remove('hidden');
+      }
+
       if (badge) {
         badge.innerText = `STATUS: ${emoji} ${statut}`;
         badge.className = `text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-tighter ${couleur}`;

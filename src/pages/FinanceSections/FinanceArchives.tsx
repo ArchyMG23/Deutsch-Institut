@@ -12,16 +12,17 @@ import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 
 export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
-  const { finances, loading, refreshFinances, refreshStudents } = useData();
+  const { finances, loading, refreshFinances, refreshStudents, students } = useData();
   const { user, fetchWithAuth } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
+  const [selectedStudentId, setSelectedStudentId] = useState('');
   const [filterAccount, setFilterAccount] = useState('all');
   const [sortBy, setSortBy] = useState<'date' | 'name' | 'matricule' | 'amount'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<any>(null);
-  const [editFormData, setEditFormData] = useState({ amount: '', date: '', libelle: '' });
+  const [editFormData, setEditFormData] = useState({ amount: '', date: '', description: '', notes: '', category: '' });
 
   const isAuthorized = user?.role === 'admin' || user?.isSuperAdmin;
 
@@ -36,18 +37,14 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
     const seenReceipts = new Set();
 
     try {
-      // 0. Source: /finances (Primary ledger)
-      const finSnap = await getDocs(query(collection(db, 'finances'), where('status', '==', 'active'), limit(300)));
+      // 0. Source: /finances (Primary ledger) - Removing strict 'active' filter as some records lack it
+      const finSnap = await getDocs(query(collection(db, 'finances'), limit(500)));
       finSnap.forEach(doc => {
         const d = doc.data();
+        if (d.status === 'deleted' || d.supprimé === true) return;
         seenIds.add(doc.id);
         if (d.receiptId || d.recu_numero) seenReceipts.add(d.receiptId || d.recu_numero);
-        toutes.push(normaliseTransaction(doc.id, {
-          ...d,
-          type: d.type || 'income',
-          libelle: d.description || d.libelle || d.category || 'Transaction',
-          eleve_id: d.studentId || d.eleve_id
-        }, 'income'));
+        toutes.push(normaliseTransaction(doc.id, d, 'income'));
       });
 
       // 1. Source: /transactions
@@ -142,18 +139,39 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
       else dateObj = new Date(rawDate);
     }
 
+    const sid = data.eleve_id || data.studentId;
+    let sName = '';
+    if (sid) {
+      const s = students.find(st => st.id === sid);
+      if (s) sName = `${s.lastName} ${s.firstName}`.trim();
+    }
+
+    // Determine type label and libelle
+    const type = data.type || typeDefaut || 'diverse';
+    let label = data.libelle || data.description || data.notes || (data.type ? labelType(data.type) : 'Transaction');
+    
+    // If it's a student payment and name is missing from label, add it
+    if (sid && sName && !label.includes(sName)) {
+      label = `${label} — ${sName}`;
+    }
+
     return {
       id,
-      type: data.type || typeDefaut || 'diverse',
-      libelle: data.libelle || data.description || data.notes || (data.type ? labelType(data.type) : 'Transaction'),
+      type: type,
+      libelle: label,
       montant: Number(data.montant || data.amount) || 0,
-      date_versement: dateObj,
+      amount: Number(data.amount || data.montant) || 0,
+      date_versement: dateObj.toISOString(),
+      date: dateObj.toISOString(),
       mode_paiement: data.mode_paiement || data.method || '—',
       compte_destination: data.compte_destination || data.accountType || data.compte || data.source_compte || '—',
-      eleve_id: data.eleve_id || data.studentId,
+      eleve_id: sid,
+      studentId: sid,
       matricule: data.matricule || data.studentMatricule,
       recu_numero: data.recu_numero || data.receiptId,
-      saisi_par: data.saisi_par || data.createdBy || '—'
+      saisi_par: data.saisi_par || data.createdBy || '—',
+      notes: data.notes || data.description || '',
+      category: data.category || type
     };
   };
 
@@ -178,23 +196,36 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
   }, []);
 
   const filteredFinances = useMemo(() => {
-    const dataSource = allTransactions.length > 0 ? allTransactions : finances;
-    const filtered = (dataSource || []).filter(f => {
+    const dataSource = allTransactions.length > 0 ? allTransactions : finances.map(f => normaliseTransaction(f.id, f, f.type));
+    
+    return dataSource.filter(f => {
+      let matchesFilter = true;
+      if (filterType !== 'all') {
+        if (filterType === 'virement_cb') {
+          matchesFilter = f.type === 'virement_cb' || f.type === 'virement_caisse_banque';
+        } else {
+          matchesFilter = f.type === filterType;
+        }
+      }
+      
+      if (selectedStudentId) {
+        matchesFilter = matchesFilter && (f.studentId === selectedStudentId || f.eleve_id === selectedStudentId);
+      }
+
+      if (filterAccount !== 'all') {
+        matchesFilter = matchesFilter && (f.compte_destination === filterAccount);
+      }
+
       const matchSearch = String(f.libelle || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                           String(f.matricule || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                           String(f.recu_numero || '').toLowerCase().includes(searchTerm.toLowerCase());
       
-      const matchType = filterType === 'all' || f.type === filterType;
-      const matchAccount = filterAccount === 'all' || f.compte_destination === filterAccount;
-
-      return matchSearch && matchType && matchAccount;
-    });
-
-    return [...filtered].sort((a, b) => {
+      return matchesFilter && matchSearch;
+    }).sort((a, b) => {
       let comparison = 0;
       if (sortBy === 'date') {
-        const da = new Date(a.date_versement).getTime() || 0;
-        const db_ = new Date(b.date_versement).getTime() || 0;
+        const da = new Date(a.date_versement || a.date).getTime() || 0;
+        const db_ = new Date(b.date_versement || b.date).getTime() || 0;
         comparison = da - db_;
       } else if (sortBy === 'name') {
         comparison = String(a.libelle || '').localeCompare(String(b.libelle || ''));
@@ -205,7 +236,7 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
       }
       return sortOrder === 'desc' ? -comparison : comparison;
     });
-  }, [allTransactions, finances, searchTerm, filterType, filterAccount, sortBy, sortOrder]);
+  }, [allTransactions, finances, searchTerm, filterType, filterAccount, sortBy, sortOrder, selectedStudentId, students]);
 
   const { totalEntrees, totalSorties } = useMemo(() => {
     let entrees = 0;
@@ -230,7 +261,9 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
         body: JSON.stringify({ 
           amount: Number(editFormData.amount), 
           date: editFormData.date,
-          description: editFormData.libelle
+          description: editFormData.libelle,
+          category: editFormData.category,
+          notes: editFormData.notes
         })
       }).then(async r => {
         if (!r.ok) throw new Error((await r.json()).message);
@@ -310,7 +343,6 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
         </div>
       </div>
 
-      {/* Filters Bar */}
       <div className="bg-white dark:bg-neutral-900 p-6 rounded-[2rem] border border-neutral-100 dark:border-neutral-800 shadow-sm flex flex-wrap items-center gap-4">
         <div className="flex-1 min-w-[200px] relative">
            <input 
@@ -323,7 +355,7 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
         </div>
         
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
            <Filter size={16} className="text-neutral-400" />
            <select 
              value={filterType}
@@ -338,6 +370,17 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
              <option value="sortie">Sorties</option>
              <option value="diverse">Divers</option>
              <option value="virement_cb">Virements</option>
+           </select>
+
+           <select 
+             value={selectedStudentId}
+             onChange={(e) => setSelectedStudentId(e.target.value)}
+             className="bg-neutral-50 dark:bg-neutral-800 border-none rounded-xl p-3 font-black text-[10px] uppercase focus:ring-2 focus:ring-purple-500"
+           >
+             <option value="">Tous les étudiants</option>
+             {students.sort((a,b) => `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`)).map(s => (
+               <option key={s.id} value={s.id}>{s.lastName} {s.firstName} ({s.matricule})</option>
+             ))}
            </select>
 
            <select 
@@ -449,7 +492,9 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
                                     setEditFormData({
                                       amount: String(f.montant),
                                       date: `${year}-${month}-${day}T${hours}:${minutes}`,
-                                      libelle: f.libelle
+                                      libelle: f.libelle || '',
+                                      category: f.type || '',
+                                      notes: f.notes || ''
                                     });
                                   }}
                                   className="p-2 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg text-neutral-400 hover:text-blue-600 transition-all"
@@ -532,7 +577,29 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
                     className="w-full mt-1 p-4 bg-neutral-50 dark:bg-neutral-800 border-none rounded-2xl font-bold focus:ring-2 focus:ring-purple-500"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Catégorie</label>
+                      <input 
+                        type="text"
+                        value={editFormData.category}
+                        onChange={e => setEditFormData({...editFormData, category: e.target.value})}
+                        className="w-full mt-1 p-4 bg-neutral-50 dark:bg-neutral-800 border-none rounded-2xl font-bold focus:ring-2 focus:ring-purple-500"
+                        placeholder="Ex: scolarite, inscription..."
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Notes</label>
+                      <input 
+                        type="text"
+                        value={editFormData.notes}
+                        onChange={e => setEditFormData({...editFormData, notes: e.target.value})}
+                        className="w-full mt-1 p-4 bg-neutral-50 dark:bg-neutral-800 border-none rounded-2xl font-bold focus:ring-2 focus:ring-purple-500"
+                        placeholder="..."
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Montant (FCFA)</label>
                     <input 

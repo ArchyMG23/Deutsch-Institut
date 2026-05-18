@@ -87,7 +87,7 @@ export async function getMontantDuParNiveau(nom_niveau: string, eleve_id?: strin
       if (sSnap.exists()) {
         const data = sSnap.data();
         const customDu = Number(data.montant_total_du);
-        if (!isNaN(customDu) && customDu > 0) return customDu;
+        if (!isNaN(customDu) && data.montant_total_du !== undefined) return customDu;
       }
 
       // 2. Si c'est un Vorbereitung, chercher dans sa fiche Vorbereitung
@@ -96,7 +96,7 @@ export async function getMontantDuParNiveau(nom_niveau: string, eleve_id?: strin
         if (vSnap.exists()) {
           const vData = vSnap.data();
           const vDu = Number(vData.montant_total_du || vData.frais_vorbereitung_defaut || 0);
-          if (!isNaN(vDu) && vDu > 0) return vDu;
+          if (!isNaN(vDu)) return vDu;
         }
       }
     } catch (err) {
@@ -104,7 +104,7 @@ export async function getMontantDuParNiveau(nom_niveau: string, eleve_id?: strin
     }
   }
 
-  if (!nom_niveau) return 0;
+  if (!nom_niveau || nom_niveau === 'none' || nom_niveau === 'Non affecté') return 0;
 
   try {
     // 2. Recherche dans 'levels' (recommandé) ou 'niveaux' (legacy)
