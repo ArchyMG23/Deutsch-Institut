@@ -1174,7 +1174,10 @@ async function startServer() {
       });
 
       const studentId = userRecord.uid;
-      const createdAt = req.body.dateVerse ? new Date(req.body.dateVerse).toISOString() : new Date().toISOString();
+      
+      // Robust date parsing: use 12:00 UTC to avoid day shifts in different timezones
+      const dateVerseStr = req.body.dateVerse || new Date().toISOString().split('T')[0];
+      const createdAt = new Date(dateVerseStr + 'T12:00:00Z').toISOString();
 
       const batch = dbAdmin.batch();
 
@@ -1209,10 +1212,19 @@ async function startServer() {
         matricule, 
         createdAt, 
         totalTuition: tuitionTotal,
-        totalPaid: 0,
+        totalPaid: 0, // Will be updated if tranches are paid in step 5
         reste: tuitionTotal,
         cycle: studentData.cycle || 'Allemand',
-        payments: [], // Initialize empty payments array
+        payments: montantInscription > 0 ? [{
+          id: transId,
+          type: 'inscription',
+          category: 'Inscription',
+          amount: montantInscription,
+          date: createdAt,
+          method: modePaiement,
+          receiptId: recu_numero,
+          tranche: 0 // Using 0 to represent inscription
+        }] : [],
         role: 'student'
       };
       batch.set(dbAdmin.collection('students').doc(studentId), newStudent);
@@ -1248,18 +1260,18 @@ async function startServer() {
       };
       batch.set(dbAdmin.collection('transactions').doc(transId), transactionData);
       
+      // Update finances collection too (even if 0 for visibility)
+      batch.set(dbAdmin.collection('finances').doc(transId), {
+        id: transId, studentId, studentMatricule: matricule,
+        studentName: `${studentData.firstName} ${studentData.lastName}`,
+        amount: montantInscription, date: createdAt, type: 'income', category: 'Inscription',
+        method: modePaiement, accountType: compteDestination, status: 'active',
+        createdAt, updatedAt: createdAt
+      });
+
       if (montantInscription > 0) {
         // Adjust balance
         await ajusterSolde(compteDestination as 'caisse' | 'banque', montantInscription, batch);
-
-        // Update finances collection too
-        batch.set(dbAdmin.collection('finances').doc(transId), {
-          id: transId, studentId, studentMatricule: matricule,
-          studentName: `${studentData.firstName} ${studentData.lastName}`,
-          amount: montantInscription, date: createdAt, type: 'income', category: 'Inscription',
-          method: modePaiement, accountType: compteDestination, status: 'active',
-          createdAt, updatedAt: createdAt
-        });
       }
 
       // 5. Handle initial payments (Scolarité)
@@ -2171,6 +2183,11 @@ async function startServer() {
     try {
       const recu_numero = await generateReceiptNumber();
       const transId = dbAdmin.collection('transactions').doc().id;
+      
+      // Robust date parsing for the payment date
+      const dateVal = date || new Date().toISOString().split('T')[0];
+      const paymentDateNormalized = dateVal.includes('T') ? dateVal : new Date(dateVal + 'T12:00:00Z').toISOString();
+      
       const createdAt = new Date().toISOString();
 
       await dbAdmin.runTransaction(async (transaction) => {
@@ -2223,7 +2240,7 @@ async function startServer() {
           
           const vRef = insRef.collection('versements').doc(transId);
           transaction.set(vRef, {
-            id: transId, montant: amount, date: date || createdAt,
+            id: transId, montant: amount, date: paymentDateNormalized,
             mode_paiement: paymentMethod || 'Espèces', recu_numero,
             notes: notes || `Paiement Cours Vacances: ${sessionTitle || ''}`,
             saisi_par: req.user.email
@@ -2276,7 +2293,7 @@ async function startServer() {
 
           const vRefSub = targetRef.collection('versements').doc(transId);
           transaction.set(vRefSub, {
-            id: transId, montant: amount, date: date || createdAt,
+            id: transId, montant: amount, date: paymentDateNormalized,
             mode_paiement: paymentMethod || 'Espèces', recu_numero,
             compte: accountType,
             notes: notes || '', saisi_par: req.user.email
@@ -2311,7 +2328,7 @@ async function startServer() {
           matricule: student.matricule || '',
           libelle: notes || `${type === 'vacances' ? 'Cours Vacances' : (type === 'vorbereitung' ? 'Vorbereitung' : 'Scolarité')} - ${student.firstName} ${student.lastName}`,
           montant: amount,
-          date_versement: date || createdAt,
+          date_versement: paymentDateNormalized,
           mode_paiement: paymentMethod || 'Espèces',
           compte_destination: accountType,
           recu_numero,
@@ -2336,7 +2353,7 @@ async function startServer() {
 
         transaction.update(studentRef, {
           payments: admin.firestore.FieldValue.arrayUnion({
-            amount, date: date || createdAt, receiptId: recu_numero,
+            amount, date: paymentDateNormalized, receiptId: recu_numero,
             category: type || 'Scolarité', method: paymentMethod || 'Espèces', notes: notes || ''
           }),
           totalPaid: admin.firestore.FieldValue.increment(amount),
@@ -2351,7 +2368,7 @@ async function startServer() {
         transaction.set(dbAdmin.collection('finances').doc(transId), {
           id: transId, studentId, studentMatricule: student.matricule,
           studentName: `${student.firstName} ${student.lastName}`,
-          amount, date: date || createdAt, type: 'income', category: finalCategory,
+          amount, date: paymentDateNormalized, type: 'income', category: finalCategory,
           method: paymentMethod || 'Espèces', accountType, notes: notes || '',
           receiptId: recu_numero, createdBy: req.user.id, createdAt, updatedAt: createdAt, status: 'active',
           sessionId: sessionId || null, sessionTitle: sessionTitle || null
@@ -2375,8 +2392,12 @@ async function startServer() {
       const transId = dbAdmin.collection('transactions').doc().id;
       const batch = dbAdmin.batch();
 
+      // Robust date parsing for the payment date
+      const dateVal = date || new Date().toISOString().split('T')[0];
+      const normalizedDate = dateVal.includes('T') ? dateVal : new Date(dateVal + 'T12:00:00Z').toISOString();
+
       batch.set(dbAdmin.collection('transactions').doc(transId), {
-        id: transId, type: 'diverse', libelle, montant: amount, date_versement: date || new Date().toISOString(),
+        id: transId, type: 'diverse', libelle, montant: amount, date_versement: normalizedDate,
         mode_paiement: paymentMethod, compte_destination: accountType, saisi_par: req.user.email,
         timestamp_creation: admin.firestore.FieldValue.serverTimestamp(), notes: notes || '', modifié: false, supprimé: false
       });
@@ -2388,7 +2409,7 @@ async function startServer() {
         category: 'Autre Revenu',
         description: libelle,
         amount: amount,
-        date: date || new Date().toISOString(),
+        date: normalizedDate,
         method: paymentMethod,
         accountType: accountType,
         notes: notes || '',
@@ -2416,15 +2437,19 @@ async function startServer() {
       const transId = dbAdmin.collection('transactions').doc().id;
       const batch = dbAdmin.batch();
 
+      // Robust date parsing
+      const dateVal = date || new Date().toISOString().split('T')[0];
+      const normalizedDate = dateVal.includes('T') ? dateVal : new Date(dateVal + 'T12:00:00Z').toISOString();
+
       batch.set(dbAdmin.collection('sorties').doc(sortieId), {
-        id: sortieId, categorie, libelle, montant: amount, date: date || new Date().toISOString(),
+        id: sortieId, categorie, libelle, montant: amount, date: normalizedDate,
         source_compte: accountType, saisi_par: req.user.email, timestamp: admin.firestore.FieldValue.serverTimestamp(),
         notes: notes || '', teacherId: teacherId || null
       });
 
       batch.set(dbAdmin.collection('transactions').doc(transId), {
         id: transId, type: 'sortie', libelle: `SORTIE: ${categorie} - ${libelle}`, montant: -amount,
-        date_versement: date || new Date().toISOString(), mode_paiement: paymentMethod, compte_destination: accountType,
+        date_versement: normalizedDate, mode_paiement: paymentMethod, compte_destination: accountType,
         saisi_par: req.user.email, timestamp_creation: admin.firestore.FieldValue.serverTimestamp(),
         modifié: false, supprimé: false
       });
@@ -2436,7 +2461,7 @@ async function startServer() {
         category: categorie,
         description: libelle,
         amount: -Math.abs(amount),
-        date: date || new Date().toISOString(),
+        date: normalizedDate,
         method: paymentMethod,
         accountType: accountType,
         notes: notes || '',
@@ -3038,14 +3063,106 @@ async function startServer() {
     try {
       if (req.user.role !== 'admin') return res.status(403).json({ message: "Interdit" });
       const { id } = req.params;
+      const { amount, date, notes, category, description } = req.body;
       
-      await dbAdmin.collection('finances').doc(id).update({
-        ...req.body,
-        updatedAt: new Date().toISOString(),
-        updatedBy: req.user.id
+      await dbAdmin.runTransaction(async (transaction) => {
+        const financeRef = dbAdmin.collection('finances').doc(id);
+        const financeSnap = await transaction.get(financeRef);
+        if (!financeSnap.exists) throw new Error("Transaction introuvable");
+        const oldData = financeSnap.data() as any;
+        
+        const updateData: any = {
+          updatedAt: new Date().toISOString(),
+          updatedBy: req.user.id
+        };
+
+        if (date) {
+           // Normalize date to midday UTC
+           const dateVal = date.includes('T') ? date : new Date(date + 'T12:00:00Z').toISOString();
+           updateData.date = dateVal;
+        }
+        if (notes !== undefined) updateData.notes = notes;
+        if (category) updateData.category = category;
+        if (description) updateData.description = description;
+
+        // Handle Amount Delta
+        if (amount !== undefined && Number(amount) !== Number(oldData.amount)) {
+          const newAmount = Number(amount);
+          const oldAmount = Number(oldData.amount);
+          const delta = newAmount - oldAmount;
+          
+          updateData.amount = newAmount;
+
+          // Adjust Balance
+          if (oldData.accountType) {
+            await ajusterSolde(oldData.accountType as 'caisse' | 'banque', delta, transaction);
+          }
+
+          // Sync Student if applicable
+          const studentId = oldData.studentId || oldData.eleve_id;
+          if (studentId) {
+            const studentRef = dbAdmin.collection('students').doc(studentId);
+            const studentSnap = await transaction.get(studentRef);
+            if (studentSnap.exists) {
+               const sData = studentSnap.data() as any;
+               const newTotalPaid = (Number(sData.totalPaid) || 0) + delta;
+               const tuition = Number(sData.totalTuition) || 0;
+               
+               transaction.update(studentRef, {
+                 totalPaid: newTotalPaid,
+                 reste: Math.max(0, tuition - newTotalPaid),
+                 payments: (sData.payments || []).map((p: any) => 
+                   p.id === id ? { ...p, amount: newAmount, date: updateData.date || p.date } : p
+                 )
+               });
+            }
+            
+            // Sync Scolarite record if exists
+            const scolaRef = dbAdmin.collection('scolarites').doc(studentId);
+            const scolaSnap = await transaction.get(scolaRef);
+            if (scolaSnap.exists) {
+               const scData = scolaSnap.data() as any;
+               const scTotal = (Number(scData.total_verse) || 0) + delta;
+               const scDue = Number(scData.montant_total_du) || studentSnap.data()?.totalTuition || 0;
+               transaction.update(scolaRef, {
+                 total_verse: scTotal,
+                 reste: Math.max(0, scDue - scTotal),
+                 statut_paiement: scTotal >= scDue ? 'SOLDÉ' : (scTotal > 0 ? 'EN COURS' : 'NON PAYÉ')
+               });
+            }
+          }
+        } else if (date) {
+           // Even if amount didn't change, we might need to sync the date in student payments array
+           const studentId = oldData.studentId || oldData.eleve_id;
+           if (studentId) {
+             const studentRef = dbAdmin.collection('students').doc(studentId);
+             const studentSnap = await transaction.get(studentRef);
+             if (studentSnap.exists) {
+                const sData = studentSnap.data() as any;
+                transaction.update(studentRef, {
+                  payments: (sData.payments || []).map((p: any) => 
+                    p.id === id ? { ...p, date: updateData.date } : p
+                  )
+                });
+             }
+           }
+        }
+
+        transaction.update(financeRef, updateData);
+
+        // Also Update Transactions collection for consistency
+        const transRef = dbAdmin.collection('transactions').doc(id);
+        const transSnap = await transaction.get(transRef);
+        if (transSnap.exists) {
+          const transUpdate: any = { modified: true, updatedAt: new Date().toISOString() };
+          if (updateData.amount !== undefined) transUpdate.montant = updateData.amount;
+          if (updateData.date) transUpdate.date_versement = updateData.date;
+          if (description) transUpdate.libelle = description;
+          transaction.update(transRef, transUpdate);
+        }
       });
       
-      res.json({ message: 'Transaction mise à jour' });
+      res.json({ message: 'Transaction mise à jour avec succès' });
     } catch (err: any) {
       console.error("Finance update error:", err);
       res.status(500).json({ message: err.message });

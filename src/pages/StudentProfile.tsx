@@ -336,7 +336,7 @@ export default function StudentProfile() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
                 <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">{t('profile.reg_date')}</p>
-                <p className="font-bold">{new Date(student.createdAt).toLocaleDateString(i18n.language === 'de' ? 'de-DE' : 'fr-FR')}</p>
+                <p className="font-bold">{new Date(student.createdAt).toLocaleDateString('fr-FR', { timeZone: 'UTC' })}</p>
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">{t('students.pob')}</p>
@@ -344,7 +344,7 @@ export default function StudentProfile() {
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase text-neutral-400 mb-1">{t('students.dob')}</p>
-                <p className="font-bold">{new Date(student.birthDate).toLocaleDateString(i18n.language === 'de' ? 'de-DE' : 'fr-FR')}</p>
+                <p className="font-bold">{new Date(student.birthDate).toLocaleDateString('fr-FR', { timeZone: 'UTC' })}</p>
               </div>
             </div>
           </div>
@@ -398,7 +398,7 @@ export default function StudentProfile() {
                         <div>
                           <h5 className="font-bold text-sm">{t('students.tranche')} {payment.tranche}</h5>
                           <p className="text-[10px] font-bold uppercase text-neutral-400 tracking-wider">
-                            {payment.date ? new Date(payment.date).toLocaleDateString(i18n.language === 'de' ? 'de-DE' : 'fr-FR') : t('students.pending')}
+                            {payment.date ? new Date(payment.date).toLocaleDateString('fr-FR', { timeZone: 'UTC' }) : t('students.pending')}
                           </p>
                         </div>
                       </div>

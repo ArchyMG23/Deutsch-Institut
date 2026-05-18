@@ -307,7 +307,7 @@ export default function FinanceArchives() {
                     filteredFinances.map((f) => (
                       <tr key={f.id} className="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/30 transition-colors group">
                         <td className="px-8 py-5 whitespace-nowrap text-xs font-black text-neutral-900 dark:text-white tabular-nums uppercase">
-                           {new Date(f.date_versement || f.date || f.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                           {new Date(f.date_versement || f.date || f.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}
                         </td>
                         <td className="px-8 py-5 whitespace-nowrap">
                            <span className={cn(
@@ -341,6 +341,37 @@ export default function FinanceArchives() {
                         </td>
                         <td className="px-8 py-5 whitespace-nowrap">
                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {isAuthorized && (
+                                <button 
+                                  onClick={() => {
+                                    const newAmount = window.prompt("Nouveau montant (FCFA) :", String(f.montant));
+                                    if (newAmount === null) return;
+                                    const newDate = window.prompt("Nouvelle date (AAAA-MM-JJ) :", new Date(f.date_versement || f.date).toISOString().split('T')[0]);
+                                    if (newDate === null) return;
+
+                                    toast.promise(
+                                      fetchWithAuth(`/api/finances/${f.id}`, {
+                                        method: 'PUT',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ amount: Number(newAmount), date: newDate })
+                                      }).then(async r => {
+                                        if (!r.ok) throw new Error((await r.json()).message);
+                                        refreshAll(true);
+                                        fetchFullHistory();
+                                      }),
+                                      {
+                                        loading: 'Mise à jour...',
+                                        success: 'Transaction mise à jour',
+                                        error: (err) => err.message
+                                      }
+                                    );
+                                  }}
+                                  className="p-2 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg text-neutral-400 hover:text-blue-600 transition-all"
+                                  title="Modifier cette transaction"
+                                >
+                                   <Edit2 size={16} />
+                                </button>
+                              )}
                               {isAuthorized && (
                                 <button 
                                   onClick={() => handleDelete(f.id, f.libelle)}

@@ -356,7 +356,7 @@ export default function StudentManagement() {
         head: [[t('students.designation'), t('students.date'), t('students.amount')]],
         body: paidPayments.map(p => [
           `Scolarité - Tranche ${p.tranche}`, 
-          p.date ? new Date(p.date).toLocaleDateString() : 'N/A', 
+          p.date ? new Date(p.date).toLocaleDateString('fr-FR', { timeZone: 'UTC' }) : 'N/A', 
           formatMontant(p.amount)
         ]),
         theme: 'striped',
@@ -1126,7 +1126,7 @@ export default function StudentManagement() {
                             />
                           </td>
                       <td className="px-6 py-4 text-xs font-medium text-neutral-500">
-                        {student.createdAt ? new Date(student.createdAt).toLocaleDateString() : 'N/A'}
+                        {student.createdAt ? new Date(student.createdAt).toLocaleDateString('fr-FR', { timeZone: 'UTC' }) : 'N/A'}
                       </td>
                       <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-2">
@@ -1668,7 +1668,7 @@ export default function StudentManagement() {
                 <div>
                   <p className="text-[11px] font-bold uppercase text-neutral-400 mb-1">{t('profile.personal_info')}</p>
                   <p className="text-sm"><strong>{t('students.gender') || 'Sexe'} :</strong> {selectedStudent.gender === 'M' ? (t('students.male') || 'Masculin') : (t('students.female') || 'Féminin')}</p>
-                  <p className="text-sm"><strong>{t('students.dob')} :</strong> {selectedStudent.birthDate ? new Date(selectedStudent.birthDate).toLocaleDateString() : 'N/A'} {t('common.at') || 'à'} {selectedStudent.birthPlace || 'N/A'}</p>
+                  <p className="text-sm"><strong>{t('students.dob')} :</strong> {selectedStudent.birthDate ? new Date(selectedStudent.birthDate).toLocaleDateString('fr-FR', { timeZone: 'UTC' }) : 'N/A'} {t('common.at') || 'à'} {selectedStudent.birthPlace || 'N/A'}</p>
                   {selectedStudent.cni && <p className="text-sm"><strong>{t('students.cni')} :</strong> {selectedStudent.cni}</p>}
                 </div>
                 <div>
@@ -1781,7 +1781,7 @@ export default function StudentManagement() {
                         <div className="space-y-1">
                           {ins.versements.map((v: any, idx: number) => (
                             <div key={idx} className="flex items-center justify-between text-[9px] font-bold p-1.5 bg-white/50 dark:bg-neutral-900/50 rounded-lg">
-                              <span className="text-neutral-400">{new Date(v.date).toLocaleDateString()}</span>
+                              <span className="text-neutral-400">{new Date(v.date).toLocaleDateString('fr-FR', { timeZone: 'UTC' })}</span>
                               <span className="text-emerald-600">{formatMontant(v.montant)}</span>
                             </div>
                           ))}
