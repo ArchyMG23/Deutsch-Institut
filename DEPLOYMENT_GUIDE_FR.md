@@ -79,14 +79,30 @@ npm run start
 
 ## 5. Options d'Hébergement Recommandées
 
-### Option A : VPS (Ubuntu, Debian + PM2)
-C'est la méthode la plus flexible pour un petit budget.
-- Installez Node.js et PM2 : `npm install -g pm2`
-- Lancez l'app : `pm2 start dist/server.cjs --name "dia-app"`
-- Utilisez **Nginx** comme reverse proxy pour gérer le SSL (HTTPS).
+### Option A : Render.com (Recommandé 🔥)
+Render est idéal car il gère automatiquement le build et le HTTPS.
 
-### Option B : Docker (Cloud Run, Render, Railway)
-L'application est compatible Docker. Un `Dockerfile` simple à la racine suffirait :
+1.  **Créez un "Web Service"** sur Render.
+2.  **Connectez votre dépôt GitHub**.
+3.  **Paramètres de Build & Start** :
+    *   **Runtime** : `Node`
+    *   **Build Command** : `npm install && npm run build`
+    *   **Start Command** : `npm start`
+4.  **Environment Variables** :
+    *   Ajoutez toutes les variables listées dans la section 3 (PORT, JWT_SECRET, FIREBASE_SERVICE_ACCOUNT, etc.).
+    *   Render injecte automatiquement un `PORT` (généralement 10000), le serveur est configuré pour l'écouter.
+
+### Option B : VPS (Ubuntu, Debian + PM2)
+C'est la méthode la plus flexible pour un contrôle total.
+- Installez Node.js et PM2 : `npm install -g pm2`
+- Compilez l'app : `npm run build`
+- Lancez l'app : `pm2 start dist/server.cjs --name "dia-app"`
+- Utilisez **Nginx** comme reverse proxy pour gérer le SSL (HTTPS) sur le port 80/443 vers le port 3000.
+
+### Option C : Docker (Cloud Run, Railway)
+L'application est prête pour Docker grâce au script de build qui génère un bundle unique.
+
+**Dockerfile exemple** :
 ```dockerfile
 FROM node:18-slim
 WORKDIR /app
@@ -95,23 +111,23 @@ RUN npm install
 COPY . .
 RUN npm run build
 EXPOSE 3000
-CMD ["npm", "run", "start"]
+CMD ["npm", "start"]
 ```
-
-### Option C : Vercel / Netlify
-**Attention :** Puisque l'application possède une partie Serveur Express personnalisée (`server.ts`), ces hébergeurs (qui sont principalement statiques) nécessitent une configuration spécifique (Serverless Functions). Il est préférable d'utiliser un hébergeur orienté "Serveur" (Option A ou B).
 
 ---
 
-## 6. Maintenance et Mise à jour
+## 6. Pourquoi utiliser le build "dist/server.cjs" ?
+Nous utilisons `esbuild` pour transformer le serveur TypeScript en un seul fichier JavaScript robuste (`dist/server.cjs`). Cela résout les problèmes de chemins de fichiers et de modules ESM/CJS que l'on rencontre souvent lors du déploiement sur des serveurs Linux.
+
+## 7. Maintenance et Mise à jour
 Pour mettre à jour le code :
 1. `git pull`
 2. `npm install`
 3. `npm run build`
-4. Redémarrer le processus (`pm2 restart dia-app`)
+4. Redémarrer le processus (Render le fait automatiquement à chaque "Deploy").
 
 ---
 
-## 7. Sécurité Critique
+## 8. Sécurité Critique
 - **Ne jamais** commiter votre fichier `.env` sur GitHub.
 - Assurez-vous que les **Firestore Rules** (contenues dans `firestore.rules`) sont déployées via la console Firebase pour protéger vos données.
