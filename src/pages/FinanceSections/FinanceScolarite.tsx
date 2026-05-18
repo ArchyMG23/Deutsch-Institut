@@ -30,14 +30,7 @@ export default function FinanceScolarite({ onBack }: { onBack?: () => void }) {
   }, [selectedStudent, levels]);
 
   const sortedStudents = useMemo(() => {
-    // Filter out students who are not in a standard level (ex: exclude Vorbereitung and pure Vacances)
-    const filtered = students.filter(s => {
-      if (!s.levelId) return false;
-      const level = levels.find(l => l.id === s.levelId);
-      return level?.type === 'standard';
-    });
-
-    return [...filtered].sort((a, b) => {
+    return [...students].sort((a, b) => {
       let comp = 0;
       if (sortBy === 'name') {
         comp = `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);

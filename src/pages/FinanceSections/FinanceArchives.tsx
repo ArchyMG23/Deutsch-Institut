@@ -45,11 +45,22 @@ export default function FinanceArchives({ onBack }: { onBack?: () => void }) {
       };
 
       const fingerprint = (d: any) => {
-        // Create a unique key based on amount, day, and normalized category
-        const val = Math.abs(Number(d.montant || d.amount || 0));
-        const dateStr = (d.date || d.date_versement || d.timestamp || '').toString().split('T')[0];
-        const category = normalizedType(d.type || d.categorie || d.category || '');
-        return `${val}_${dateStr}_${category}`;
+        // Create a unique key based on amount, day, account and direction
+        // We use Math.round to avoid float issues
+        const val = Math.round(Math.abs(Number(d.montant ?? d.amount ?? 0)));
+        const rawDate = d.date_versement || d.date || d.timestamp || '';
+        const dateStr = rawDate.toString().split('T')[0];
+        const account = String(d.compte_destination || d.accountType || d.compte || d.source_compte || '').toLowerCase();
+        
+        // Direction: simplify to IN/OUT to help deduplicate across various type names
+        const isOut = d.type === 'expense' || d.type === 'sortie' || (Number(d.montant || d.amount || 0) < 0);
+        const direction = isOut ? 'OUT' : 'IN';
+        
+        // If it is a virement, we use a separate marker to avoid deduplicating with regular transactions
+        const isVirement = d.type === 'virement' || String(d.type).includes('virement');
+        const vMarker = isVirement ? '_VIR' : '';
+
+        return `${val}_${dateStr}_${account}_${direction}${vMarker}`;
       };
       const seenFingerprints = new Set();
 
